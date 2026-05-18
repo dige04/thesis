@@ -1,0 +1,114 @@
+experiment:
+  name: "memory_pruning_coding_agents"
+  benchmark: "swebench_cl"
+  sequence_mode: "chronological_by_repo"
+  same_repo_retrieval_only: true
+  master_seed: 42
+
+agent:
+  type: "langgraph_coding_agent"
+  main_model: "gpt-5.4"
+  summary_model: "gpt-4o-mini"        # for reflection + consolidation
+  classifier_model: "gpt-4o-mini"     # for type classification
+  embedding_model: "text-embedding-3-small"
+  temperature: 0
+  max_steps_per_task: 20              # LOCKED
+  max_tool_calls_per_task: 80
+  max_test_runs_per_task: 5
+  max_wall_time_minutes: 20
+
+memory:
+  backend: "sqlite_faiss"
+  top_k: 5                            # confirm in spike
+  max_context_tokens: 2000            # confirm in spike
+  max_records: 100
+  max_storage_tokens: 30000
+  retrieve_same_repo_only: true
+  embedding_max_tokens: 7500          # hard cap before truncation
+  injection_order: "best_last"
+
+retrieval:
+  scoring: "pure_cosine"              # IDENTICAL across all conditions
+  tie_break: "most_recent"
+  overflow: "drop_lowest_similarity"
+  item_truncation: false              # drop whole item if over budget
+
+policies:
+  no_memory:
+    enabled: true
+
+  full_memory:
+    enabled: true
+    obey_retrieval_budget: true
+    delete_records: false
+
+  random_prune:
+    enabled: true
+    max_records: 100
+    seeds: [1, 2, 3]
+
+  recency_prune:
+    enabled: true
+    max_records: 100
+
+  type_aware_decay:
+    enabled: true
+    max_records: 100
+    frequency_exponent: 0.5
+    type_params:
+      architectural: { base: 1.0, decay: 0.05 }
+      api_change:    { base: 0.8, decay: 0.15 }
+      bug_fix:       { base: 0.6, decay: 0.25 }
+      test_update:   { base: 0.4, decay: 0.35 }
+      config:        { base: 0.3, decay: 0.40 }
+
+  cls_consolidation:
+    enabled: true
+    max_records: 100
+    interval_tasks: 5                 # fixed schedule
+    min_cluster_size: 3
+    max_summary_tokens: 350
+    old_memory_threshold: 10
+    similarity_threshold: 0.70
+    fallback_prune: "type_aware_decay"
+
+execution:
+  docker_max_workers: 4               # increase gradually, monitor iostat
+  vps_arch: "x86_64"
+  vps_ram_gb: 32
+  vps_disk_gb: 250
+  vps_cores: 8
+
+logging:
+  save_raw_trajectory: true
+  save_patches: true
+  save_test_output: true
+  save_retrieved_memories: true
+  save_prompt_tokens: true
+  save_completion_tokens: true
+  save_memory_snapshots: true
+  snapshot_at_every_task_boundary: true
+
+evaluation:
+  harness: "eval_v3"
+  cl_metric_wrapper: "custom"         # ~100 LOC computing a_{i,j} matrix
+  primary_metric: "CL_F1"
+  bootstrap_iterations: 5000
+  bootstrap_method: "BCa"
+  confidence_level: 0.95
+  effect_size: "rank_biserial"
+  multiple_comparison_correction: "holm"
+
+statistical:
+  primary_test: "wilcoxon_signed_rank"
+  primary_unit: "sequence_level_means"
+  primary_n: 8
+  planned_contrasts:
+    - ["full_memory", "no_memory"]
+    - ["full_memory", "random_prune"]
+    - ["full_memory", "recency_prune"]
+    - ["full_memory", "type_aware_decay"]
+    - ["full_memory", "cls_consolidation"]
+  task_level_model: "glmm_binomial_logit"
+  feature_analysis_metric: "PR_AUC"
+  vif_threshold: 5.0

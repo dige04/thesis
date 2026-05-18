@@ -1,0 +1,132 @@
+# ─────────────────────────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ─────────────────────────────────────────────────────────────────
+# Virtual environments / package managers
+# ─────────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.venv
+venv/
+env/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+poetry.lock        # only if not using poetry as primary
+
+# ─────────────────────────────────────────────────────────────────
+# IDE / editor
+# ─────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+.project
+.pydevproject
+
+# ─────────────────────────────────────────────────────────────────
+# Jupyter / notebooks
+# ─────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_meta
+
+# ─────────────────────────────────────────────────────────────────
+# Testing / lint / type-checking caches
+# ─────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+nosetests.xml
+coverage.xml
+
+# ─────────────────────────────────────────────────────────────────
+# Project-specific — experiment artifacts (LARGE)
+# ─────────────────────────────────────────────────────────────────
+# Per-run logs and memory state. 144 runs × per-task logs adds up fast.
+runs/
+
+# Raw aggregated results. Plots and final tables in results/ committed manually.
+results/raw/
+results/cache/
+
+# Vector indices and metadata stores
+*.faiss
+*.index
+*.sqlite
+*.sqlite-journal
+*.db
+
+# wandb local cache
+wandb/
+.wandb/
+
+# Docker artifacts left behind by eval_v3
+.swebench_cache/
+swebench_logs/
+
+# Data files (curriculum JSON is large and should be downloaded separately)
+data/*.json
+data/*.jsonl
+
+# ─────────────────────────────────────────────────────────────────
+# Secrets / credentials
+# ─────────────────────────────────────────────────────────────────
+*.key
+*.pem
+secrets.yaml
+secrets.yml
+secrets.json
+.netrc
+
+# ─────────────────────────────────────────────────────────────────
+# Logs
+# ─────────────────────────────────────────────────────────────────
+logs/
+*.log
+*.log.*
+
+# ─────────────────────────────────────────────────────────────────
+# OS / misc
+# ─────────────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ─────────────────────────────────────────────────────────────────
+# DO commit (explicit allow)
+# ─────────────────────────────────────────────────────────────────
+!results/plots/
+!results/tables/
+!results/aggregated/*.json
+!results/aggregated/*.csv

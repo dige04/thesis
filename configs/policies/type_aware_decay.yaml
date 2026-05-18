@@ -1,0 +1,13 @@
+# Policy-specific overrides for Type-Aware Decay policy
+# These values override the base configuration when loading with policy_name="type_aware_decay"
+
+# Example: Override top_k during calibration
+# memory:
+#   top_k: 10
+
+# Example: Override type-specific decay parameters after Week 4 calibration
+# policies:
+#   type_aware_decay:
+#     type_params:
+#       architectural: { base: 1.0, decay: 0.06 }
+#       api_change:    { base: 0.8, decay: 0.16 }
