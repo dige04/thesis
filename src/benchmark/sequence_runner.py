@@ -1,0 +1,780 @@
+"""Sequence runner for orchestrating task execution across a sequence.
+
+This module implements the main orchestrator that ties together all components:
+agent, memory, evaluation, and logging. It executes all tasks in a sequence
+while maintaining persistent memory across task boundaries.
+
+Key responsibilities:
+- Initialize memory store with selected policy at sequence start
+- For each task: retrieve memories, execute agent, evaluate, reflect, maintain
+- Generate memory snapshots before/after each task
+- Handle failures gracefully (repository checkout failures fail entire sequence)
+- Return sequence-level results
+
+Requirements: 18, 27
+Design: THESIS_FINAL_v5.md §2, §16
+Frozen Invariants:
+- Clean repository checkout per task (frozen decision #2)
+- Fail entire sequence on repository errors
+- Generate before/after snapshots at EVERY task boundary
+- Max 20 steps per task (frozen decision #3)
+"""
+
+import logging
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from src.agents.langgraph_agent import CodingAgent
+from src.benchmark.evaluator import SWEBenchEvaluator
+from src.benchmark.models import Sequence, Task
+from src.benchmark.task_env import RepositoryCheckoutError, TaskEnvironment
+from src.logging.memory_event_logger import MemoryEventLogger
+from src.logging.memory_snapshot_logger import MemorySnapshotLogger
+from src.logging.task_logger import TaskResult, TaskResultLogger
+from src.memory.policies.base import MemoryPolicy
+from src.memory.reflection import ReflectionError, reflect_and_write_memory
+from src.memory.store import MemoryStore
+from src.metrics.retrieval_quality import (
+    RetrievalQualityMetrics,
+    compute_retrieval_quality,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SequenceResult:
+    """Result of executing a complete sequence.
+
+    Attributes:
+        sequence_name: Name of the sequence (e.g., "django")
+        repo: Repository name (e.g., "django/django")
+        policy_name: Name of the memory policy used
+        seed: Random seed for reproducibility
+        total_tasks: Total number of tasks in the sequence
+        completed_tasks: Number of tasks successfully completed
+        resolved_tasks: Number of tasks that passed evaluation
+        failed_tasks: Number of tasks that failed
+        timeout_tasks: Number of tasks that timed out
+        total_wall_time: Total wall time for the sequence in seconds
+        total_cost_usd: Total estimated cost in USD
+        error_message: Error message if sequence failed (None if successful)
+        run_id: Unique identifier for this run
+    """
+
+    sequence_name: str
+    repo: str
+    policy_name: str
+    seed: int
+    total_tasks: int
+    completed_tasks: int
+    resolved_tasks: int
+    failed_tasks: int
+    timeout_tasks: int
+    total_wall_time: float
+    total_cost_usd: float
+    error_message: str | None
+    run_id: str
+
+
+class SequenceRunner:
+    """Orchestrator for executing all tasks in a sequence.
+
+    This class is the main entry point for running a complete sequence with
+    a specific memory policy. It coordinates:
+    - Memory store initialization and persistence
+    - Task environment setup (clean repo checkout)
+    - Agent execution with memory retrieval
+    - Evaluation with eval_v3 harness
+    - Reflection and memory writing
+    - Policy maintenance (prune/consolidate)
+    - Logging and snapshot generation
+
+    Attributes:
+        run_id: Unique identifier for this run
+        policy: Memory policy instance
+        config: Configuration dictionary
+        memory_store: Persistent memory store (SQLite + FAISS)
+        evaluator: SWE-Bench evaluator instance
+        task_logger: Task results logger
+        memory_event_logger: Memory events logger
+        snapshot_logger: Memory snapshot logger
+        run_dir: Directory for this run's outputs
+    """
+
+    def __init__(
+        self,
+        run_id: str,
+        policy: MemoryPolicy,
+        config: dict[str, Any],
+    ):
+        """Initialize sequence runner.
+
+        Args:
+            run_id: Unique identifier for this run
+            policy: Memory policy instance (one of 6)
+            config: Configuration dictionary with all parameters
+
+        Raises:
+            ValueError: If required config parameters are missing
+        """
+        self.run_id = run_id
+        self.policy = policy
+        self.config = config
+
+        # Setup run directory
+        self.run_dir = Path("runs") / run_id
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize memory store
+        self.memory_store = MemoryStore(
+            run_id=run_id,
+            policy_name=policy.name,
+            embedding_dim=config.get("memory", {}).get("embedding_dim", 1536),
+            embedding_model=config.get("memory", {}).get(
+                "embedding_model", "text-embedding-3-small"
+            ),
+        )
+
+        # Initialize evaluator
+        self.evaluator = SWEBenchEvaluator(
+            docker_image=config.get("evaluation", {}).get(
+                "docker_image", "swebench/eval_v3:latest"
+            ),
+            timeout_seconds=config.get("evaluation", {}).get("timeout_seconds", 300),
+        )
+
+        # Initialize loggers
+        self.task_logger = TaskResultLogger(run_dir=self.run_dir)
+        self.memory_event_logger = MemoryEventLogger(
+            log_file_path=self.run_dir / "memory_events.jsonl",
+            policy_name=policy.name,
+        )
+        self.snapshot_logger = MemorySnapshotLogger(
+            snapshot_dir=self.run_dir / "memory" / "snapshots",
+            run_id=run_id,
+            policy_name=policy.name,
+        )
+
+        # Check if pilot mode is enabled for retrieval quality logging
+        self.pilot_mode_enabled = config.get("experiment", {}).get("pilot_mode", {}).get("enabled", False)
+        self.log_retrieval_quality = config.get("experiment", {}).get("pilot_mode", {}).get("log_retrieval_quality", False)
+        
+        # Initialize retrieval quality metrics storage
+        self.retrieval_quality_metrics: list[RetrievalQualityMetrics] = []
+
+        logger.info(
+            f"Initialized SequenceRunner: run_id={run_id}, "
+            f"policy={policy.name}, run_dir={self.run_dir}, "
+            f"pilot_mode={self.pilot_mode_enabled}, log_retrieval_quality={self.log_retrieval_quality}"
+        )
+
+    def run_sequence(self, sequence: Sequence, seed: int) -> SequenceResult:
+        """Execute all tasks in a sequence with persistent memory.
+
+        This is the main entry point for running a complete sequence. It:
+        1. Initializes memory store with selected policy
+        2. For each task in sequence:
+           - Generate "before_task" memory snapshot
+           - Set up clean task environment (checkout repository)
+           - Retrieve relevant memories using policy.retrieve()
+           - Execute coding agent with retrieved context
+           - Evaluate generated patch with eval_v3 harness
+           - Run reflection step to create memory record
+           - Write memory record using policy.write()
+           - Run policy maintenance (prune/consolidate if needed)
+           - Generate "after_task" memory snapshot
+           - Log all results and events
+        3. Handle failures gracefully
+        4. Return sequence-level results
+
+        Args:
+            sequence: Sequence instance with ordered tasks
+            seed: Random seed for reproducibility
+
+        Returns:
+            SequenceResult with aggregate statistics
+
+        Raises:
+            RepositoryCheckoutError: If repository checkout fails (fails entire sequence)
+
+        Requirements:
+            - Requirement 18: Log all task results and memory events
+            - Requirement 27: Generate snapshots at every task boundary
+            - Frozen decision #2: Clean repo checkout per task
+            - Frozen decision #3: Max 20 steps per task
+        """
+        logger.info(
+            f"Starting sequence: {sequence.sequence_name} "
+            f"({sequence.task_count} tasks) with policy={self.policy.name}, seed={seed}"
+        )
+
+        sequence_start_time = time.time()
+        completed_tasks = 0
+        resolved_tasks = 0
+        failed_tasks = 0
+        timeout_tasks = 0
+        total_cost_usd = 0.0
+        error_message = None
+
+        try:
+            # Execute each task in sequence
+            for task in sequence.tasks:
+                logger.info(
+                    f"Starting task {task.sequence_index + 1}/{sequence.task_count}: "
+                    f"{task.task_id}"
+                )
+
+                try:
+                    # Execute single task
+                    task_result = self._execute_task(task, seed)
+
+                    # Update counters
+                    completed_tasks += 1
+                    if task_result.resolved == 1:
+                        resolved_tasks += 1
+                    else:
+                        failed_tasks += 1
+                    if task_result.timeout:
+                        timeout_tasks += 1
+                    total_cost_usd += task_result.estimated_cost_usd
+
+                    logger.info(
+                        f"Completed task {task.task_id}: "
+                        f"resolved={task_result.resolved}, "
+                        f"timeout={task_result.timeout}, "
+                        f"cost=${task_result.estimated_cost_usd:.4f}"
+                    )
+
+                except RepositoryCheckoutError as e:
+                    # Repository checkout failures fail the entire sequence
+                    # (Frozen decision #2)
+                    error_message = f"Repository checkout failed for {task.task_id}: {e}"
+                    logger.error(error_message)
+                    raise
+
+                except Exception as e:
+                    # Other errors are logged but don't fail the sequence
+                    error_message = f"Task {task.task_id} failed with error: {e}"
+                    logger.error(error_message, exc_info=True)
+                    failed_tasks += 1
+                    completed_tasks += 1
+
+        except RepositoryCheckoutError:
+            # Re-raise repository errors to fail the sequence
+            raise
+
+        except Exception as e:
+            # Unexpected sequence-level error
+            error_message = f"Sequence failed with unexpected error: {e}"
+            logger.error(error_message, exc_info=True)
+
+        finally:
+            # Close memory store
+            self.memory_store.close()
+            
+            # Save retrieval quality metrics if pilot mode enabled
+            if self.pilot_mode_enabled and self.log_retrieval_quality and self.retrieval_quality_metrics:
+                self._save_retrieval_quality_metrics()
+
+        # Calculate total wall time
+        total_wall_time = time.time() - sequence_start_time
+
+        # Build sequence result
+        result = SequenceResult(
+            sequence_name=sequence.sequence_name,
+            repo=sequence.repo,
+            policy_name=self.policy.name,
+            seed=seed,
+            total_tasks=sequence.task_count,
+            completed_tasks=completed_tasks,
+            resolved_tasks=resolved_tasks,
+            failed_tasks=failed_tasks,
+            timeout_tasks=timeout_tasks,
+            total_wall_time=total_wall_time,
+            total_cost_usd=total_cost_usd,
+            error_message=error_message,
+            run_id=self.run_id,
+        )
+
+        logger.info(
+            f"Sequence completed: {sequence.sequence_name} - "
+            f"resolved={resolved_tasks}/{sequence.task_count}, "
+            f"failed={failed_tasks}, timeout={timeout_tasks}, "
+            f"time={total_wall_time:.1f}s, cost=${total_cost_usd:.2f}"
+        )
+
+        return result
+
+    def _execute_task(self, task: Task, seed: int) -> TaskResult:
+        """Execute a single task with full pipeline.
+
+        This method orchestrates the complete task execution pipeline:
+        1. Generate "before_task" memory snapshot
+        2. Set up clean task environment (checkout repository)
+        3. Retrieve relevant memories
+        4. Execute agent
+        5. Evaluate patch
+        6. Reflect and write memory
+        7. Maintain policy (prune/consolidate)
+        8. Generate "after_task" memory snapshot
+        9. Log results
+
+        Args:
+            task: Task instance to execute
+            seed: Random seed for reproducibility
+
+        Returns:
+            TaskResult with all execution details
+
+        Raises:
+            RepositoryCheckoutError: If repository checkout fails
+        """
+        task_start_time = time.time()
+
+        # Step 1: Generate "before_task" memory snapshot
+        logger.debug(f"Generating before_task snapshot for {task.task_id}")
+        memory_stats_before = self.memory_store.stats()
+        self.snapshot_logger.log_snapshot(
+            step=task.sequence_index,
+            boundary="before_task",
+            active_records=self.memory_store.active_records(),
+            current_step=task.sequence_index,
+        )
+
+        # Step 2: Set up clean task environment (checkout repository)
+        logger.debug(f"Setting up task environment for {task.task_id}")
+        task_env = TaskEnvironment(task)
+
+        try:
+            # Checkout clean repository (may raise RepositoryCheckoutError)
+            task_env.checkout_clean_repo()
+
+            # Step 3: Retrieve relevant memories
+            logger.debug(f"Retrieving memories for {task.task_id}")
+            retrieved_memories = self._retrieve_memories(task)
+
+            # Step 4: Execute agent
+            logger.debug(f"Executing agent for {task.task_id}")
+            agent_result = self._execute_agent(task, task_env, retrieved_memories)
+
+            # Step 5: Evaluate patch
+            logger.debug(f"Evaluating patch for {task.task_id}")
+            eval_result = self._evaluate_patch(task, agent_result["patch"], task_env)
+
+            # Step 6: Reflect and write memory
+            logger.debug(f"Reflecting and writing memory for {task.task_id}")
+            memory_record = self._reflect_and_write(
+                task=task,
+                agent_result=agent_result,
+                eval_result=eval_result,
+                retrieved_memories=retrieved_memories,
+            )
+
+            # Step 7: Maintain policy (prune/consolidate)
+            logger.debug(f"Running policy maintenance for {task.task_id}")
+            self.policy.maintain(self.memory_store)
+
+            # Step 8: Generate "after_task" memory snapshot
+            logger.debug(f"Generating after_task snapshot for {task.task_id}")
+            memory_stats_after = self.memory_store.stats()
+            self.snapshot_logger.log_snapshot(
+                step=task.sequence_index,
+                boundary="after_task",
+                active_records=self.memory_store.active_records(),
+                current_step=task.sequence_index,
+            )
+
+            # Step 9: Build and log task result
+            task_wall_time = time.time() - task_start_time
+            task_result = self._build_task_result(
+                task=task,
+                seed=seed,
+                agent_result=agent_result,
+                eval_result=eval_result,
+                retrieved_memories=retrieved_memories,
+                memory_stats_before=memory_stats_before,
+                memory_stats_after=memory_stats_after,
+                task_wall_time=task_wall_time,
+            )
+
+            self.task_logger.log_task_result(task_result)
+
+            return task_result
+
+        finally:
+            # Always cleanup task environment
+            task_env.cleanup()
+
+    def _retrieve_memories(self, task: Task) -> list[dict[str, Any]]:
+        """Retrieve relevant memories for a task.
+
+        Uses the policy's retrieve method which MUST use shared_retrieve
+        for all policies except No Memory (Frozen Invariant #5).
+
+        Args:
+            task: Task instance
+
+        Returns:
+            List of retrieved memory dictionaries (sorted ascending: best LAST)
+        """
+        top_k = self.config.get("memory", {}).get("top_k", 5)
+        token_budget = self.config.get("memory", {}).get("max_context_tokens", 2000)
+
+        # Retrieve memories using policy (pure cosine, identical across policies)
+        retrieved = self.policy.retrieve(
+            task=task,
+            memory_store=self.memory_store,
+            top_k=top_k,
+            token_budget=token_budget,
+        )
+
+        logger.debug(
+            f"Retrieved {len(retrieved)} memories for {task.task_id} "
+            f"(top_k={top_k}, budget={token_budget})"
+        )
+        
+        # Compute retrieval quality metrics if pilot mode enabled
+        if self.pilot_mode_enabled and self.log_retrieval_quality:
+            all_available = self.memory_store.active_records()
+            quality_metrics = compute_retrieval_quality(
+                task=task,
+                retrieved_memories=retrieved,
+                all_available_memories=[
+                    {
+                        "memory_id": rec.memory_id,
+                        "repo": rec.repo,
+                        "sequence_index": rec.sequence_index,
+                        "memory_type": rec.memory_type,
+                        "outcome": rec.outcome,
+                    }
+                    for rec in all_available
+                ],
+                relevance_criteria={
+                    "same_repo": True,
+                    "same_type": False,
+                    "temporal_window": None,
+                    "success_only": False,
+                },
+            )
+            self.retrieval_quality_metrics.append(quality_metrics)
+            logger.debug(
+                f"Retrieval quality for {task.task_id}: "
+                f"precision@{quality_metrics.k}={quality_metrics.precision_at_k:.3f}, "
+                f"recall@{quality_metrics.k}={quality_metrics.recall_at_k:.3f}, "
+                f"MRR={quality_metrics.mrr:.3f}, "
+                f"NDCG@{quality_metrics.k}={quality_metrics.ndcg_at_k:.3f}"
+            )
+
+        return retrieved
+
+    def _execute_agent(
+        self,
+        task: Task,
+        task_env: TaskEnvironment,
+        retrieved_memories: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Execute coding agent on a task.
+
+        Args:
+            task: Task instance
+            task_env: Task environment with clean repository
+            retrieved_memories: Retrieved memories (sorted ascending: best LAST)
+
+        Returns:
+            Dictionary with agent execution results:
+                - patch: Generated patch string
+                - patch_generated: Whether patch was generated
+                - timeout: Whether agent timed out
+                - syntax_error: Whether syntax errors occurred
+                - error_message: Error message if any
+                - trajectory: List of action-observation pairs
+                - tool_calls: Number of tool calls
+                - test_runs: Number of test runs
+                - files_read: List of files read
+                - files_modified: List of files modified
+                - commands_run: List of commands executed
+                - prompt_tokens: Number of prompt tokens
+                - completion_tokens: Number of completion tokens
+                - total_tokens: Total tokens
+                - estimated_cost_usd: Estimated cost in USD
+        """
+        # Create agent instance
+        agent = CodingAgent(
+            memory_store=self.memory_store,
+            policy=self.policy,
+            config=self.config,
+            task_env=task_env,
+        )
+
+        # Build task dictionary for agent
+        task_dict = {
+            "task_id": task.task_id,
+            "repo": task.repo,
+            "base_commit": task.base_commit,
+            "issue_text": task.issue_text,
+            "sequence_index": task.sequence_index,
+        }
+
+        # Execute agent
+        result = agent.solve_task(task_dict)
+
+        return result
+
+    def _evaluate_patch(
+        self,
+        task: Task,
+        patch: str,
+        task_env: TaskEnvironment,
+    ) -> dict[str, Any]:
+        """Evaluate generated patch using eval_v3 harness.
+
+        Args:
+            task: Task instance
+            patch: Generated patch string
+            task_env: Task environment with repository
+
+        Returns:
+            Dictionary with evaluation results:
+                - resolved: 1 if passed, 0 if failed
+                - success: Whether evaluation completed without errors
+                - passed: Whether patch passed tests
+                - error: Error message if evaluation failed
+                - execution_time: Time taken for evaluation
+        """
+        if not patch:
+            # No patch generated
+            return {
+                "resolved": 0,
+                "success": True,
+                "passed": False,
+                "error": None,
+                "execution_time": 0.0,
+            }
+
+        # Evaluate patch using eval_v3 harness
+        eval_result = self.evaluator.evaluate_patch(
+            task=task,
+            patch=patch,
+            work_dir=str(task_env.working_dir) if task_env.working_dir else None,
+        )
+
+        return {
+            "resolved": 1 if eval_result.passed else 0,
+            "success": eval_result.success,
+            "passed": eval_result.passed,
+            "error": eval_result.error,
+            "execution_time": eval_result.execution_time,
+        }
+
+    def _reflect_and_write(
+        self,
+        task: Task,
+        agent_result: dict[str, Any],
+        eval_result: dict[str, Any],
+        retrieved_memories: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Run reflection step and write memory record.
+
+        Args:
+            task: Task instance
+            agent_result: Agent execution results
+            eval_result: Evaluation results
+            retrieved_memories: Retrieved memories used
+
+        Returns:
+            Memory record dictionary if successful, None if reflection failed
+        """
+        # Build trajectory from agent result
+        trajectory = {
+            "steps": agent_result.get("trajectory", []),
+            "files_read": agent_result.get("files_read", []),
+            "files_modified": agent_result.get("files_modified", []),
+            "commands_run": agent_result.get("commands_run", []),
+            "test_output": eval_result.get("error", ""),
+        }
+
+        # Build evaluation result for reflection
+        reflection_eval_result = {
+            "resolved": eval_result["resolved"] == 1,
+            "error_message": eval_result.get("error"),
+            "test_output": eval_result.get("error"),
+        }
+
+        # Extract retrieved memory IDs
+        retrieved_memory_ids = [
+            mem.get("memory_id", "") for mem in retrieved_memories
+        ]
+
+        try:
+            # Run reflection and write memory
+            memory_record = reflect_and_write_memory(
+                task=task,
+                trajectory=trajectory,
+                patch=agent_result.get("patch"),
+                evaluation_result=reflection_eval_result,
+                memory_store=self.memory_store,
+                policy=self.policy,
+                retrieved_memory_ids=retrieved_memory_ids,
+                sequence_index=task.sequence_index,
+                model=self.config.get("reflection", {}).get("model", "gpt-4o-mini"),
+                temperature=self.config.get("reflection", {}).get("temperature", 0.0),
+            )
+
+            if memory_record:
+                # Log memory write event
+                self.memory_event_logger.log_write(
+                    memory_id=memory_record.memory_id,
+                    step=task.sequence_index,
+                    task_id=task.task_id,
+                    repo=task.repo,
+                    metadata={
+                        "memory_type": memory_record.memory_type,
+                        "token_length": memory_record.token_length,
+                        "outcome": memory_record.outcome,
+                    },
+                )
+
+                return {
+                    "memory_id": memory_record.memory_id,
+                    "memory_type": memory_record.memory_type,
+                    "outcome": memory_record.outcome,
+                }
+
+            return None
+
+        except ReflectionError as e:
+            # Reflection failed - log but continue
+            logger.warning(
+                f"Reflection failed for {task.task_id}: {e}. "
+                f"Continuing without writing memory."
+            )
+            return None
+
+    def _build_task_result(
+        self,
+        task: Task,
+        seed: int,
+        agent_result: dict[str, Any],
+        eval_result: dict[str, Any],
+        retrieved_memories: list[dict[str, Any]],
+        memory_stats_before: dict[str, Any],
+        memory_stats_after: dict[str, Any],
+        task_wall_time: float,
+    ) -> TaskResult:
+        """Build TaskResult from execution data.
+
+        Args:
+            task: Task instance
+            seed: Random seed
+            agent_result: Agent execution results
+            eval_result: Evaluation results
+            retrieved_memories: Retrieved memories
+            memory_stats_before: Memory stats before task
+            memory_stats_after: Memory stats after task
+            task_wall_time: Task wall time in seconds
+
+        Returns:
+            TaskResult instance ready for logging
+        """
+        # Extract retrieved memory data
+        retrieved_memory_ids = [mem.get("memory_id", "") for mem in retrieved_memories]
+        retrieved_memory_scores = [
+            mem.get("similarity", 0.0) for mem in retrieved_memories
+        ]
+        retrieved_memory_types = [
+            mem.get("memory_type", "unknown") for mem in retrieved_memories
+        ]
+        retrieved_memory_ages = [
+            max(0, task.sequence_index - mem.get("sequence_index", 0))
+            for mem in retrieved_memories
+        ]
+
+        # Calculate syntax error rate
+        syntax_error_rate = (
+            1.0 if agent_result.get("syntax_error", False) else 0.0
+        )
+
+        return TaskResult(
+            # Run identification
+            run_id=self.run_id,
+            policy=self.policy.name,
+            seed=seed,
+            repo=task.repo,
+            task_id=task.task_id,
+            sequence_index=task.sequence_index,
+            # Task outcome
+            resolved=eval_result["resolved"],
+            patch_generated=agent_result.get("patch_generated", False),
+            patch_applied=eval_result["resolved"] == 1,
+            syntax_error=agent_result.get("syntax_error", False),
+            timeout=agent_result.get("timeout", False),
+            # Token usage & costs
+            prompt_tokens=agent_result.get("prompt_tokens", 0),
+            completion_tokens=agent_result.get("completion_tokens", 0),
+            total_tokens=agent_result.get("total_tokens", 0),
+            estimated_cost_usd=agent_result.get("estimated_cost_usd", 0.0),
+            task_api_cost=agent_result.get("estimated_cost_usd", 0.0),
+            consolidation_llm_cost=0.0,  # TODO: Track consolidation cost separately
+            # Execution metrics
+            wall_time_seconds=task_wall_time,
+            tool_calls=agent_result.get("tool_calls", 0),
+            test_runs=agent_result.get("test_runs", 0),
+            files_read=len(agent_result.get("files_read", [])),
+            files_modified=len(agent_result.get("files_modified", [])),
+            syntax_error_rate=syntax_error_rate,
+            # Retrieved memories
+            retrieved_memory_ids=retrieved_memory_ids,
+            retrieved_memory_scores=retrieved_memory_scores,
+            retrieved_memory_types=retrieved_memory_types,
+            retrieved_memory_ages=retrieved_memory_ages,
+            # Memory state
+            memory_count_before=memory_stats_before["active_count"],
+            memory_count_after=memory_stats_after["active_count"],
+            memory_tokens_before=memory_stats_before["total_tokens"],
+            memory_tokens_after=memory_stats_after["total_tokens"],
+            # Memory operations
+            pruned_memory_ids=[],  # TODO: Track pruned IDs from policy.maintain()
+            consolidated_memory_ids=[],  # TODO: Track consolidated IDs
+            # Task metadata
+            task_difficulty=task.difficulty_label,
+            error_message=agent_result.get("error_message"),
+        )
+
+    def _save_retrieval_quality_metrics(self) -> None:
+        """Save retrieval quality metrics to file for pilot analysis.
+        
+        Saves individual task metrics and aggregated statistics to
+        runs/{run_id}/retrieval_quality_metrics.json for calibration analysis.
+        """
+        import json
+        from dataclasses import asdict
+        from src.metrics.retrieval_quality import aggregate_retrieval_quality
+        
+        # Aggregate metrics
+        aggregated = aggregate_retrieval_quality(self.retrieval_quality_metrics)
+        
+        # Build output data
+        output = {
+            "run_id": self.run_id,
+            "policy_name": self.policy.name,
+            "aggregated_metrics": aggregated,
+            "per_task_metrics": [
+                asdict(metrics) for metrics in self.retrieval_quality_metrics
+            ],
+        }
+        
+        # Save to file
+        output_file = self.run_dir / "retrieval_quality_metrics.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(output, f, indent=2)
+        
+        logger.info(
+            f"Saved retrieval quality metrics to {output_file}: "
+            f"mean_precision@k={aggregated['mean_precision_at_k']:.3f}, "
+            f"mean_recall@k={aggregated['mean_recall_at_k']:.3f}, "
+            f"mean_MRR={aggregated['mean_mrr']:.3f}, "
+            f"mean_NDCG@k={aggregated['mean_ndcg_at_k']:.3f}"
+        )

@@ -1,19 +1,18 @@
 """Recency Prune memory policy.
 
-This policy implements FIFO (First-In-First-Out) pruning based on task sequence order.
-When capacity is exceeded, the oldest memories (by sequence_index) are archived first.
+This policy retains only the most recent memories, archiving the oldest
+memories by sequence_index when capacity is exceeded.
 
 **Validates: Requirements 11**
 
 Purpose:
     Test whether recency alone is sufficient for effective memory management.
-    This policy assumes that recent task experiences are more relevant than
-    older ones, implementing a simple temporal decay without semantic scoring.
+    This policy implements a simple FIFO (First-In-First-Out) strategy where
+    older memories are discarded in favor of newer ones.
 
 Frozen Invariants (THESIS_FINAL_v5.md §0.1):
 - Retrieval scoring = pure cosine similarity, identical across all 6 conditions (Invariant #5)
-- Archive based on sequence_index (chronological order), not created_at timestamp
-- Deterministic pruning (no randomness)
+- Max 20 steps per task (Invariant #3)
 
 Requirements: 11
 Design: §2 Policy Specifications - Policy 3: Recency Prune
@@ -38,40 +37,34 @@ class RecencyPrunePolicy(MemoryPolicy):
     **Validates: Requirements 11**
 
     This policy stores all incoming memories and archives the oldest memories
-    (by sequence_index) when the active count exceeds max_records. Implements
-    FIFO (First-In-First-Out) pruning based on task chronological order.
+    by sequence_index when the active count exceeds max_records. Retains only
+    the max_records most recent memories.
 
     Behavior:
         1. Retrieval: Uses shared_retrieve() with identical scoring to all other policies
         2. Write: Stores all incoming memory records without filtering
-        3. Maintain: When active count > max_records, archives oldest memories by
-                    sequence_index until count <= max_records
+        3. Maintain: When active count > max_records, archives oldest memories
+                    by sequence_index until count <= max_records
 
     Attributes:
         name: Policy identifier ("recency_prune")
         max_records: Maximum number of active memories to retain
 
     Design Rationale:
-        Recency pruning tests whether temporal proximity alone is sufficient
-        for effective memory management. This policy assumes that recent task
-        experiences are more relevant than older ones, without considering
-        semantic content, memory type, or retrieval patterns.
+        Recency pruning tests the hypothesis that recent memories are more
+        relevant than old ones for sequential coding tasks. This is a simple
+        heuristic that doesn't require semantic analysis or scoring.
 
-        If Recency Prune outperforms Random Prune, it suggests that temporal
-        structure matters. If it underperforms Type-Aware Decay, it suggests
-        that semantic prioritization provides additional value beyond recency.
-
-    Key Differences from Random Prune:
-        - Deterministic (no randomness, no seed required)
-        - Preserves recent memories (temporal bias)
-        - Archives oldest memories first (FIFO order)
+        If Recency Prune performs well, it suggests that temporal locality
+        is a strong signal for memory relevance in coding tasks. If it
+        performs poorly, it suggests that older memories can remain relevant
+        (e.g., architectural decisions, API patterns).
 
     Example:
         >>> policy = RecencyPrunePolicy(max_records=100)
-        >>> # After task 105, if 105 memories exist:
+        >>> # After task 105 completes, if 105 memories exist:
         >>> policy.maintain(memory_store)
-        >>> # Archives memories from tasks 1-5 (oldest 5)
-        >>> # Retains memories from tasks 6-105 (most recent 100)
+        >>> # Archives memories from tasks 1-5, retains tasks 101-105
     """
 
     name = "recency_prune"
@@ -83,9 +76,9 @@ class RecencyPrunePolicy(MemoryPolicy):
             max_records: Maximum number of active memories to retain (typically 100)
 
         Notes:
-            - No seed required (deterministic pruning)
             - max_records is the capacity threshold that triggers pruning
-            - Pruning is based on sequence_index (chronological order)
+            - Pruning is deterministic (always archives oldest by sequence_index)
+            - No randomness involved (unlike Random Prune)
         """
         self.max_records = max_records
 
@@ -104,8 +97,6 @@ class RecencyPrunePolicy(MemoryPolicy):
 
         CRITICAL: Uses shared_retrieve() to ensure identical retrieval scoring
         across all 6 policies. This is a frozen invariant (Requirement 6).
-
-        **Validates: Requirements 11.1**
 
         Args:
             task: Current task requiring memory retrieval
@@ -131,8 +122,6 @@ class RecencyPrunePolicy(MemoryPolicy):
         Recency Prune stores ALL incoming records without filtering.
         Pruning happens in maintain() after the record is stored.
 
-        **Validates: Requirements 11.2**
-
         Args:
             memory_store: Persistent memory storage backend
             record: MemoryRecord to store (from reflection step)
@@ -153,34 +142,30 @@ class RecencyPrunePolicy(MemoryPolicy):
     def maintain(self, memory_store: "MemoryStore") -> None:
         """Perform recency-based pruning if active count exceeds max_records.
 
-        Archives the oldest memories (by sequence_index) until the active count
-        is at or below max_records. Retains the most recent memories.
-
-        **Validates: Requirements 11.3, 11.4**
-
         Algorithm:
             1. Count active (non-archived) records
             2. If count <= max_records, no action needed
-            3. Sort active records by sequence_index ascending (oldest first)
-            4. Archive oldest records until count <= max_records
-            5. Retain the max_records most recent memories
+            3. If count > max_records:
+                a. Get all active records
+                b. Sort by sequence_index ascending (oldest first)
+                c. Archive oldest records until count <= max_records
+                d. Retain max_records most recent memories
 
         Args:
             memory_store: Persistent memory storage backend
 
         Notes:
-            - Deterministic pruning (no randomness)
-            - Archives based on sequence_index (chronological order), NOT created_at
+            - Deterministic pruning (always archives oldest by sequence_index)
+            - Archives victims in batch (not one at a time)
             - Archived records excluded from future retrieval
             - Preserves archived records for post-hoc analysis
             - No consideration of type, outcome, or importance
+            - Only considers temporal ordering (sequence_index)
 
         Example:
             >>> # If 105 active memories and max_records=100:
-            >>> # Memories from tasks 1-105 exist
             >>> policy.maintain(memory_store)
-            >>> # Archives memories from tasks 1-5 (oldest 5)
-            >>> # Retains memories from tasks 6-105 (most recent 100)
+            >>> # Archives 5 oldest memories (lowest sequence_index)
             >>> assert memory_store.count_active() == 100
         """
         active_count = memory_store.count_active()
@@ -202,9 +187,9 @@ class RecencyPrunePolicy(MemoryPolicy):
 
         # Get all active records and sort by sequence_index ascending (oldest first)
         active_records = memory_store.active_records()
-        active_records.sort(key=lambda r: r.sequence_index, reverse=False)
+        active_records.sort(key=lambda r: r.sequence_index)
 
-        # Archive the oldest memories (first num_to_prune records)
+        # Archive the oldest records (first num_to_prune in sorted list)
         victims = active_records[:num_to_prune]
 
         pruned_count = 0
@@ -236,13 +221,3 @@ class RecencyPrunePolicy(MemoryPolicy):
             f"Pruning failed: {final_count} > {self.max_records}. "
             f"This should never happen - bug in maintain()."
         )
-
-        # Verify we retained the most recent memories
-        if final_count > 0:
-            remaining_records = memory_store.active_records()
-            min_seq_idx = min(r.sequence_index for r in remaining_records)
-            max_seq_idx = max(r.sequence_index for r in remaining_records)
-
-            logger.debug(
-                f"Retained memories from sequence_index {min_seq_idx} to {max_seq_idx}"
-            )

@@ -13,15 +13,7 @@ from typing import Any, Dict, Optional
 import yaml
 from copy import deepcopy
 
-
-class ConfigValidationError(Exception):
-    """Raised when configuration validation fails."""
-    pass
-
-
-class ConfigFrozenError(Exception):
-    """Raised when attempting to modify frozen configuration."""
-    pass
+from src.errors import ConfigValidationError, ConfigFrozenError, handle_config_validation_failure
 
 
 class ConfigLoader:

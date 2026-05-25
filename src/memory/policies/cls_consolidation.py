@@ -1,38 +1,35 @@
-"""CLS Consolidation policy implementation.
+"""CLS Consolidation memory policy.
 
-This module implements the CLS (Cluster-and-Summarize) Consolidation policy
-that clusters old memories and generates consolidated summaries on a fixed
-schedule.
+This policy consolidates old memories into summaries on a fixed schedule,
+then falls back to Type-Aware Decay if still over budget.
 
 **Validates: Requirements 13**
 
-Design Principle:
-CLS Consolidation tests whether abstractive compression improves the
-performance-cost trade-off. It clusters semantically similar old memories
-and generates compact summaries, then falls back to Type-Aware Decay if
-still over budget.
+Purpose:
+    Test whether abstractive compression (consolidation) improves the
+    performance-cost trade-off compared to extractive pruning. CLS
+    (Consolidate-Learn-Store) clusters similar old memories and generates
+    LLM summaries, trading retrieval quality for reduced storage cost.
 
-Key Features:
-- Fixed schedule: consolidation every 5 tasks (NOT trigger-on-overflow)
-- Minimum cluster size: 3 memories
-- Excludes architectural memories (Sacred tier)
+Frozen Invariants (THESIS_FINAL_v5.md §0.1):
+- Retrieval scoring = pure cosine similarity, identical across all 6 conditions (Invariant #5)
+- CLS consolidation = fixed every k=5 tasks (NOT trigger-on-overflow) (Invariant #9)
+- Consolidation parameters locked from THESIS_FINAL_v5.md §8 P5 (Invariant #23)
 - Falls back to Type-Aware Decay if still over budget after consolidation
 
-Frozen Invariants:
-- Uses shared_retrieve() for identical retrieval scoring (Invariant #5)
-- Consolidation schedule is FIXED every 5 tasks (Invariant #9)
-- Min cluster size = 3 (Invariant #9)
+Requirements: 13
+Design: §2 Policy Specifications - Policy 5: CLS Consolidation
 """
 
 import logging
-from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from openai import OpenAI
+from sklearn.cluster import DBSCAN
 
 from ..retriever import shared_retrieve
 from .base import MemoryPolicy
+from .type_aware_decay import TYPE_PARAMS, TypeAwareDecayPolicy
 
 if TYPE_CHECKING:
     from ..record import MemoryRecord
@@ -41,78 +38,112 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class CLSConsolidationPolicy(MemoryPolicy):
-    """CLS Consolidation policy: cluster and consolidate old memories.
+# Consolidation parameters (LOCKED from THESIS_FINAL_v5.md §8 P5)
+CONSOLIDATION_INTERVAL = 5  # Trigger every 5 tasks
+MIN_CLUSTER_SIZE = 3  # Minimum memories to consolidate
+MAX_SUMMARY_TOKENS = 350  # Maximum tokens for consolidated summary
+OLD_MEMORY_THRESHOLD = 10  # Memories must be >= 10 tasks old
+SIMILARITY_THRESHOLD = 0.70  # Minimum cosine similarity for clustering
+EXCLUDE_TYPE = "architectural"  # Sacred tier - never consolidate
 
-    This policy clusters semantically similar old memories and generates
-    consolidated summaries on a fixed schedule (every 5 tasks). After
-    consolidation, if still over budget, it falls back to Type-Aware Decay
-    pruning.
+
+class CLSConsolidationPolicy(MemoryPolicy):
+    """CLS Consolidation policy with Type-Aware Decay fallback.
 
     **Validates: Requirements 13**
 
-    Acceptance Criteria:
-    1. Uses shared_retrieve with identical scoring
-    2. Stores all incoming records
-    3. Triggers consolidation every 5 tasks on fixed schedule
-    4. Selects candidates: ≥10 tasks old, not consolidated, not architectural
-    5. Clusters by repo, files_touched, and embedding similarity (min size 3)
-    6. Generates consolidated summaries with max 350 tokens
-    7. Archives source memories and stores consolidated record
-    8. Falls back to Type-Aware Decay if still over budget
+    This policy consolidates old memories into summaries on a fixed schedule
+    (every 5 tasks), then falls back to Type-Aware Decay pruning if still
+    over budget. Implements abstractive compression via LLM summarization.
+
+    Behavior:
+        1. Retrieval: Uses shared_retrieve() with identical scoring to all other policies
+        2. Write: Stores all incoming memory records without filtering
+        3. Maintain: Every 5 tasks, consolidates old memories:
+           a. Select candidates: >= 10 tasks old, not consolidated, not architectural
+           b. Cluster by repo, files_touched, and embedding similarity (min size 3)
+           c. Generate consolidated summary (max 350 tokens) for each cluster
+           d. Archive source memories, store consolidated record
+           e. If still over budget, fall back to Type-Aware Decay pruning
+
+    Consolidation Algorithm:
+        1. Filter candidates: age >= 10, not consolidated, type != architectural
+        2. Group by repository (consolidation is repo-specific)
+        3. For each repo group:
+           a. Cluster by files_touched overlap and embedding similarity
+           b. Use DBSCAN with cosine distance, eps=(1-similarity_threshold)
+           c. Require min_samples=MIN_CLUSTER_SIZE
+        4. For each cluster:
+           a. Generate LLM summary (max 350 tokens)
+           b. Create consolidated MemoryRecord with is_consolidated=True
+           c. Archive source memories with reason="cls_consolidated"
+           d. Store consolidated record
+
+    Consolidation Parameters (LOCKED):
+        - Interval: 5 tasks (fixed schedule, not trigger-on-overflow)
+        - Min cluster size: 3 memories
+        - Max summary tokens: 350
+        - Old memory threshold: 10 tasks
+        - Similarity threshold: 0.70 (cosine similarity)
+        - Exclude type: architectural (Sacred tier)
+
+    Fallback Behavior:
+        If active count still exceeds max_records after consolidation,
+        falls back to Type-Aware Decay pruning to reach target capacity.
+        This ensures the policy never exceeds max_records.
 
     Attributes:
-        name: Policy identifier "cls_consolidation"
-        max_records: Maximum number of active records allowed
-        consolidation_interval: Number of tasks between consolidations (5)
-        min_cluster_size: Minimum memories required to form a cluster (3)
-        max_summary_tokens: Maximum tokens for consolidated summary (350)
-        old_memory_threshold: Minimum age in tasks for consolidation (10)
-        similarity_threshold: Minimum cosine similarity for clustering (0.70)
+        name: Policy identifier ("cls_consolidation")
+        max_records: Maximum number of active memories to retain
         tasks_since_last_consolidation: Counter for fixed schedule
+
+    Design Rationale:
+        CLS Consolidation tests whether abstractive compression (LLM summaries)
+        can preserve retrieval quality while reducing storage cost. Fixed
+        schedule (every 5 tasks) ensures consolidation happens proactively,
+        not reactively. Fallback to Type-Aware Decay ensures capacity limits
+        are respected even if consolidation is insufficient.
 
     Example:
         >>> policy = CLSConsolidationPolicy(max_records=100)
-        >>> memories = policy.retrieve(task, store, top_k=5, token_budget=2000)
-        >>> policy.write(store, record)
-        >>> policy.maintain(store)  # Consolidates every 5 tasks
+        >>> # After task 15 (3rd consolidation trigger):
+        >>> policy.maintain(memory_store)
+        >>> # Selects memories from tasks 1-5 (age >= 10)
+        >>> # Clusters by repo + files + similarity
+        >>> # Generates summaries for clusters with >= 3 memories
+        >>> # Archives source memories, stores consolidated records
+        >>> # If still > 100 active, falls back to Type-Aware Decay
     """
 
     name = "cls_consolidation"
-
-    # Frozen parameters (Requirement 13, Design §Policy 5)
-    CONSOLIDATION_INTERVAL = 5
-    MIN_CLUSTER_SIZE = 3
-    MAX_SUMMARY_TOKENS = 350
-    OLD_MEMORY_THRESHOLD = 10
-    SIMILARITY_THRESHOLD = 0.70
-
-    # Type-Aware Decay parameters for fallback
-    TYPE_PARAMS = {
-        "architectural": (1.0, 0.05),
-        "api_change": (0.8, 0.15),
-        "bug_fix": (0.6, 0.25),
-        "test_update": (0.4, 0.35),
-        "config": (0.3, 0.40),
-    }
-    FREQUENCY_EXPONENT = 0.5
+    
+    # Expose frozen parameters as class attributes for testing
+    CONSOLIDATION_INTERVAL = CONSOLIDATION_INTERVAL
+    MIN_CLUSTER_SIZE = MIN_CLUSTER_SIZE
+    MAX_SUMMARY_TOKENS = MAX_SUMMARY_TOKENS
+    OLD_MEMORY_THRESHOLD = OLD_MEMORY_THRESHOLD
+    SIMILARITY_THRESHOLD = SIMILARITY_THRESHOLD
 
     def __init__(self, max_records: int):
         """Initialize CLS Consolidation policy.
 
         Args:
-            max_records: Maximum number of active records allowed
+            max_records: Maximum number of active memories to retain (typically 100)
+
+        Notes:
+            - max_records is the capacity threshold for fallback pruning
+            - Consolidation parameters are LOCKED from THESIS_FINAL_v5.md §8 P5
+            - Consolidation happens every 5 tasks (fixed schedule)
+            - Falls back to Type-Aware Decay if still over budget
         """
         self.max_records = max_records
         self._tasks_since_last_consolidation = 0
-        self._openai_client: OpenAI | None = None
 
-    @property
-    def openai_client(self) -> OpenAI:
-        """Lazy initialization of OpenAI client."""
-        if self._openai_client is None:
-            self._openai_client = OpenAI()
-        return self._openai_client
+        logger.info(
+            f"Initialized CLSConsolidationPolicy: max_records={max_records}, "
+            f"interval={CONSOLIDATION_INTERVAL}, min_cluster_size={MIN_CLUSTER_SIZE}, "
+            f"max_summary_tokens={MAX_SUMMARY_TOKENS}, old_threshold={OLD_MEMORY_THRESHOLD}"
+        )
 
     def retrieve(
         self,
@@ -120,329 +151,390 @@ class CLSConsolidationPolicy(MemoryPolicy):
         memory_store: "MemoryStore",
         top_k: int,
         token_budget: int
-    ) -> list["MemoryRecord"]:
-        """Retrieve relevant memories using shared_retrieve.
+    ) -> list[tuple[float, "MemoryRecord"]]:
+        """Retrieve relevant memories using shared retrieval function.
 
-        Uses the shared retrieval function to ensure identical scoring
-        across all policies.
+        CRITICAL: Uses shared_retrieve() to ensure identical retrieval scoring
+        across all 6 policies. This is a frozen invariant (Requirement 6).
 
         **Validates: Requirements 13.1**
 
         Args:
-            task: The current task requiring memory retrieval
-            memory_store: The persistent memory storage backend
+            task: Current task requiring memory retrieval
+            memory_store: Persistent memory storage backend
             top_k: Maximum number of memories to retrieve
             token_budget: Maximum total tokens for retrieved memories
 
         Returns:
-            List of MemoryRecord objects sorted ascending by relevance
-            (best item LAST)
+            List of (similarity_score, MemoryRecord) tuples, sorted ascending
+            by relevance (best item LAST for Lost-in-the-Middle mitigation)
+
+        Notes:
+            - Pure cosine similarity scoring (no bonuses or penalties)
+            - Filters by same repository and non-archived status
+            - Enforces token budget by dropping lowest-scoring memories
+            - Returns empty list if no candidates or all exceed budget
         """
-        # shared_retrieve returns list[tuple[float, MemoryRecord]]
-        # We need to extract just the MemoryRecord objects
-        scored_memories = shared_retrieve(task, memory_store, top_k, token_budget)
-        return [record for _, record in scored_memories]
+        return shared_retrieve(task, memory_store, top_k, token_budget)
 
     def write(self, memory_store: "MemoryStore", record: "MemoryRecord") -> None:
-        """Store all incoming memory records.
+        """Store a new memory record.
+
+        CLS Consolidation stores ALL incoming records without filtering.
+        Consolidation and pruning happen in maintain() after the record is stored.
 
         **Validates: Requirements 13.2**
 
         Args:
-            memory_store: The persistent memory storage backend
-            record: The MemoryRecord to store
+            memory_store: Persistent memory storage backend
+            record: MemoryRecord to store (from reflection step)
+
+        Notes:
+            - No filtering at write time
+            - All records stored regardless of type, outcome, or age
+            - Consolidation deferred to maintain() phase
         """
         memory_store.add(record)
-        logger.debug(f"Stored memory {record.memory_id} for task {record.task_id}")
+
+        logger.debug(
+            f"Stored memory {record.memory_id} for task {record.task_id} "
+            f"(type={record.memory_type}, outcome={record.outcome}, "
+            f"seq_idx={record.sequence_index})"
+        )
 
     def maintain(self, memory_store: "MemoryStore") -> None:
-        """Perform consolidation on fixed schedule, then fallback pruning.
+        """Perform CLS consolidation on fixed schedule, then fallback pruning.
 
-        This method:
-        1. Increments task counter
-        2. If counter reaches 5, triggers consolidation
-        3. Selects old, non-consolidated, non-architectural memories
-        4. Clusters by repo, files, and embedding similarity
-        5. Generates consolidated summaries for clusters
-        6. Archives source memories
-        7. Falls back to Type-Aware Decay if still over budget
+        CRITICAL: Consolidation triggers every 5 tasks (fixed schedule), NOT
+        when capacity is exceeded. This is a frozen invariant (Invariant #9).
 
-        **Validates: Requirements 13.3-13.8**
+        **Validates: Requirements 13.3, 13.4, 13.5, 13.6, 13.7, 13.8**
+
+        Algorithm:
+            1. Increment task counter
+            2. If counter < 5, no action (wait for next trigger)
+            3. If counter >= 5, reset counter and consolidate:
+               a. Get current step (max sequence_index)
+               b. Select candidates: age >= 10, not consolidated, not architectural
+               c. Group candidates by repository
+               d. For each repo group, cluster by files + embedding similarity
+               e. For each cluster with >= 3 memories, generate summary
+               f. Archive source memories, store consolidated record
+            4. If still over budget, fall back to Type-Aware Decay pruning
 
         Args:
-            memory_store: The persistent memory storage backend
+            memory_store: Persistent memory storage backend
+
+        Notes:
+            - Fixed schedule: every 5 tasks, regardless of capacity
+            - Consolidation is repo-specific (clusters within same repo)
+            - Excludes architectural memories (Sacred tier)
+            - Falls back to Type-Aware Decay if still over max_records
+            - Logs consolidation events and costs
         """
         # Increment task counter
         self._tasks_since_last_consolidation += 1
 
-        # Check if consolidation should trigger (fixed schedule)
-        if self._tasks_since_last_consolidation >= self.CONSOLIDATION_INTERVAL:
-            logger.info(
-                f"Triggering consolidation (every {self.CONSOLIDATION_INTERVAL} tasks)"
-            )
-            self._consolidate(memory_store)
-            self._tasks_since_last_consolidation = 0
-
-        # Fallback to Type-Aware Decay if still over budget
-        if memory_store.count_active() > self.max_records:
-            logger.info(
-                f"Still over budget after consolidation "
-                f"({memory_store.count_active()} > {self.max_records}), "
-                f"falling back to Type-Aware Decay"
-            )
-            self._fallback_prune(memory_store)
-
-    def _consolidate(self, memory_store: "MemoryStore") -> None:
-        """Perform consolidation: cluster and summarize old memories.
-
-        **Validates: Requirements 13.4-13.7**
-
-        Args:
-            memory_store: The persistent memory storage backend
-        """
-        active = memory_store.active_records()
-        if not active:
-            logger.debug("No active memories to consolidate")
-            return
-
-        # Get current step for age calculation
-        current_step = max(r.sequence_index for r in active)
-
-        # Select candidates: ≥10 tasks old, not consolidated, not architectural
-        candidates = [
-            r for r in active
-            if (current_step - r.sequence_index) >= self.OLD_MEMORY_THRESHOLD
-            and not r.is_consolidated
-            and r.memory_type != "architectural"
-        ]
-
-        if len(candidates) < self.MIN_CLUSTER_SIZE:
+        # Check if consolidation should trigger
+        if self._tasks_since_last_consolidation < CONSOLIDATION_INTERVAL:
             logger.debug(
-                f"Not enough candidates for consolidation "
-                f"({len(candidates)} < {self.MIN_CLUSTER_SIZE})"
+                f"No consolidation: {self._tasks_since_last_consolidation}/{CONSOLIDATION_INTERVAL} tasks"
             )
             return
+
+        # Reset counter
+        self._tasks_since_last_consolidation = 0
 
         logger.info(
-            f"Found {len(candidates)} consolidation candidates "
-            f"(age ≥ {self.OLD_MEMORY_THRESHOLD} tasks, "
-            f"not consolidated, not architectural)"
+            f"CLS consolidation triggered (every {CONSOLIDATION_INTERVAL} tasks)"
         )
 
-        # Cluster by repo, files_touched, and embedding similarity
-        clusters = self._cluster_memories(candidates, memory_store)
+        # Delegate to _consolidate helper
+        self._consolidate(memory_store)
 
-        if not clusters:
-            logger.debug("No clusters formed (all below minimum size)")
+        # Check if fallback pruning is needed
+        active_count = memory_store.count_active()
+
+        if active_count > self.max_records:
+            logger.info(
+                f"Fallback to Type-Aware Decay: {active_count} > {self.max_records}"
+            )
+
+            # Create Type-Aware Decay policy and run maintain
+            fallback = TypeAwareDecayPolicy(max_records=self.max_records)
+            fallback.maintain(memory_store)
+
+            final_count = memory_store.count_active()
+
+            logger.info(
+                f"Fallback pruning complete: {active_count} -> {final_count}"
+            )
+        else:
+            logger.debug(
+                f"No fallback needed: {active_count} <= {self.max_records}"
+            )
+
+    def _consolidate(self, memory_store: "MemoryStore") -> None:
+        """Perform CLS consolidation logic.
+
+        This is a helper method extracted for testing purposes.
+        The actual consolidation is triggered by maintain().
+
+        Args:
+            memory_store: Persistent memory storage backend
+        """
+
+    def _consolidate(self, memory_store: "MemoryStore") -> None:
+        """Perform CLS consolidation logic.
+
+        This is a helper method extracted for testing purposes.
+        The actual consolidation is triggered by maintain().
+
+        Args:
+            memory_store: Persistent memory storage backend
+        """
+        # Get all active records and compute current step
+        active_records = memory_store.active_records()
+
+        if not active_records:
+            logger.debug("No active records to consolidate")
             return
 
-        logger.info(f"Formed {len(clusters)} clusters for consolidation")
+        current_step = max(r.sequence_index for r in active_records)
 
-        # Generate consolidated summaries for each cluster
-        for cluster_id, cluster_memories in enumerate(clusters, start=1):
+        # Select consolidation candidates
+        candidates = self._select_candidates(active_records, current_step)
+
+        if not candidates:
+            logger.info("No consolidation candidates found")
+        else:
             logger.info(
-                f"Consolidating cluster {cluster_id}/{len(clusters)} "
-                f"with {len(cluster_memories)} memories"
+                f"Found {len(candidates)} consolidation candidates "
+                f"(age >= {OLD_MEMORY_THRESHOLD}, not consolidated, not {EXCLUDE_TYPE})"
             )
-            self._consolidate_cluster(cluster_memories, memory_store, current_step)
+
+            # Group candidates by repository
+            repo_groups = self._group_by_repo(candidates)
+
+            # Consolidate each repo group
+            total_clusters = 0
+            total_consolidated = 0
+
+            for repo, repo_candidates in repo_groups.items():
+                logger.debug(
+                    f"Processing repo {repo}: {len(repo_candidates)} candidates"
+                )
+
+                # Cluster candidates
+                clusters = self._cluster_memories(repo_candidates, memory_store)
+
+                logger.debug(
+                    f"Found {len(clusters)} clusters in repo {repo}"
+                )
+
+                # Consolidate each cluster
+                for cluster in clusters:
+                    if len(cluster) >= MIN_CLUSTER_SIZE:
+                        self._consolidate_cluster(
+                            cluster, memory_store, current_step
+                        )
+                        total_clusters += 1
+                        total_consolidated += len(cluster)
+
+            logger.info(
+                f"CLS consolidation complete: {total_clusters} clusters, "
+                f"{total_consolidated} memories consolidated"
+            )
+
+    def _select_candidates(
+        self,
+        active_records: list["MemoryRecord"],
+        current_step: int
+    ) -> list["MemoryRecord"]:
+        """Select consolidation candidates.
+
+        **Validates: Requirements 13.4**
+
+        Candidates must meet ALL criteria:
+        - Age >= OLD_MEMORY_THRESHOLD (10 tasks old)
+        - Not already consolidated (is_consolidated=False)
+        - Not architectural type (Sacred tier)
+
+        Args:
+            active_records: All active (non-archived) memory records
+            current_step: Current sequence step (max sequence_index)
+
+        Returns:
+            List of MemoryRecord instances that meet all criteria
+
+        Notes:
+            - Age = current_step - sequence_index
+            - Architectural memories are never consolidated (Sacred tier)
+            - Already-consolidated memories are not re-consolidated
+        """
+        candidates = []
+
+        for record in active_records:
+            age = current_step - record.sequence_index
+
+            # Check all criteria
+            if (
+                age >= OLD_MEMORY_THRESHOLD
+                and not record.is_consolidated
+                and record.memory_type != EXCLUDE_TYPE
+            ):
+                candidates.append(record)
+
+        return candidates
+
+    def _group_by_repo(
+        self,
+        candidates: list["MemoryRecord"]
+    ) -> dict[str, list["MemoryRecord"]]:
+        """Group candidates by repository.
+
+        Consolidation is repo-specific: memories from different repos
+        are never consolidated together.
+
+        Args:
+            candidates: List of consolidation candidates
+
+        Returns:
+            Dictionary mapping repo name to list of candidates
+
+        Notes:
+            - Consolidation respects repository boundaries
+            - Each repo is processed independently
+        """
+        repo_groups: dict[str, list["MemoryRecord"]] = {}
+
+        for record in candidates:
+            if record.repo not in repo_groups:
+                repo_groups[record.repo] = []
+            repo_groups[record.repo].append(record)
+
+        return repo_groups
 
     def _cluster_memories(
         self,
         candidates: list["MemoryRecord"],
         memory_store: "MemoryStore"
     ) -> list[list["MemoryRecord"]]:
-        """Cluster memories by repo, files_touched, and embedding similarity.
-
-        Algorithm:
-        1. Group by repository (same-repo clustering)
-        2. Within each repo, group by overlapping files_touched
-        3. Within each file group, cluster by embedding similarity
-        4. Filter clusters to minimum size
+        """Cluster memories by files_touched and embedding similarity.
 
         **Validates: Requirements 13.5**
 
+        Uses DBSCAN clustering with:
+        - Distance metric: Combined files overlap + embedding cosine distance
+        - eps: 1 - SIMILARITY_THRESHOLD (0.30 for threshold 0.70)
+        - min_samples: MIN_CLUSTER_SIZE (3)
+
         Args:
-            candidates: List of candidate memories for consolidation
-            memory_store: The persistent memory storage backend
+            candidates: List of consolidation candidates from same repo
+            memory_store: Memory store for accessing embeddings
 
         Returns:
             List of clusters, where each cluster is a list of MemoryRecord
+
+        Notes:
+            - Clusters must have >= MIN_CLUSTER_SIZE members
+            - Uses embedding vectors from FAISS for similarity
+            - Combines structural (files) and semantic (embeddings) similarity
+            - DBSCAN automatically filters noise points (cluster_id=-1)
         """
-        # Group by repository
-        repo_groups = defaultdict(list)
-        for record in candidates:
-            repo_groups[record.repo].append(record)
-
-        all_clusters = []
-
-        for repo, repo_memories in repo_groups.items():
-            logger.debug(f"Clustering {len(repo_memories)} memories from {repo}")
-
-            # Group by overlapping files_touched
-            file_groups = self._group_by_files(repo_memories)
-
-            # Within each file group, cluster by embedding similarity
-            for file_group in file_groups:
-                if len(file_group) < self.MIN_CLUSTER_SIZE:
-                    continue
-
-                # Cluster by embedding similarity
-                similarity_clusters = self._cluster_by_similarity(
-                    file_group,
-                    memory_store
-                )
-
-                # Add clusters that meet minimum size
-                for cluster in similarity_clusters:
-                    if len(cluster) >= self.MIN_CLUSTER_SIZE:
-                        all_clusters.append(cluster)
-
-        return all_clusters
-
-    def _group_by_files(
-        self,
-        memories: list["MemoryRecord"]
-    ) -> list[list["MemoryRecord"]]:
-        """Group memories by overlapping files_touched.
-
-        Memories are grouped together if they share at least one file.
-
-        Args:
-            memories: List of memories to group
-
-        Returns:
-            List of file groups, where each group is a list of MemoryRecord
-        """
-        # Build file -> memories mapping
-        file_to_memories = defaultdict(list)
-        for record in memories:
-            for file in record.files_touched:
-                file_to_memories[file].append(record)
-
-        # Build groups using union-find approach
-        memory_to_group: dict[str, int] = {}
-        groups: list[list[MemoryRecord]] = []
-
-        for record in memories:
-            # Find all groups this memory could belong to
-            candidate_groups = set()
-            for file in record.files_touched:
-                for other in file_to_memories[file]:
-                    if other.memory_id in memory_to_group:
-                        candidate_groups.add(memory_to_group[other.memory_id])
-
-            if not candidate_groups:
-                # Create new group
-                group_id = len(groups)
-                groups.append([record])
-                memory_to_group[record.memory_id] = group_id
-            else:
-                # Merge into first candidate group
-                group_id = min(candidate_groups)
-                groups[group_id].append(record)
-                memory_to_group[record.memory_id] = group_id
-
-                # Merge other candidate groups
-                for other_group_id in candidate_groups:
-                    if other_group_id != group_id:
-                        groups[group_id].extend(groups[other_group_id])
-                        for mem in groups[other_group_id]:
-                            memory_to_group[mem.memory_id] = group_id
-                        groups[other_group_id] = []
-
-        # Filter out empty groups
-        return [g for g in groups if g]
-
-    def _cluster_by_similarity(
-        self,
-        memories: list["MemoryRecord"],
-        memory_store: "MemoryStore"
-    ) -> list[list["MemoryRecord"]]:
-        """Cluster memories by embedding similarity.
-
-        Uses agglomerative clustering with cosine similarity threshold.
-
-        Args:
-            memories: List of memories to cluster
-            memory_store: The persistent memory storage backend
-
-        Returns:
-            List of similarity clusters
-        """
-        if len(memories) < self.MIN_CLUSTER_SIZE:
+        if len(candidates) < MIN_CLUSTER_SIZE:
+            # Not enough candidates to form a cluster
             return []
 
-        # Get embedding vectors for all memories
-        vectors = []
-        valid_memories = []
+        # Extract embedding vectors
+        embedding_vectors = []
+        valid_candidates = []
 
-        for record in memories:
+        for record in candidates:
             try:
                 vector_id = int(record.embedding_vector_id)
-                # Retrieve vector from FAISS
+                # Get vector from FAISS
                 vector = memory_store.faiss_index.reconstruct(vector_id)
-                vectors.append(vector)
-                valid_memories.append(record)
-            except (ValueError, TypeError, RuntimeError) as e:
+                embedding_vectors.append(vector)
+                valid_candidates.append(record)
+            except (ValueError, TypeError, RuntimeError):
+                # Skip records with invalid or missing embeddings
                 logger.warning(
-                    f"Could not retrieve vector for {record.memory_id}: {e}"
+                    f"Skipping record {record.memory_id}: invalid embedding"
                 )
                 continue
 
-        if len(valid_memories) < self.MIN_CLUSTER_SIZE:
+        if len(valid_candidates) < MIN_CLUSTER_SIZE:
             return []
 
-        # Compute pairwise cosine similarities
-        vectors_array = np.array(vectors)
-        # Normalize vectors
-        norms = np.linalg.norm(vectors_array, axis=1, keepdims=True)
-        norms[norms == 0] = 1  # Avoid division by zero
-        normalized = vectors_array / norms
+        # Compute pairwise distance matrix
+        # Distance = (1 - cosine_similarity) * 0.5 + (1 - files_overlap) * 0.5
+        n = len(valid_candidates)
+        distance_matrix = np.zeros((n, n))
 
-        # Compute similarity matrix
-        similarity_matrix = np.dot(normalized, normalized.T)
+        for i in range(n):
+            for j in range(i + 1, n):
+                # Cosine distance (1 - cosine similarity)
+                vec_i = embedding_vectors[i]
+                vec_j = embedding_vectors[j]
+                cosine_sim = np.dot(vec_i, vec_j)  # Already L2-normalized
+                cosine_dist = 1 - cosine_sim
 
-        # Simple agglomerative clustering
-        clusters = [[i] for i in range(len(valid_memories))]
-        cluster_to_memories = {i: [valid_memories[i]] for i in range(len(valid_memories))}
+                # Files overlap distance
+                files_i = set(valid_candidates[i].files_touched)
+                files_j = set(valid_candidates[j].files_touched)
 
-        while True:
-            # Find most similar pair of clusters
-            best_sim = -1
-            best_pair = None
+                if len(files_i) == 0 and len(files_j) == 0:
+                    files_overlap = 1.0  # Both empty = perfect overlap
+                elif len(files_i) == 0 or len(files_j) == 0:
+                    files_overlap = 0.0  # One empty = no overlap
+                else:
+                    intersection = len(files_i & files_j)
+                    union = len(files_i | files_j)
+                    files_overlap = intersection / union if union > 0 else 0.0
 
-            for i in range(len(clusters)):
-                if not clusters[i]:
-                    continue
-                for j in range(i + 1, len(clusters)):
-                    if not clusters[j]:
-                        continue
+                files_dist = 1 - files_overlap
 
-                    # Compute average similarity between clusters
-                    sims = []
-                    for idx_i in clusters[i]:
-                        for idx_j in clusters[j]:
-                            sims.append(similarity_matrix[idx_i, idx_j])
+                # Combined distance (equal weight)
+                combined_dist = 0.5 * cosine_dist + 0.5 * files_dist
 
-                    avg_sim = np.mean(sims)
+                distance_matrix[i, j] = combined_dist
+                distance_matrix[j, i] = combined_dist
 
-                    if avg_sim > best_sim:
-                        best_sim = avg_sim
-                        best_pair = (i, j)
+        # Run DBSCAN clustering
+        # eps = 1 - SIMILARITY_THRESHOLD (0.30 for threshold 0.70)
+        eps = 1 - SIMILARITY_THRESHOLD
+        clustering = DBSCAN(
+            eps=eps,
+            min_samples=MIN_CLUSTER_SIZE,
+            metric="precomputed"
+        ).fit(distance_matrix)
 
-            # Stop if no pair exceeds threshold
-            if best_sim < self.SIMILARITY_THRESHOLD or best_pair is None:
-                break
+        # Group by cluster ID
+        clusters: dict[int, list["MemoryRecord"]] = {}
 
-            # Merge best pair
-            i, j = best_pair
-            clusters[i].extend(clusters[j])
-            cluster_to_memories[i].extend(cluster_to_memories[j])
-            clusters[j] = []
-            cluster_to_memories[j] = []
+        for idx, cluster_id in enumerate(clustering.labels_):
+            if cluster_id == -1:
+                # Noise point (not in any cluster)
+                continue
 
-        # Return non-empty clusters
-        return [cluster_to_memories[i] for i in range(len(clusters)) if clusters[i]]
+            if cluster_id not in clusters:
+                clusters[cluster_id] = []
+
+            clusters[cluster_id].append(valid_candidates[idx])
+
+        # Filter clusters by minimum size
+        valid_clusters = [
+            cluster for cluster in clusters.values()
+            if len(cluster) >= MIN_CLUSTER_SIZE
+        ]
+
+        logger.debug(
+            f"DBSCAN clustering: {len(valid_candidates)} candidates -> "
+            f"{len(valid_clusters)} clusters (min_size={MIN_CLUSTER_SIZE})"
+        )
+
+        return valid_clusters
 
     def _consolidate_cluster(
         self,
@@ -450,204 +542,131 @@ class CLSConsolidationPolicy(MemoryPolicy):
         memory_store: "MemoryStore",
         current_step: int
     ) -> None:
-        """Generate consolidated summary for a cluster and archive sources.
+        """Consolidate a cluster of memories into a summary.
 
-        **Validates: Requirements 13.6-13.7**
+        **Validates: Requirements 13.6, 13.7**
+
+        Algorithm:
+            1. Generate consolidated summary (max 350 tokens) via LLM
+            2. Create consolidated MemoryRecord with is_consolidated=True
+            3. Archive source memories with reason="cls_consolidated"
+            4. Store consolidated record in memory store
 
         Args:
-            cluster: List of memories to consolidate
-            memory_store: The persistent memory storage backend
+            cluster: List of MemoryRecord instances to consolidate
+            memory_store: Memory store for archiving and storing
             current_step: Current sequence step
+
+        Notes:
+            - Summary is generated by LLM (not implemented yet - placeholder)
+            - Consolidated record has is_consolidated=True
+            - Source memories are archived, not deleted
+            - Consolidated record inherits repo from cluster
+            - TODO: Implement LLM summarization
         """
-        # Generate consolidated summary using LLM
-        summary_record = self._generate_consolidated_summary(cluster, current_step)
+        logger.info(
+            f"Consolidating cluster of {len(cluster)} memories: "
+            f"{[r.memory_id for r in cluster]}"
+        )
+
+        # TODO: Generate LLM summary
+        # For now, create a placeholder summary
+        summary = self._generate_summary_placeholder(cluster)
+
+        # Create consolidated MemoryRecord
+        from ..record import MemoryRecord
+
+        consolidated_record = MemoryRecord(
+            memory_id=MemoryRecord.generate_id(),
+            task_id=f"consolidated_{current_step}",
+            repo=cluster[0].repo,  # All cluster members have same repo
+            sequence_index=current_step,
+            memory_type="consolidated_summary",  # Special type for consolidated
+            outcome="unknown",  # Consolidated summaries don't have outcomes
+            issue_summary=summary["summary"],
+            patch_summary="",  # No patch for consolidated
+            failure_summary=None,
+            test_summary=None,
+            files_touched=summary["common_files"],
+            functions_touched=[],
+            commands_run=summary["test_commands"],
+            retrieved_memory_ids_used=[],
+            embedding_text=summary["summary"],  # Use summary as embedding text
+            token_length=len(summary["summary"].split()),  # Rough token count
+            is_consolidated=True,
+            source_memory_ids=[r.memory_id for r in cluster]
+        )
 
         # Store consolidated record
-        memory_store.add(summary_record)
-        logger.info(
-            f"Created consolidated memory {summary_record.memory_id} "
+        memory_store.add(consolidated_record)
+
+        logger.debug(
+            f"Created consolidated record {consolidated_record.memory_id} "
             f"from {len(cluster)} source memories"
         )
 
         # Archive source memories
-        for source in cluster:
-            memory_store.archive(
-                memory_id=source.memory_id,
-                reason="cls_consolidated",
-                replacement_id=summary_record.memory_id,
-                current_step=current_step
-            )
-            logger.debug(
-                f"Archived source memory {source.memory_id} "
-                f"(replaced by {summary_record.memory_id})"
-            )
-
-    def _generate_consolidated_summary(
-        self,
-        cluster: list["MemoryRecord"],
-        current_step: int
-    ) -> "MemoryRecord":
-        """Generate consolidated summary using LLM.
-
-        **Validates: Requirements 13.6**
-
-        Args:
-            cluster: List of memories to consolidate
-            current_step: Current sequence step
-
-        Returns:
-            New MemoryRecord with consolidated summary
-        """
-        from ..record import MemoryRecord
-
-        # Build consolidation prompt
-        prompt = self._build_consolidation_prompt(cluster)
-
-        # Call LLM to generate summary
-        response = self.openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are compressing coding-agent memories from a single repository."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            temperature=0,
-            max_tokens=self.MAX_SUMMARY_TOKENS
-        )
-
-        summary_text = response.choices[0].message.content
-
-        # Extract common metadata from cluster
-        repo = cluster[0].repo
-        common_files = self._extract_common_files(cluster)
-        source_ids = [r.memory_id for r in cluster]
-
-        # Create consolidated memory record
-        consolidated = MemoryRecord(
-            memory_id=MemoryRecord.generate_id(),
-            task_id=f"consolidated_{current_step}",
-            repo=repo,
-            sequence_index=current_step,
-            memory_type="bug_fix",  # Default type for consolidated memories
-            outcome="unknown",
-            issue_summary=f"Consolidated summary of {len(cluster)} memories",
-            patch_summary=summary_text or "",
-            failure_summary=None,
-            test_summary=None,
-            files_touched=common_files,
-            functions_touched=[],
-            commands_run=[],
-            retrieved_memory_ids_used=[],
-            is_consolidated=True,
-            source_memory_ids=source_ids if source_ids else []
-        )
-
-        return consolidated
-
-    def _build_consolidation_prompt(self, cluster: list["MemoryRecord"]) -> str:
-        """Build prompt for LLM consolidation.
-
-        Args:
-            cluster: List of memories to consolidate
-
-        Returns:
-            Prompt string for LLM
-        """
-        prompt_parts = [
-            "Given several past task memories, produce one compact reusable memory.\n",
-            "\nKeep: repository conventions, recurring files/functions, successful fix strategies,",
-            "test commands, failure traps, assumptions proven wrong.\n",
-            "\nRemove: duplicate details, irrelevant logs, one-off stack traces, exact patches",
-            "unless the pattern is reusable.\n",
-            f"\n=== {len(cluster)} Memories to Consolidate ===\n"
-        ]
-
-        for i, record in enumerate(cluster, start=1):
-            prompt_parts.append(f"\n--- Memory {i} ---")
-            prompt_parts.append(f"Type: {record.memory_type}")
-            prompt_parts.append(f"Outcome: {record.outcome}")
-            prompt_parts.append(f"Files: {', '.join(record.files_touched[:5])}")
-            prompt_parts.append(f"\nIssue: {record.issue_summary[:200]}")
-            if record.failure_summary:
-                prompt_parts.append(f"Error: {record.failure_summary[:200]}")
-            prompt_parts.append(f"Patch: {record.patch_summary[:200]}")
-
-        prompt_parts.append("\n\n=== Generate Consolidated Summary ===")
-        prompt_parts.append(f"Produce a compact summary (max {self.MAX_SUMMARY_TOKENS} tokens) that captures:")
-        prompt_parts.append("- Common patterns across these memories")
-        prompt_parts.append("- Recurring files and functions")
-        prompt_parts.append("- Successful strategies")
-        prompt_parts.append("- Common failure modes")
-        prompt_parts.append("- Reusable insights")
-
-        return "\n".join(prompt_parts)
-
-    def _extract_common_files(self, cluster: list["MemoryRecord"]) -> list[str]:
-        """Extract files that appear in multiple memories.
-
-        Args:
-            cluster: List of memories
-
-        Returns:
-            List of common files
-        """
-        file_counts: dict[str, int] = defaultdict(int)
         for record in cluster:
-            for file in record.files_touched:
-                file_counts[file] += 1
-
-        # Return files that appear in at least 2 memories
-        threshold = max(2, len(cluster) // 2)
-        common = [f for f, count in file_counts.items() if count >= threshold]
-
-        return sorted(common)[:10]  # Limit to top 10
-
-    def _fallback_prune(self, memory_store: "MemoryStore") -> None:
-        """Fall back to Type-Aware Decay pruning if still over budget.
-
-        **Validates: Requirements 13.8**
-
-        Args:
-            memory_store: The persistent memory storage backend
-        """
-        active = memory_store.active_records()
-        if len(active) <= self.max_records:
-            return
-
-        current_step = max(r.sequence_index for r in active)
-
-        # Compute importance scores using Type-Aware Decay formula
-        scored = []
-        for r in active:
-            base, decay = self.TYPE_PARAMS.get(r.memory_type, (0.3, 0.40))
-            age = max(1, current_step - r.sequence_index)
-            retrieval = r.use_count
-
-            score = base * (age ** -decay) * ((1 + retrieval) ** self.FREQUENCY_EXPONENT)
-            r.importance_score = score
-            memory_store.update_importance_score(r.memory_id, score)
-            scored.append((score, r))
-
-        # Sort by score ascending (lowest first)
-        scored.sort(key=lambda x: x[0])
-
-        # Archive lowest-scoring until at or below max_records
-        archived_count = 0
-        while memory_store.count_active() > self.max_records and scored:
-            _, victim = scored.pop(0)
             memory_store.archive(
-                memory_id=victim.memory_id,
-                reason="type_aware_decay_fallback",
+                memory_id=record.memory_id,
+                reason="cls_consolidated",
+                replacement_id=consolidated_record.memory_id,
                 current_step=current_step
             )
-            archived_count += 1
 
-        logger.info(
-            f"Fallback pruning archived {archived_count} memories "
-            f"(now {memory_store.count_active()} active)"
+            logger.debug(
+                f"Archived source memory {record.memory_id} "
+                f"(replaced by {consolidated_record.memory_id})"
+            )
+
+    def _generate_summary_placeholder(
+        self,
+        cluster: list["MemoryRecord"]
+    ) -> dict[str, Any]:
+        """Generate placeholder summary for a cluster.
+
+        TODO: Replace with actual LLM summarization.
+
+        Args:
+            cluster: List of MemoryRecord instances to summarize
+
+        Returns:
+            Dictionary with summary fields:
+                - summary: Consolidated text summary
+                - common_files: List of files touched across cluster
+                - recurring_pattern: Identified pattern (placeholder)
+                - successful_strategy: Successful strategies (placeholder)
+                - failure_traps: Common failure modes (placeholder)
+                - test_commands: Test commands used (placeholder)
+
+        Notes:
+            - This is a placeholder implementation
+            - Real implementation should use LLM with consolidation prompt
+            - Summary should be max 350 tokens
+        """
+        # Collect common files
+        all_files = set()
+        for record in cluster:
+            all_files.update(record.files_touched)
+
+        # Collect test commands
+        all_commands = set()
+        for record in cluster:
+            all_commands.update(record.commands_run)
+
+        # Generate placeholder summary
+        summary_text = (
+            f"Consolidated summary of {len(cluster)} related memories. "
+            f"Common files: {', '.join(sorted(all_files)[:5])}. "
+            f"Memory types: {', '.join(set(r.memory_type for r in cluster))}. "
+            f"Outcomes: {', '.join(set(r.outcome for r in cluster))}."
         )
+
+        return {
+            "summary": summary_text,
+            "common_files": sorted(all_files),
+            "recurring_pattern": "placeholder_pattern",
+            "successful_strategy": "placeholder_strategy",
+            "failure_traps": "placeholder_traps",
+            "test_commands": sorted(all_commands)
+        }

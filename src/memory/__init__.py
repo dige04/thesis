@@ -20,6 +20,10 @@ from .classifier import (
     ClassifierError,
     classify_memory_type,
 )
+from .reflection import (
+    reflect_and_write_memory,
+    ReflectionError,
+)
 
 __all__ = [
     "MemoryRecord",
@@ -31,4 +35,6 @@ __all__ = [
     "MemoryClassifier",
     "ClassifierError",
     "classify_memory_type",
+    "reflect_and_write_memory",
+    "ReflectionError",
 ]

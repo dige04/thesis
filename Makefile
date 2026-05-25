@@ -61,12 +61,7 @@ verify-env:
 
 smoke:
 	@echo "Running smoke test (3 tasks)..."
-	@echo "TODO: Implement during Spike Week"
-	@echo "  - Load 3 tasks from one sequence"
-	@echo "  - Execute with No Memory policy"
-	@echo "  - Verify eval_v3 Docker invocation"
-	@echo "  - Verify logging schemas"
-	@echo "  - Gate: >15%% pass rate = GO for full experiment"
+	@python -m src.benchmark.smoke_test
 
 pilot:
 	@echo "Running pilot experiment (12 runs)..."
@@ -151,11 +146,20 @@ typecheck:
 
 cost-report:
 	@echo "Generating cost report..."
-	@echo "TODO: Implement during Week 5"
-	@echo "  - Query wandb for all active runs"
-	@echo "  - Aggregate costs by policy, sequence, date"
-	@echo "  - Generate daily cost summary"
-	@echo "  - Alert if daily spend exceeds budget"
+	@python -c "from src.metrics.cost_tracker import generate_daily_cost_report, check_budget_alert; \
+		report = generate_daily_cost_report('runs'); \
+		print(f'\nDaily Cost Report:'); \
+		print(f'  Total runs: {report[\"total_runs\"]}'); \
+		print(f'  Total cost: \$${report[\"total_cost\"]:.2f}'); \
+		print(f'\n  Cost by policy:'); \
+		[print(f'    {policy}: \$${cost:.2f}') for policy, cost in sorted(report['cost_by_policy'].items())]; \
+		print(f'\n  Cost by date:'); \
+		[print(f'    {date}: \$${cost:.2f}') for date, cost in sorted(report['cost_by_date'].items())]; \
+		print(f'\n  Report written to: runs/daily_cost_report.json'); \
+		alert = check_budget_alert('runs', daily_budget=100.0, total_budget=1000.0); \
+		print(f'\nBudget Status:'); \
+		print(f'  Daily: \$${alert[\"daily_cost\"]:.2f} / \$${alert[\"daily_budget\"]:.2f} ({\"ALERT\" if alert[\"daily_alert\"] else \"OK\"})'); \
+		print(f'  Total: \$${alert[\"total_cost\"]:.2f} / \$${alert[\"total_budget\"]:.2f} ({\"ALERT\" if alert[\"total_alert\"] else \"OK\"})')"
 
 # ─────────────────────────────────────────────────────────────────
 # Cleanup

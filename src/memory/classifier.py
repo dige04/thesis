@@ -22,6 +22,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from .record import VALID_MEMORY_TYPES
+from src.errors import ClassifierError, handle_classifier_failure
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +50,6 @@ class MemoryTypeClassification(BaseModel):
     """
     memory_type: MemoryTypeEnum
     reasoning: str  # Brief explanation for debugging/auditing
-
-
-class ClassifierError(Exception):
-    """
-    Exception raised when the classifier fails.
-
-    This signals that the reflection step should fail entirely
-    rather than proceeding with an untyped memory record.
-    """
-    pass
 
 
 class MemoryClassifier:

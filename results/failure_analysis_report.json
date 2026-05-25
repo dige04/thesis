@@ -1,0 +1,19 @@
+{
+  "failure_rates": {
+    "type_aware_decay": {
+      "test_failure": 1.0,
+      "total_failures": 1.0
+    }
+  },
+  "boundary_tasks": [],
+  "summary": {
+    "total_failures": 1,
+    "failures_by_category": {
+      "test_failure": 1
+    },
+    "n_boundary_tasks": 0,
+    "policies_analyzed": [
+      "type_aware_decay"
+    ]
+  }
+}

@@ -4,6 +4,15 @@ experiment:
   sequence_mode: "chronological_by_repo"
   same_repo_retrieval_only: true
   master_seed: 42
+  seeds: [1, 2, 3]  # 3 seeds for ALL 6 conditions (Frozen Invariant #2)
+  
+  # Pilot mode configuration (Requirement 30)
+  pilot_mode:
+    enabled: false                    # Set to true for pilot runs
+    num_sequences: 2                  # 2 sequences for pilot (default)
+    num_seeds: 1                      # 1 seed for pilot (uses first seed)
+    log_retrieval_quality: true       # Log precision@k, recall@k metrics
+    calibration_locked: false         # Lock after Week 4 calibration
 
 agent:
   type: "langgraph_coding_agent"

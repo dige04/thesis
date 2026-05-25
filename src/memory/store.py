@@ -29,6 +29,7 @@ from .embedding_utils import (
     verify_embedding_size,
 )
 from .record import MemoryRecord
+from src.errors import EmbeddingSizeError, MemoryBudgetError, handle_memory_budget_violation
 
 logger = logging.getLogger(__name__)
 

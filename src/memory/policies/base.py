@@ -43,7 +43,7 @@ class MemoryPolicy(ABC):
         memory_store: "MemoryStore",
         top_k: int,
         token_budget: int
-    ) -> list["MemoryRecord"]:
+    ) -> list[tuple[float, "MemoryRecord"]]:
         """Retrieve relevant memories for the given task.
 
         CRITICAL: All policies except No Memory MUST use the shared_retrieve()
@@ -66,9 +66,9 @@ class MemoryPolicy(ABC):
                          if budget is exceeded.
 
         Returns:
-            A list of MemoryRecord objects sorted in ascending order of relevance
-            (lowest relevance first, highest relevance last). The list may be
-            shorter than top_k if:
+            A list of (similarity_score, MemoryRecord) tuples sorted in ascending
+            order of relevance (lowest relevance first, highest relevance last).
+            The list may be shorter than top_k if:
             - Fewer than top_k memories exist in the store
             - Token budget constraints require dropping memories
             - The policy is No Memory (returns empty list)
