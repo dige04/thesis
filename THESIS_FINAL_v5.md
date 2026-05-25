@@ -62,13 +62,13 @@ These are NOT debatable during implementation. Any deviation must be justified i
 |---|---|---|
 | 1 | Experimental platform | SWE-Bench-CL `github.com/thomasjoshi/agents-never-forget` |
 | 2 | Base model | GPT-5.4 |
-| 3 | Multi-model validation | Claude Haiku or GPT-4o-mini, top-3 conditions × 4 sequences × 1 seed = 12 extra runs |
+| 3 | Multi-model exploratory probe (D-0.4) | Claude Haiku or GPT-4o-mini, top-3 conditions × 4 sequences × 1 seed = 12 extra runs; framed as exploratory, not a generalization/validation claim |
 | 4 | Eval harness | Standard SWE-Bench `eval_v3` on x86_64 VPS + custom CL-metric wrapper (~100 LOC) |
 | 5 | Compute environment | x86_64 VPS, 32GB RAM, 250GB disk, 8 cores, Docker-native |
 | 6 | Sequences | **All 8 official SWE-Bench-CL sequences**, no self-generated, no subsetting unless documented as compute trade-off |
 | 7 | Core conditions | 6: No Memory, Full Memory, Random Prune, Recency Prune, Type-Aware Decay, CLS Consolidation |
 | 8 | Seeds | **3 seeds for ALL 6 conditions** → 6 × 8 × 3 = **144 runs** |
-| 9 | Primary metric | CL-F1 (harmonic mean of Plasticity and Stability), computed from full `a_{i,j}` matrix |
+| 9 | Primary metric | CL-F1 (harmonic mean of Plasticity and Stability), computed from anchor-probe `a_{i,j}` entries per §14.2; full matrix is supplementary (§14.3) |
 | 10 | Primary statistical unit | Sequence-level means (N=8 paired observations) |
 | 11 | Primary test | Wilcoxon signed-rank on N=8 sequence means + Holm correction on 5 pre-registered contrasts |
 | 12 | Effect size | Rank-biserial r_rb + median paired difference ± bootstrap BCa 95% CI (5000 iterations) |
@@ -86,6 +86,10 @@ These are NOT debatable during implementation. Any deviation must be justified i
 | 24 | CLS consolidation schedule | Fixed: every k=5 tasks (not trigger-on-overflow) |
 | 25 | Bootstrap | 5000 iterations, BCa method |
 | 26 | Same-repo retrieval | Yes — main experiment. Cross-repo as optional ablation only |
+| 27 | SESOI for H1a TOST | ±0.03 CL-F1 (sequence-level median paired Δ); pre-registered before Spike Week |
+| 28 | Jaccard overlap probe (§11.5, §20.11) | Median ≤ 0.5 = well-identified; > 0.9 = §19.7 fires |
+| 29 | Primary CL-Stability estimator | Anchor probe (§14.2): k=5 anchors per sequence, 4 probe points; full `a_{i,j}` matrix demoted to supplementary (§14.3) |
+| 30 | H1 rejection rule (D-0.1) | α-strict: H1 rejected for policy P iff H1a outcome is C (P degraded). H1b is reported as an independent secondary claim, not part of the rejection rule. |
 
 ---
 
@@ -93,7 +97,7 @@ These are NOT debatable during implementation. Any deviation must be justified i
 
 ## 1.1 Central question
 
-**Do proactive forgetting and consolidation policies improve the sequential coding performance and operational efficiency of AI coding agents — including frontier models — compared with full-memory accumulation or no persistent memory?**
+**Under controlled retrieval, do proactive forgetting and consolidation policies achieve performance non-inferior to full-memory accumulation on sequential coding tasks while materially reducing operational cost — and which content-aware structure of forgetting matters most?**
 
 ## 1.2 Sub-questions
 
@@ -105,11 +109,38 @@ These are NOT debatable during implementation. Any deviation must be justified i
 
 ## 1.3 Falsifiable hypotheses
 
-- **H1.** Selective pruning policies achieve equal or better sequential performance compared to full-memory accumulation, while reducing operational cost. *(Win-win framing: if Full Memory doesn't degrade → forgetting validated as zero-cost optimization; if it degrades → forgetting validated as performance improvement.)*
+- **H1.** Selective pruning policies achieve **at least one** of: (H1a) non-inferior sequential performance vs. Full Memory, AND/OR (H1b) materially lower operational cost.
+  - **H1a (performance non-inferiority).** For each pruning policy P ∈ {Random, Recency, Type-Aware, CLS}, the paired difference (P − Full Memory) in CL-F1 across the N=8 SWE-Bench-CL sequences lies within the equivalence margin **SESOI = ±0.03 CL-F1**, evaluated by a **two one-sided tests (TOST) procedure** with 95% BCa bootstrap CI (5000 iterations) on the sequence-level median paired difference.
+    - *Outcome A (equivalence):* both one-sided tests reject; CI of median paired Δ ⊂ (−0.03, +0.03) → H1a confirmed for P.
+    - *Outcome B (P superior):* one-sided test for "P ≤ Full Memory" rejects AND median Δ > 0 → H1a strictly satisfied for P.
+    - *Outcome C (P degraded):* CI escapes the lower bound (median Δ < −0.03 with CI not crossing −0.03) → H1a rejected for P.
+    - *Outcome D (inconclusive):* CI overlaps an SESOI bound → H1a inconclusive at N=8.
+  - **H1b (cost reduction).** For each pruning policy P, the median paired Δ(total task API cost USD) vs. Full Memory satisfies median Δ ≤ **−20%** with 95% BCa CI upper bound below 0.
+  - **H1 rejection rule (α-strict, pre-registered per D-0.1).** H1 is rejected for policy P iff H1a outcome is C (P degraded) — regardless of H1b. Rationale: H1a is the load-bearing performance claim; a pruning policy that costs less but degrades CL-F1 beyond SESOI fails the contribution test, since cost reduction without performance non-inferiority does not establish that proactive forgetting "matches or beats" full memory. H1b stands alongside as an *independent secondary claim* and is reported separately under §19 (see §0.1 #30 for the lock; §0.1 #27 for SESOI lock).
+  - **SESOI rationale.** ±0.03 in CL-F1 corresponds to ≈1 task out of 30 changing outcome per sequence on average — the smallest practitioner-meaningful difference at SWE-Bench-CL's typical sequence length. The threshold is pre-registered before Spike Week and locked.
 - **H2.** Semantically informed pruning (Type-Aware Decay) outperforms random pruning, indicating that WHAT is forgotten matters beyond simply reducing volume.
 - **H3.** CLS Consolidation provides similar or marginally better raw performance than extractive pruning, but at higher cost — failing the Pareto efficiency test against simpler policies.
 - **H4 (Behavioral).** Full-memory accumulation induces measurable analysis paralysis — increased tool calls and syntax errors — which forgetting policies mitigate.
 - **H5 (Boundary).** Pruning can harm performance when it removes rare but critical repository-specific memories. (Identifies conditions under which forgetting is unsafe.)
+
+## 1.4 Positioning vs. prior work
+
+The six policies tested here overlap in name with prior work, but the *contribution claim is methodological*, not policy-set novelty. We use the standard SWE-Bench-CL benchmark (Joshi et al. 2025), hold retrieval scoring identical across all six conditions (locked invariant #19), include both No-Memory and Full-Memory boundary baselines, and pre-register the analysis (estimation-over-NHST per Cumming 2014; Wasserstein et al. 2019). The closest prior work in name — Alqithami (2025), six forgetting policies on a custom *FiFA* benchmark for privacy-aware generative agents — does not share the domain, benchmark, baselines, retrieval control, or statistical framework.
+
+| Axis | Xiong 2025 (#5) | Alqithami 2025 (#13) | Lindenbauer 2025 (#6) | Joshi 2025 SWE-Bench-CL (#8) | **This work** |
+|---|---|---|---|---|---|
+| Domain | LLM agents, general | Privacy-aware generative agents | Coding agents (in-task) | Coding agents (sequential) | Coding agents (sequential) |
+| Benchmark | mixed | FiFA (custom) | mixed | SWE-Bench-CL (standard) | **SWE-Bench-CL (standard)** |
+| # forgetting policies | 1 (add-all) vs. 1 (none) | 6 | 1 (observation masking) | 1 (FAISS top-k) | **6** |
+| Retrieval held constant across policies? | n/a (single policy) | not stated | n/a (different layer) | n/a (single policy) | **Yes — pure cosine, identical** |
+| No-Memory / Full-Memory boundary baselines | partial | absent | absent | absent | **both included** |
+| Primary metric | task success | composite (narrative + privacy + cost) | task success | CL-Plasticity / CL-Stability / CL-F1 | **CL-F1** |
+| Statistical unit | per-task | per-run | per-task | per-sequence | **per-sequence (N=8)** |
+| Pre-registered analysis / interpretation rules | no | no | no | no | **yes (§19)** |
+| Effect-size + bootstrap CI as primary evidence | no | no | no | no | **yes (§15.1, §15.2)** |
+| Scale | varies | 300 runs (custom benchmark) | varies | varies | **144 runs + 12-run exploratory cross-model probe** |
+
+**Delta contribution.** Combining (a) the SWE-Bench-CL benchmark with full a_{i,j} or anchor-probe CL-Stability estimation, (b) identical retrieval as confound control isolating *storage* policy from *retrieval* policy, (c) the No-Memory ↔ Full-Memory bracketing, and (d) pre-committed effect-size-gated interpretation framings, this thesis produces the first Pareto map of forgetting policies for coding agents on a standard CL benchmark, with the experimental contrast cleanly attributable to storage-side decisions. The price of this discipline is narrowness: we operate at fixed `top_k`, fixed retrieval scoring, same-repo retrieval, and a single base model in the primary experiment. We do not claim novelty of policy invention; we claim novelty of controlled measurement.
 
 ---
 
@@ -446,6 +477,8 @@ Each retrieved memory in `memory_block` is tagged with its `memory_id` for downs
 
 **Outcome is a SEPARATE field**, not a type. Do not collapse `successful_patch` / `failed_attempt` into the type axis — that would mix two orthogonal dimensions.
 
+Our taxonomy is *static and content-based*, unlike A-MEM (Xu et al. 2025, #29), whose memories form dynamic links at write time; we adopt the static form to keep the *storage* policy cleanly separable from the *retrieval* policy (locked invariant #19).
+
 ## 5.2 MemoryRecord dataclass
 
 ```python
@@ -704,6 +737,8 @@ class RecencyPrunePolicy(MemoryPolicy):
 
 ## P4. Type-Aware Decay (LOCKED FORMULA)
 
+P4's power-law shape is also used in MemoryBank (Zhong et al. 2024, #28) under an Ebbinghaus framing; we differ by parameterizing decay *per memory type* rather than globally per item, motivated by failure-tier semantics (#21).
+
 ```python
 # Failure-tier-based weights (Anderson & Schooler + Fastpaca)
 TYPE_PARAMS = {
@@ -757,6 +792,8 @@ class TypeAwareDecayPolicy(MemoryPolicy):
 1. Cognitive grounding — Anderson & Schooler (1991) showed `P(need) ∝ t^{-d}`. Power-law decay is the optimal forgetting curve, not an arbitrary linear sum.
 2. Calibration budget — Week-4 pilot (12 runs) can only calibrate 1–2 parameters. The locked formula has 1 free knob per type (decay `d`) + 1 global exponent. A linear-sum formula with 7 weights cannot be calibrated from this budget.
 3. No causal contamination — does NOT include `success_after_retrieval_count` / `failure_after_retrieval_count`. Those are downstream associated labels (locked decision #14), and using them in the scoring formula would smuggle causal claims into the policy.
+
+**Calibration stance (locked per D-0.3).** The per-type `decay_d` values above are *theoretical*, derived from the Anderson & Schooler power-law form combined with Fastpaca's failure-tier taxonomy (#21). The Week-4 pilot (12 runs) is treated as a *sanity check*, not a calibration step: `decay_d` is not re-tuned after the pilot. Rationale: one-knob-per-type fit on 2 sequences would overfit and require re-piloting, breaking the pre-registration. If the pilot shows Type-Aware underperforming Random Prune on the 2 pilot sequences, that is a real signal carried into the main run, not a calibration trigger.
 
 ## P5. CLS-style Consolidation
 
@@ -855,6 +892,8 @@ Consolidated records carry `is_consolidated=True` and `source_memory_ids=[...]` 
 # 9. Memory writing & reflection step
 
 ## 9.1 Reflection input
+
+The reflection step is methodologically inspired by Reflexion (Shinn et al. 2023, #30), adapted to emit *typed* memory records (§5.1) rather than free-text traces, so downstream storage policies can operate on a fixed schema.
 
 After the agent finishes a task:
 
@@ -1053,6 +1092,27 @@ At every task boundary (before + after pruning):
 }
 ```
 
+## 11.5 Cross-condition retrieval comparison → `runs/{run_id}/retrieval_overlap.jsonl`
+
+For each (task_id, condition-pair) where both conditions ran the same task with the same seed, compute and log:
+
+```json
+{
+  "task_id": "django__django-12345",
+  "seed": 2,
+  "condition_a": "full_memory",
+  "condition_b": "type_aware_decay",
+  "retrieved_ids_a": ["MEM-001","MEM-007","MEM-091","MEM-188","MEM-303"],
+  "retrieved_ids_b": ["MEM-001","MEM-007","MEM-091","MEM-188","MEM-303"],
+  "jaccard_overlap": 1.0,
+  "rank_correlation_spearman": 1.0
+}
+```
+
+`jaccard_overlap = |A ∩ B| / |A ∪ B|`. Computed offline from existing `retrieved_memory_ids` fields in `task_results.jsonl`; no extra agent runs required.
+
+**Pre-registered sanity check (§20.11):** if median Jaccard overlap across (task, condition-pair, seed) > 0.9 for the four pruning-vs-Full-Memory pairs, the storage-side contrast at the prompt is empirically small; §19.7 framing fires and the contribution claim restricts to "characterization of storage policies under fixed retrieval, in a regime where the retrieval bottleneck dominates."
+
 ---
 
 # 12. Experiment matrix
@@ -1071,13 +1131,13 @@ At every task boundary (before + after pruning):
 | Model | GPT-5.4 |
 | Temperature | 0 |
 
-## 12.2 Multi-model validation (12 extra runs, Week 7)
+## 12.2 Multi-model exploratory probe (12 extra runs, Week 7)
 
 ```
 Top-3 conditions (decided after Week 6) × 4 sequences × 1 seed = 12 runs
 ```
 
-Model: Claude Haiku or GPT-4o-mini. Tests whether forgetting helps weaker models MORE than frontier model.
+Model: Claude Haiku or GPT-4o-mini. **Framing (per D-0.4):** this is an exploratory probe of cross-model transfer, not a validation arm. With 1 seed and 4 of 8 sequences it is underpowered for inferential claims. Reported descriptively (point estimates, BCa CIs from sequence means) alongside an explicit non-generalization disclaimer. The main-experiment GPT-5.4 results stand on their own; the probe sets future-work direction.
 
 ## 12.3 Optional ablations (priority order, run only if compute allows)
 
@@ -1224,45 +1284,38 @@ statistical:
 | Per-repo resolved rate | Same, per sequence |
 | Sequence-window accuracy | Resolved rate over rolling windows of 5 or 10 tasks (for trajectory plots) |
 
-## 14.2 Continual-learning (PRIMARY — from `a_{i,j}` matrix)
+## 14.2 Continual-learning — Stability (PRIMARY: anchor-probe schedule)
 
-After completing a sequence, **re-evaluate all previous tasks against the final memory state** to produce the SWE-Bench-CL `a_{i,j}` performance matrix:
+Computing the full `a_{i,j}` matrix (Section 14.3) requires T(T−1)/2 re-evaluations per (sequence, condition, seed), which at 8 sequences × 6 conditions × 3 seeds and typical T ≈ 30–80 produces O(10⁴) extra agent runs. Under the §22.1 budget projection this is infeasible. We therefore make the **anchor-probe schedule** primary and the full matrix supplementary.
 
-```
-a_{i,j} = score of task i when evaluated after task j was completed
-```
+**Anchor-probe schedule.** For each sequence of length T, fix a deterministic anchor index set A with **k=5 anchors** at positions {⌈T/10⌉, ⌈3T/10⌉, ⌈5T/10⌉, ⌈7T/10⌉, ⌈9T/10⌉} (locked before Spike Week). At four probe points p ∈ {⌈T/4⌉, ⌈T/2⌉, ⌈3T/4⌉, T}, re-evaluate every anchor `a ∈ A with a ≤ p` against the memory snapshot taken after task `p`. Total re-evaluations per (sequence, condition, seed) is bounded above by 4·5 = 20, vs. ~T(T−1)/2 ≈ 435 for the full matrix at T=30.
 
-From the matrix:
+**`a_{i,j}` entries collected:** for i ∈ A, j ∈ {⌈T/4⌉, ⌈T/2⌉, ⌈3T/4⌉, T}. The diagonal `a_{i,i}` for non-anchor i is read from per-task online results (always collected). Probed-stability is the only off-diagonal information collected in the primary protocol.
+
+**CL metrics from the anchor probe:**
 
 ```python
-# Online accuracy (Plasticity)
-CL_Plasticity = mean(a_{i,i})           # task i evaluated right when it arrived
+# Online accuracy (Plasticity) — uses ALL tasks (diagonal)
+CL_Plasticity = mean(a_{i,i} for i in range(T))
 
-# End-of-sequence accuracy (Stability proxy)
-end_acc = mean(a_{i, T})                # all tasks evaluated at end-of-sequence
+# End-of-sequence accuracy on anchors only
+end_acc = mean(a_{i, T} for i in A)
 
-# Forgetting (per task)
-forgetting_i = max(a_{i, i..T}) - a_{i, T}
-
-CL_Stability = 1 - mean(forgetting_i)
+# Anchor forgetting
+forgetting_i = max(a_{i, p} for p in PROBES with p >= i) - a_{i, T}
+CL_Stability_anchor = 1 - mean(forgetting_i for i in A)
 
 # Primary metric
-CL_F1 = 2 * CL_Plasticity * CL_Stability / max(CL_Plasticity + CL_Stability, 1e-8)
+CL_F1 = 2 * CL_Plasticity * CL_Stability_anchor / max(CL_Plasticity + CL_Stability_anchor, 1e-8)
 ```
 
-This is the SWE-Bench-CL standard. CL-F1 is the primary metric (locked decision #9).
+This is a deliberate departure from the SWE-Bench-CL full-matrix standard, justified by §22.1 budget reality. Stability is therefore estimated on 5 anchor tasks rather than all T tasks; the resulting estimator has higher variance but is computationally tractable. We report the anchor-probe Stability with explicit acknowledgment that it lower-bounds the full-matrix Stability (anchors are a random subset of tasks; missed forgetting events outside the anchor set inflate the estimator).
 
-## 14.3 Continual-learning (SUPPLEMENTARY — periodic anchor probe)
+**Stochasticity handling.** `re_evaluate(task_i, snapshot_after_j)` re-runs the *agent* (not just re-scores a fixed patch) with the historical memory state from after task j and a clean repo checkout. At temperature 0 the agent is approximately deterministic but not guaranteed (provider-side load, tool-call tie-breaking). The primary protocol pre-registers **n=1 re-evaluation per (i, j) cell with the resulting variance treated as part of within-sequence noise**, mitigated by reporting Stability with 3-seed pooling. If a future budget supplement allows, the protocol upgrades to n=3 majority vote.
 
-For cost reasons (re-running an entire sequence post-hoc is expensive), supplement with **periodic anchor probes**:
+## 14.3 Continual-learning — full `a_{i,j}` matrix (SUPPLEMENTARY)
 
-```
-After task 10: re-run anchor set {1, 3, 5, 7, 9}
-After task 20: re-run anchor set {2, 6, 10, 14, 18}
-...
-```
-
-This gives a cheap trajectory plot of stability over time. The anchor probe is **supplementary**, not a replacement for the full `a_{i,j}` matrix.
+If the §22.1 budget permits at Week 7, the full off-diagonal `a_{i,j}` reconstruction (per Section 25.6) is run for **2 sequences × top-2 conditions × 1 seed = 4 cells**, providing a comparison between anchor-probed and densely-probed Stability estimates. This is sensitivity, not primary. If the anchor-probed and full-matrix Stability estimates disagree by more than ±0.05 on these 4 cells, the Limitations section qualifies all Stability-based claims accordingly.
 
 ## 14.4 Efficiency
 
@@ -1410,8 +1463,12 @@ Type-Aware Decay vs Full Memory:
   Total tokens: Δ = -31%    (r_rb = -0.72, 95% BCa CI [-38%, -23%],   Holm-p = 0.012)
   Tool calls:   Δ = -18%    (r_rb = -0.51, 95% BCa CI [-26%, -9%],    Holm-p = 0.039)
 
-  Conclusion: Type-Aware Decay matches Full Memory on correctness (CI includes zero)
-  while substantially reducing token cost. Pareto-favorable.
+  TOST (H1a, SESOI=0.03): equivalence rejected for the lower bound (p_TOST_lower = 0.012)
+                          equivalence rejected for the upper bound (p_TOST_upper = 0.008)
+                          ⇒ Type-Aware Decay is statistically equivalent to Full Memory on CL-F1.
+
+  Conclusion: Type-Aware Decay achieves H1a equivalence with Full Memory on correctness
+  AND substantially reduces token cost (H1b satisfied). Pareto-favorable.
 ```
 
 ---
@@ -1510,6 +1567,8 @@ Report feature importance from both models. Bootstrapped CIs on PR-AUC.
 
 # 17. Pareto analysis
 
+**Cost-axis definition (lock).** The Pareto X-axis "total system API cost (USD)" includes only the operational cost the agent would pay in deployment: per-task LLM calls (main model + reflection model + classifier model) + consolidation LLM calls. It **excludes** the methodological cost of the `a_{i,j}` / anchor-probe re-evaluation (§14.2), which is measurement overhead not borne by a production system using the same policy.
+
 For each of 6 conditions, plot:
 
 ```
@@ -1567,37 +1626,55 @@ These case studies feed Chapter 4 (Results) and Chapter 5 (Discussion).
 
 ---
 
-# 19. Result interpretation rules
+# 19. Result interpretation rules (triggered framings)
 
-Pre-committed framings, so post-hoc rationalization is bounded.
+Each interpretation framing is gated on a pre-specified effect-size trigger. Triggers are evaluated against the primary CL-F1 sequence-level Wilcoxon + r_rb + BCa CI for the 5 planned contrasts, plus the Pareto frontier on (CL-F1, total cost). Only the framing whose trigger fires is invoked in the Discussion. Multiple triggers may fire (e.g., 19.2 and 19.5 simultaneously); silently re-purposing a non-triggered framing post-hoc is prohibited.
 
 ## 19.1 If Full Memory wins
 
-> "Full memory accumulation may be beneficial when prior tasks contain reusable repository-specific knowledge. Pruning may remove rare but critical details. The value of forgetting is conditional, not universal."
+**Trigger.** For at least 3 of 4 pruning policies P ∈ {Random, Recency, Type-Aware, CLS}: median paired Δ CL-F1 (P − Full Memory) < −0.03 with 95% BCa CI excluding 0 (i.e., H1a outcome C), AND Full Memory is non-dominated on the Pareto (CL-F1, cost) frontier.
 
-Strong contribution: identified conditions where pruning is unsafe.
+**Framing.** "Full memory accumulation may be beneficial when prior tasks contain reusable repository-specific knowledge. Within the SWE-Bench-CL same-repo regime tested here, pruning policies removed memories whose marginal value exceeded the noise they introduced. The value of forgetting is conditional, not universal." Strong contribution: identifies conditions where pruning is unsafe — feeds §18 failure-analysis case studies on which records pruning removed.
 
 ## 19.2 If Type-Aware Decay wins
 
-> "Memory quality matters more than memory quantity. Structured pruning can preserve useful memories while reducing noise and cost. The failure-mode tier framework operationalizes this distinction."
+**Trigger.** Type-Aware vs. Full Memory: H1a outcome A or B AND r_rb ≥ 0.3 AND Type-Aware strictly dominates Full Memory on the Pareto (CL-F1, cost) frontier. Additionally, Type-Aware vs. Random Prune: median paired Δ CL-F1 ≥ +0.02 with CI excluding 0.
+
+**Framing.** "Memory quality matters more than memory quantity. Structured pruning by content type can preserve useful memories while reducing noise and cost. The failure-mode tier framework operationalizes this distinction." Gated analyses: §16 feature-importance trained on the data; §18 case studies on Type-Aware's correctly-retained `architectural` / `api_change` records.
 
 ## 19.3 If Random Prune matches Type-Aware Decay
 
-> "Volume reduction may be the main benefit. The type/relevance heuristics tested here may not be strong enough to dominate naive sampling. Future work: stronger content signals."
+**Trigger.** Type-Aware vs. Random Prune: |median paired Δ CL-F1| < 0.02 AND 95% BCa CI ⊂ (−0.03, +0.03) (TOST equivalence). AND both beat Full Memory on Pareto.
+
+**Framing.** "Volume reduction may be the main benefit; the type/relevance heuristics tested here did not dominate naive sampling at N=8. The classifier-as-policy confound (§20.12) limits causal attribution. Future work: stronger content signals, classifier accuracy floor higher than the §10.3 threshold." Gated analyses: re-analysis with classifier-confidence covariate; an Anti-Type baseline is essential for any causal claim that "type matters."
 
 ## 19.4 If Recency Prune wins
 
-> "Recent experiences are most predictive in this benchmark. Chronological locality dominates content-type signals."
+**Trigger.** Recency vs. Full Memory: H1a outcome A or B AND Recency dominates Full Memory on Pareto AND Recency vs. Type-Aware: median paired Δ CL-F1 ≥ +0.02 with CI excluding 0.
+
+**Framing.** "Recent experiences are most predictive on SWE-Bench-CL. Chronological locality dominates content-type signals at this sequence scale; the Anderson-Schooler power-law form is functionally indistinguishable from a recency cutoff for the d-values tested. Type-aware structure may pay off at longer sequence horizons or in domains with stronger content recurrence patterns."
 
 ## 19.5 If CLS Consolidation loses on Pareto
 
-> "Abstractive summarization may discard implementation details necessary for coding. The LLM-on-write tax is not justified by the marginal performance gain."
+**Trigger.** CLS vs. Type-Aware (or whichever extractive policy ranks highest): median paired Δ CL-F1 within ±0.03 (statistically tied) AND median paired Δ(total cost) ≥ +20% (CLS more expensive) AND CLS is strictly dominated by Type-Aware on the Pareto frontier.
+
+**Framing.** "Abstractive summarization paid the LLM-on-write tax without recovering a CL-F1 advantage at this sequence length. The dual-store CLS analogy (McClelland et al. 1995) is not realized by single-store cluster-summarize; we use 'Periodic Abstractive Consolidation' descriptively. CLS may be advantaged at sequence lengths beyond SWE-Bench-CL's 15–80-task range, or under harder context-budget constraints." Gated analyses: report CLS firing rate — if firing rate is < 30%, the result is uninformative.
 
 ## 19.6 If No Memory is competitive
 
-> "The task sequence may have weak inter-task dependency. The retrieval system may not surface useful memories. The base model may already encode enough general coding knowledge to make episodic memory marginal."
+**Trigger.** No Memory vs. Full Memory: H1a outcome A (equivalence) — CI of median paired Δ CL-F1 ⊂ (−0.03, +0.03). AND No Memory non-dominated on Pareto.
 
-This is a strong negative result and is publishable.
+**Framing.** "The task sequence may have weak inter-task dependency. The retrieval system may not surface useful memories. The base model may already encode enough general coding knowledge to make episodic memory marginal at SWE-Bench-CL's task complexity. This is a strong publishable negative result; the implication for production memory systems is that vector-DB infrastructure should be evaluated against the No-Memory baseline directly." Gated analyses: §16 feature-importance becomes purely descriptive (memory had no average effect to explain).
+
+## 19.7 If the retrieval Jaccard probe shows no contrast between storage policies
+
+**Trigger.** Median across (task, condition-pair) of Jaccard overlap of retrieved memory-ID sets > 0.9 for most pruning-vs-Full-Memory pairs (see §11.5 and §20.11).
+
+**Framing.** "At the locked retrieval budget (top_k=5, max_context_tokens=2000), storage-side pruning policies feed nearly identical prompts to the agent on most tasks; the experimental contrast on CL-F1 measures small-tail effects. This is itself a finding: in the frontier-model + top-k regime, the storage policy is dominated by the retrieval policy. Future work must vary the retrieval layer to isolate storage effects." This framing co-fires with whichever of 19.1–19.6 applies and modifies the causal claim attached to it.
+
+## 19.8 Multi-framing combination rule
+
+If multiple triggers fire, report each in order, and explicitly mark which framings are *primary* (based on the planned 5 contrasts) vs. *secondary* (based on derived metrics). HARKing — narrating a finding under a non-triggered framing — is prohibited.
 
 ---
 
@@ -1640,18 +1717,36 @@ Type-aware policy depends on the 5-type classifier.
 
 ## 20.8 Type-Aware parameter calibration
 
-Initial type weights are theoretical (Fastpaca tiers), not empirical.
-**Mitigation:** Week-4 pilot can adjust `decay_d` per type (1-knob calibration). After Week 4, parameters are frozen.
+Initial type weights are theoretical (Anderson & Schooler power-law form × Fastpaca tiers), not empirically calibrated.
+**Mitigation (locked per D-0.3):** Week-4 pilot is a *sanity check*, not a calibration step — `decay_d` values are not re-tuned after the pilot. The theoretical-vs-empirical gap is a documented limitation; pilot performance is part of the result set, not a tuning input.
 
 ## 20.9 Single benchmark
 
 All results from SWE-Bench-CL.
-**Mitigation:** Multi-model validation (Week 7) tests cross-model generality. Optional MEMTRACK cross-validation noted as future work.
+**Mitigation:** Multi-model *exploratory probe* (Week 7, 12 runs) provides descriptive evidence on cross-model transfer but is not powered for inferential generalization (per D-0.4). Optional MEMTRACK cross-validation noted as future work.
 
 ## 20.10 Causal interpretation
 
 Memory-item labels are "associated with success/failure," not causal.
 **Mitigation:** Causal claims confined to Tier-3 matched-contrast case studies. Prediction model uses associated labels and is framed as feature analysis, not causal estimation.
+
+## 20.11 Retrieval-bottleneck confound (and how we detect it)
+
+By locked invariant #19, retrieval is identical (pure cosine top-k) across all six conditions. By locked configuration `top_k=5` and `max_context_tokens=2000`, the *prompt* receives at most ~5 memories regardless of how many records the storage policy keeps. If pruning policies and Full Memory return overlapping top-5 sets on most tasks (e.g., because the highest-cosine records survive pruning by all policies), the experimental contrast on CL-F1 measures a small-tail effect, not the headline "memory policy matters" claim.
+
+This is empirically testable via the Jaccard overlap probe (§11.5). Pre-registered decision rule:
+
+- **Median Jaccard ≤ 0.5** across the four pruning-vs-Full-Memory pairs: contrast is well-identified at the prompt; storage policies drive observable retrieval differences.
+- **Median Jaccard ∈ (0.5, 0.9):** moderate; storage policies differ on a substantial minority of tasks; standard interpretation applies but the overlap distribution is reported alongside.
+- **Median Jaccard > 0.9:** §19.7 fires; contribution claim restricts to "storage-side policy characterization under fixed retrieval, in a regime where retrieval dominates"; §1.4 contribution paragraph is qualified accordingly in the Discussion.
+
+Reporting: §20 includes the Jaccard distribution histogram per condition-pair. Acceptance criterion #18 (§23): the probe must be reported regardless of outcome.
+
+## 20.12 Classifier-as-policy confound
+
+The Type-Aware Decay policy depends on the 5-type classifier (§10). If classifier accuracy is, say, 75% (within §10.3's "proceed, note as limitation" band), then 25% of memory records carry an incorrect type label, and Type-Aware Decay is operationally ~75% type-aware + ~25% near-random for those misclassified records. Random Prune and Recency Prune do not depend on the classifier; their performance is a clean reference.
+
+**Mitigation:** Pre-registered sensitivity analysis: re-run the Type-Aware Decay maintain() step offline using the 150 manually-audited gold labels (§10.2) in place of classifier labels, on the audited records only. Compare the resulting archived-set Jaccard to the original. Report classifier confidence as a covariate in any GLMM specification on Type-Aware-relevant cells. Without this, any "Type-Aware beats Random" finding cannot be attributed to type-awareness vs. classifier quality.
 
 ---
 
@@ -1694,9 +1789,10 @@ Backup plan if `eval_v3` harness fails: SWE-agent + custom FAISS on SWE-Bench Ve
 - All 6 conditions × 8 sequences × 3 seeds = 144 runs on GPT-5.4
 - Monitor cost daily. Re-evaluate weekly. Adjust Docker `max_workers` if needed.
 
-## Week 7 — Multi-model validation
+## Week 7 — Multi-model exploratory probe
 
 - Top-3 conditions (decided after Week 6) × 4 sequences × 1 seed = 12 runs on Haiku / 4o-mini
+- Framed as exploratory cross-model probe, not a validation/generalization arm (D-0.4)
 
 ## Weeks 8–9 — Analysis (strict order)
 
@@ -1720,7 +1816,55 @@ Translate validated policies into the OpenMem codebase. Design spec in thesis ev
 
 ---
 
-# 22. Risk registry
+# 22. Budget, risks, and stop-loss
+
+## 22.1 Budget projection and stop-loss
+
+**Per-task cost model (rounded estimates, GPT-5.4 at assumed $0.005/1K input + $0.015/1K output tokens; refine after Spike Day 2 cost telemetry):**
+
+| Component | Per-task tokens (typ.) | Per-task USD (typ.) |
+|---|---|---|
+| Main model (20 steps × ~3000 in + ~500 out / step) | ~70K | ~$0.40 |
+| Reflection (§9.2, gpt-4o-mini) | ~5K | ~$0.005 |
+| Classifier (§9.3, gpt-4o-mini) | ~1K | ~$0.001 |
+| **Total per online task** | **~76K** | **~$0.41** |
+
+**Forward run projection (144 runs × average 30 tasks/sequence):**
+
+- 4320 online tasks × $0.41 ≈ **$1,770** primary forward cost.
+
+**Anchor-probe re-evaluation projection (§14.2):**
+
+- Per (sequence, condition, seed): up to 20 re-evaluations × $0.41 ≈ $8.20.
+- Across 144 cells: 144 × $8.20 ≈ **$1,180** anchor-probe cost.
+
+**Consolidation LLM cost (CLS only, §8 P5):**
+
+- ~6 consolidation rounds per sequence × ~5 records summarized × 350 output tokens ≈ ~15K tokens per round → ~$0.05/round.
+- Across CLS cells (24 cells × 6 rounds) ≈ **$8** consolidation cost.
+
+**Multi-model validation (12 runs, Haiku/4o-mini at lower per-token cost):**
+
+- 12 runs × 30 tasks × ~$0.10 ≈ **$36**.
+
+**Total expected cost: ~$3,000** (forward + anchor probe + consolidation + multi-model). Spike Week pilot adds ~$50. `eval_v3` Docker compute is paid by the VPS (sunk).
+
+**Stop-loss triggers and decision tree:**
+
+| Trigger | Threshold | Action |
+|---|---|---|
+| Week-1 spike actual > 1.5× projected | > $75 for 3 smoke tasks | Recompute per-task cost; abort if real per-task > $1.50 |
+| Week-3 pilot actual > 1.5× projected | > $300 for 12 pilot runs | Reduce `max_steps_per_task` from 20 → 15 (re-document as a tighter limit, locked) |
+| Week-5 projected total > $5,000 | Linear extrapolation | Invoke §23 fallback (2): drop 1 seed → 96 runs |
+| Week-6 projected total > $7,000 | Linear extrapolation | Invoke §23 fallback (3): drop 2 hardest sequences → 72 runs |
+| Week-6 projected total > $10,000 | Linear extrapolation | Invoke §23 fallback (4): drop CLS Consolidation → 120 runs |
+| Any single day burn > $400 | Daily cost telemetry | Pause runs; investigate; do not auto-restart |
+
+**Pre-registered:** the actual cost numbers (per-task, per-sequence, total) are reported in the thesis Limitations section regardless of outcome, alongside the realized scope after any fallback. Cost-realization data are captured in acceptance criterion #19 (§23).
+
+**Note on `a_{i,j}` supplementary (§14.3).** The supplementary full-matrix sensitivity (4 cells × ~T²/2 re-evaluations ≈ 1800 extra re-evaluations × $0.41 ≈ $740) is only invoked if Week-7 cumulative cost is < $3,000 and remaining budget ≥ $1,000.
+
+## 22.2 Risk registry
 
 | Risk | Prob | Impact | Mitigation | Detection |
 |---|---|---|---|---|
@@ -1749,7 +1893,7 @@ The implementation is thesis-ready when the following are produced:
 5. ✅ Memory event logs (write / retrieve / archive / consolidate)
 6. ✅ Retrieved-memory logs (with IDs, scores, ages, types)
 7. ✅ Memory snapshots at every task boundary
-8. ✅ Per-sequence `a_{i,j}` matrices → CL-Plasticity, CL-Stability, CL-F1
+8. ✅ Per-sequence anchor-probe `a_{i,j}` entries (§14.2: k=5 anchors × 4 probe points) → CL-Plasticity, CL-Stability, CL-F1
 9. ✅ Sequence-level Wilcoxon + Holm + r_rb + bootstrap BCa CI for 5 planned contrasts
 10. ✅ Task-level GLMM (exploratory)
 11. ✅ Pareto frontier plot (CL-F1 vs cost)
@@ -1759,16 +1903,17 @@ The implementation is thesis-ready when the following are produced:
 15. ✅ At least one failure-analysis section with 5+ cases per policy
 16. ✅ At least one skeptical / negative result (case where pruning harms or Full Memory helps)
 17. ✅ Multi-model validation results (12 runs, top-3 conditions)
+18. ✅ Cross-condition retrieval Jaccard-overlap report (§11.5, §20.11) for the four pruning-vs-Full-Memory pairs across all 8 sequences and 3 seeds (reported regardless of outcome)
+19. ✅ Budget realization table (§22.1): planned vs. actual cost per phase, fallback ladder invocations if any
 
-**Minimum-acceptable scope** (if compute tight at Week 6):
+**Minimum-acceptable scope** (if compute tight at Week 6, listed by priority of fallback):
 
-```
-6 sequences × 6 conditions × 3 seeds = 108 runs   (drop 2 hardest sequences)
-or
-8 sequences × 6 conditions × 2 seeds = 96 runs   (drop 1 seed)
-```
+1. **Anchor-probe Stability only** (§14.2) with no §14.3 supplementary full matrix. Default and primary; no scope reduction needed.
+2. **Drop 1 seed** if total cost projection at Week 6 ≥ stop-loss threshold (§22.1): 8 sequences × 6 conditions × 2 seeds = 96 runs. Document in Limitations.
+3. **Drop 2 hardest sequences** if (2) is also exceeded: 6 sequences × 6 conditions × 3 seeds = 108 runs. Document in Limitations.
+4. **Drop CLS Consolidation** if (3) is also exceeded: 8 sequences × 5 conditions × 3 seeds = 120 runs. CLS is the most expensive policy due to LLM-on-write tax; dropping it preserves the H1a/H1b core contrasts.
 
-Document the trade-off in Limitations.
+Document any invocation of (2)–(4) explicitly in the Limitations chapter with the cost projection that triggered it.
 
 ---
 
@@ -1784,8 +1929,8 @@ Document the trade-off in Limitations.
 | Cross-repo retrieval as main experiment | Confound with general transfer; same-repo is the clean condition. |
 | In-task code-search tools (WarpGrep, AFT, srcwalk) | Different layer; cite in Related Work as parallel direction, not as experimental variable. |
 | Adding outcome to the embedding payload | Would mix policy signal into retrieval. |
-| Compound retrieval score with bonuses | Would confound policy with retrieval scoring. |
-| Anchor probe as primary stability measure | Supplementary only; `a_{i,j}` matrix is the standard. |
+| Compound retrieval score with bonuses | Would confound policy with retrieval scoring; locked invariant #19. |
+| Calibrating all 11 Type-Aware knobs from the 12-run pilot | Statistically infeasible; pilot is sanity-check only (§20.8). |
 
 ---
 
@@ -2117,7 +2262,7 @@ def feature_importance_analysis(rows: pd.DataFrame) -> dict:
 | 10 | Du et al. (2025). EMNLP. arXiv:2510.05381. | Context length hurts |
 | 11 | Liu et al. (2024). TACL. | **Lost in the Middle — injection order** |
 | 12 | Cuconasu et al. (2024). SIGIR. arXiv:2401.14887. | Power of Noise |
-| 13 | Alqithami (2025). arXiv:2512.12856. | 6 forgetting policies |
+| 13 | Alqithami (2025). *Forgetful but Faithful: A Cognitive Memory Architecture and Benchmark for Privacy-Aware Generative Agents.* arXiv:2512.12856. | 6 forgetting policies on FiFA benchmark — closest by name, different domain (privacy-aware generative agents); see §1.4 for differentiation |
 | 14 | Shen et al. (2026). arXiv:2602.21611. | Subtask-level memory |
 | 15 | Sun et al. (2022). ICLR 2023. | Info-theoretic selection |
 | 16 | Pink et al. (2025). arXiv:2502.06975. | Episodic memory position |
@@ -2132,6 +2277,9 @@ def feature_importance_analysis(rows: pd.DataFrame) -> dict:
 | 25 | Zheng et al. (2025). IEEE TPAMI. | Lifelong learning roadmap |
 | 26 | Cumming (2014). *Psychological Science*. | **Estimation-based inference** |
 | 27 | Wasserstein et al. (2019). *The American Statistician*. | **ASA statement on p-values** |
+| 28 | Zhong, Guo, Gao, Ye & Wang (2024). MemoryBank: Enhancing Large Language Models with Long-Term Memory. AAAI 2024. | Ebbinghaus forgetting-curve memory — closest cognitive-decay analog to P4 |
+| 29 | Xu, Liang, Yan, Li, Liu, Yan, Jin & Wen (2025). A-MEM: Agentic Memory for LLM Agents. arXiv:2502.12110. | Dynamic linked memory organization — contrast with our static content taxonomy (§5.1) |
+| 30 | Shinn, Cassano, Berman, Gopinath, Narasimhan & Yao (2023). Reflexion: Language Agents with Verbal Reinforcement Learning. NeurIPS 2023. | Reflection-as-memory — methodological precedent for §9 reflection step |
 
 ---
 
