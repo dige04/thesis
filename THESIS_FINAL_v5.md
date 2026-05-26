@@ -1778,10 +1778,10 @@ Backup plan if `eval_v3` harness fails: SWE-agent + custom FAISS on SWE-Bench Ve
 - Classifier audit: 150 stratified items, apply decision rules
 - Pilot: all 6 conditions on 2 sequences (1 seed)
 
-## Week 4 — Calibrate + lock
+## Week 4 — Sanity check + lock
 
-- Analyze pilot. Adjust `decay_d` per type if needed.
-- Lock `top_k`, budget B, all hyperparameters.
+- Analyze pilot as a *sanity check only* — do NOT re-tune `decay_d` per type (locked per D-0.3, §8 P4).
+- Lock `top_k`, budget B, all remaining hyperparameters.
 - **FREEZE parameters.** Begin Methodology chapter.
 
 ## Weeks 5–6 — Full matrix
@@ -1843,11 +1843,11 @@ Translate validated policies into the OpenMem codebase. Design spec in thesis ev
 - ~6 consolidation rounds per sequence × ~5 records summarized × 350 output tokens ≈ ~15K tokens per round → ~$0.05/round.
 - Across CLS cells (24 cells × 6 rounds) ≈ **$8** consolidation cost.
 
-**Multi-model validation (12 runs, Haiku/4o-mini at lower per-token cost):**
+**Multi-model exploratory probe (12 runs, Haiku/4o-mini at lower per-token cost; D-0.4):**
 
 - 12 runs × 30 tasks × ~$0.10 ≈ **$36**.
 
-**Total expected cost: ~$3,000** (forward + anchor probe + consolidation + multi-model). Spike Week pilot adds ~$50. `eval_v3` Docker compute is paid by the VPS (sunk).
+**Total expected cost: ~$3,000** (forward + anchor probe + consolidation + multi-model probe). Spike Week pilot adds ~$50. `eval_v3` Docker compute is paid by the VPS (sunk).
 
 **Stop-loss triggers and decision tree:**
 
@@ -1877,8 +1877,8 @@ Translate validated policies into the OpenMem codebase. Design spec in thesis ev
 | Docker I/O crash at high concurrency | Med | False task failures | Start `max_workers=4`, monitor `iostat`, ramp gradually. | Timeouts cluster at high concurrency. |
 | Embedding truncation | High if unfixed | FAISS garbage | Preprocessed payload, < 7500 token assert. | Verify in spike. |
 | Full Memory doesn't hurt | Low | Premise undermined | Negative result publishable. Cost story remains. | Pilot Week 3–4. |
-| Multi-model run blows budget | Med | Lose Week-7 validation | Already restricted to 12 runs. Skip if needed. | Week-6 cost projection. |
-| SWE-ContextBench unavailable | High | Lose validation | Plan doesn't depend on it. | No reply by Week 4. |
+| Multi-model probe blows budget | Med | Lose Week-7 exploratory probe (D-0.4) | Already restricted to 12 runs. Skip if needed; no inferential claim depends on it. | Week-6 cost projection. |
+| SWE-ContextBench unavailable | High | Lose optional cross-benchmark check | Plan doesn't depend on it. | No reply by Week 4. |
 
 ---
 
@@ -1902,7 +1902,7 @@ The implementation is thesis-ready when the following are produced:
 14. ✅ Feature importance for helpful/harmful prediction (PR-AUC + VIF)
 15. ✅ At least one failure-analysis section with 5+ cases per policy
 16. ✅ At least one skeptical / negative result (case where pruning harms or Full Memory helps)
-17. ✅ Multi-model validation results (12 runs, top-3 conditions)
+17. ✅ Multi-model exploratory-probe results (12 runs, top-3 conditions) — reported descriptively per D-0.4; no inferential generalization claim
 18. ✅ Cross-condition retrieval Jaccard-overlap report (§11.5, §20.11) for the four pruning-vs-Full-Memory pairs across all 8 sequences and 3 seeds (reported regardless of outcome)
 19. ✅ Budget realization table (§22.1): planned vs. actual cost per phase, fallback ladder invocations if any
 
