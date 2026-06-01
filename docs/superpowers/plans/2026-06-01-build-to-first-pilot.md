@@ -59,7 +59,12 @@ Apply each with its test (TDD). Files/lines are from the 2026-06-01 verified rev
 
 ---
 
-## Phase 4 — Real coding agent (the gate)  *(largest task — read v5 §6–7, §25)*
+## Phase 4 — Real coding agent (the gate)  🟡 IN PROGRESS (2026-06-01)
+> **Done:** the v5 §4.4 ReAct tool-use loop is implemented in `CodingAgent.solve_task` (`langgraph_agent.py`): binds the chat client (`get_chat_client`/`main_model`, temp 0), exposes the 8 §4.3 tools (+`finish`) as OpenAI tool schemas, wires the already-functional `AgentTools` against `task_env.working_dir`, iterates under `LimitTracker` (strict max-20 / 80 / 5), generates the patch via `git diff`, records the trajectory as action+observation only (no CoT, §11.3), and accumulates token usage. Reflection/write/maintain (nodes 10–12) are left to `SequenceRunner` — fixes the latent double-`maintain()`. The legacy 12-node graph is superseded (still built in `__init__`; harmless). Tested with a fake tool-calling client over a real temp git repo: edits a file → non-empty patch; never-finish → force-fail at step 21 (`tests/test_agent_react_loop.py`).
+> **Phase 3.2 (classifier)** done — JSON-mode + factory + retry (committed separately).
+> **Remaining in Phase 4:** 4.5 real reflection LLM (`reflection.py:_extract_reflection_data` still naive truncation) and 4.6 real CLS summary (`cls_consolidation` still placeholder f-string). Both route through `get_chat_client()`/`summary_model()`. End-to-end validation against a live model needs the Ollama key.
+
+Original task list (4.1–4.4, 4.7 ✅ via the loop above):
 - [ ] **4.1** Bind a chat model in `langgraph_agent.py` via `get_chat_client()` + `main_model()`, temp 0, with tool-calling.
 - [ ] **4.2** Wire `src/agents/tools.py` (read/write/edit/search/list/run_command/run_tests/get_patch) into the nodes; execute against the checked-out repo via `self.task_env` (plumbed at L133, currently unused). Enforce limits via `LimitTracker` (post-2.9).
 - [ ] **4.3** Implement `planning → code_search → file_editing → test_execution → repair_loop → final_patch_generation`; `final_patch_generation` returns a real `git diff` (else `_evaluate_patch` short-circuits to `resolved=0`).

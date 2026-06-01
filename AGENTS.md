@@ -85,7 +85,7 @@ PY
 
 | Area | Status | Notes |
 |---|---|---|
-| `src/agents/langgraph_agent.py` | **stub** | every node is a TODO; no LLM call; `solve_task` always returns `patch=""` → `resolved=0`. THE gate. `src/agents/tools.py` (8 real tools) is dead code — wire it in. |
+| `src/agents/langgraph_agent.py` | **partial (2026-06-01)** | `solve_task` now runs the real v5 §4.4 ReAct tool-use loop (binds chat client, 8 tools via `AgentTools`, `LimitTracker`, `git diff` patch, no-CoT trajectory, token usage). Reflection/write/maintain left to the runner. Still TODO: real reflection LLM (`reflection.py`) + CLS summary LLM, and live-model validation (needs Ollama key). |
 | `src/benchmark/evaluator.py` (eval_v3) | **placeholder** | invalid `docker run --timeout=` flag; never applies patch / uses `test_patch`; substring result parsing. Rebuild around the public `swebench` package. |
 | `src/analysis/aggregate_results.py` CL-F1 | **placeholder** | `cl_f1 = resolved_rate`. Need real `a_{i,j}` matrix + **anchor-probe** (v5 FD#29 primary). |
 | Tuple/dict crash | **bug** | `policy.retrieve()` returns `list[tuple[float, MemoryRecord]]`; callers in `sequence_runner.py` (608, 683–691) and `langgraph_agent.py` (298, 326–336) call `.get()` → crashes all 5 memory conditions. Repair plan Task 1. |
