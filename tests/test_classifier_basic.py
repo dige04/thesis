@@ -33,33 +33,36 @@ class TestMemoryTypeEnum:
 
 
 class TestMemoryClassifierInit:
-    """Test MemoryClassifier initialization."""
+    """Test MemoryClassifier initialization (factory-based, deviation D4)."""
 
-    @patch('src.memory.classifier.OpenAI')
-    def test_init_creates_openai_client(self, mock_openai):
-        """Test that initialization creates OpenAI client."""
+    @patch('src.memory.classifier.get_chat_client')
+    def test_init_uses_factory_chat_client_by_default(self, mock_get_client):
+        """Default init uses the shared llm_factory chat client (no api_key)."""
         mock_client = MagicMock()
-        mock_openai.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         classifier = MemoryClassifier()
 
-        mock_openai.assert_called_once_with(api_key=None)
-        assert classifier.client == mock_client
+        mock_get_client.assert_called_once_with()
+        assert classifier.client is mock_client
 
     @patch('src.memory.classifier.OpenAI')
-    def test_init_with_api_key(self, mock_openai):
-        """Test initialization with explicit API key."""
+    def test_init_with_api_key_builds_explicit_client(self, mock_openai):
+        """An explicit api_key builds a client against the chat endpoint."""
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
 
         classifier = MemoryClassifier(api_key="test-key")
 
-        mock_openai.assert_called_once_with(api_key="test-key")
+        _, kwargs = mock_openai.call_args
+        assert kwargs["api_key"] == "test-key"
+        assert "base_url" in kwargs
+        assert classifier.client is mock_client
 
-    @patch('src.memory.classifier.OpenAI')
-    def test_init_failure_raises_classifier_error(self, mock_openai):
-        """Test that initialization failure raises ClassifierError."""
-        mock_openai.side_effect = Exception("API key invalid")
+    @patch('src.memory.classifier.get_chat_client')
+    def test_init_failure_raises_classifier_error(self, mock_get_client):
+        """Client init failure surfaces as ClassifierError."""
+        mock_get_client.side_effect = Exception("endpoint unreachable")
 
         with pytest.raises(ClassifierError, match="Failed to initialize classifier"):
             MemoryClassifier()
@@ -68,9 +71,13 @@ class TestMemoryClassifierInit:
 class TestMemoryClassifierConstants:
     """Test that classifier uses frozen constants."""
 
-    def test_model_is_gpt4o_mini(self):
-        """Test that classifier uses gpt-4o-mini (cheapest model)."""
-        assert MemoryClassifier.MODEL == "gpt-4o-mini"
+    @patch('src.memory.classifier.get_chat_client')
+    def test_default_model_comes_from_factory(self, mock_get_client):
+        """Model is config-driven via llm_factory.classifier_model() (deviation D1)."""
+        from src.config.llm_factory import classifier_model
+
+        mock_get_client.return_value = MagicMock()
+        assert MemoryClassifier().model == classifier_model()
 
     def test_temperature_is_zero(self):
         """Test that classifier uses temperature=0 (deterministic)."""
@@ -78,14 +85,14 @@ class TestMemoryClassifierConstants:
 
 
 class TestClassifierErrorHandling:
-    """Test classifier error handling."""
+    """Test classifier error handling (JSON mode)."""
 
-    @patch('src.memory.classifier.OpenAI')
-    def test_classify_raises_classifier_error_on_api_failure(self, mock_openai):
+    @patch('src.memory.classifier.get_chat_client')
+    def test_classify_raises_classifier_error_on_api_failure(self, mock_get_client):
         """Test that API failures raise ClassifierError."""
         mock_client = MagicMock()
-        mock_client.beta.chat.completions.parse.side_effect = Exception("API error")
-        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = Exception("API error")
+        mock_get_client.return_value = mock_client
 
         classifier = MemoryClassifier()
 
@@ -95,27 +102,29 @@ class TestClassifierErrorHandling:
                 patch_summary="Test patch",
                 files_touched=["test.py"],
                 functions_touched=["test_func"],
-                task_id="TEST-001"
+                task_id="TEST-001",
             )
 
-    @patch('src.memory.classifier.OpenAI')
-    def test_classify_raises_error_on_none_response(self, mock_openai):
-        """Test that None response raises ClassifierError."""
+    @patch('src.memory.classifier.get_chat_client')
+    def test_classify_raises_error_on_empty_content(self, mock_get_client):
+        """Empty content (after retries) raises ClassifierError."""
         mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.parsed = None
-        mock_client.beta.chat.completions.parse.return_value = mock_response
-        mock_openai.return_value = mock_client
+        msg = MagicMock()
+        msg.content = ""
+        mock_client.chat.completions.create.return_value.choices = [
+            MagicMock(message=msg)
+        ]
+        mock_get_client.return_value = mock_client
 
         classifier = MemoryClassifier()
 
-        with pytest.raises(ClassifierError, match="Classifier returned None"):
+        with pytest.raises(ClassifierError, match="Classifier failed"):
             classifier.classify(
                 issue_summary="Test issue",
                 patch_summary="Test patch",
                 files_touched=["test.py"],
-                functions_touched=["test_func"]
+                functions_touched=["test_func"],
+                max_retries=1,
             )
 
 
@@ -190,3 +199,77 @@ class TestBuildClassificationInput:
         assert "(none)" in input_text
         assert "Test issue" in input_text
         assert "Test patch" in input_text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3.2: classifier runs via llm_factory chat client in JSON mode (Ollama
+# ignores OpenAI json_schema response_format), with Pydantic validation + retry.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestClassifierJsonMode:
+    @patch("src.memory.classifier.get_chat_client")
+    def test_classify_uses_json_mode_and_parses(self, mock_get_client):
+        mock_client = MagicMock()
+        msg = MagicMock()
+        msg.content = '{"memory_type": "bug_fix", "reasoning": "adds a null check"}'
+        mock_client.chat.completions.create.return_value.choices = [
+            MagicMock(message=msg)
+        ]
+        mock_get_client.return_value = mock_client
+
+        classifier = MemoryClassifier()
+        result = classifier.classify(
+            issue_summary="Fix null deref",
+            patch_summary="add guard",
+            files_touched=["a.py"],
+            functions_touched=["f"],
+        )
+
+        assert result == "bug_fix"
+        _, kwargs = mock_client.chat.completions.create.call_args
+        assert kwargs["response_format"] == {"type": "json_object"}
+        assert kwargs["temperature"] == 0
+        # Must NOT use the OpenAI beta structured-output path (Ollama ignores it).
+        mock_client.beta.chat.completions.parse.assert_not_called()
+
+    @patch("src.memory.classifier.get_chat_client")
+    def test_classify_retries_on_invalid_then_raises(self, mock_get_client):
+        mock_client = MagicMock()
+        bad = MagicMock()
+        bad.content = "this is not json"
+        mock_client.chat.completions.create.return_value.choices = [
+            MagicMock(message=bad)
+        ]
+        mock_get_client.return_value = mock_client
+
+        classifier = MemoryClassifier()
+        with pytest.raises(ClassifierError):
+            classifier.classify(
+                issue_summary="i",
+                patch_summary="p",
+                files_touched=[],
+                functions_touched=[],
+                max_retries=1,
+            )
+        # initial attempt + 1 retry == 2 create calls
+        assert mock_client.chat.completions.create.call_count == 2
+
+    @patch("src.memory.classifier.get_chat_client")
+    def test_classify_recovers_on_retry(self, mock_get_client):
+        mock_client = MagicMock()
+        bad = MagicMock(); bad.content = "oops"
+        good = MagicMock(); good.content = '{"memory_type": "config", "reasoning": "settings"}'
+        mock_client.chat.completions.create.return_value.choices = [MagicMock(message=bad)]
+        # first call bad, second good
+        mock_client.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=bad)]),
+            MagicMock(choices=[MagicMock(message=good)]),
+        ]
+        mock_get_client.return_value = mock_client
+
+        classifier = MemoryClassifier()
+        result = classifier.classify(
+            issue_summary="i", patch_summary="p",
+            files_touched=[], functions_touched=[], max_retries=2,
+        )
+        assert result == "config"
