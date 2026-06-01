@@ -13,6 +13,11 @@ from typing import Any, Dict, Optional
 import yaml
 from copy import deepcopy
 
+try:
+    from dotenv import load_dotenv as _load_dotenv
+except Exception:  # pragma: no cover - dependency optional during setup
+    _load_dotenv = None
+
 from src.errors import ConfigValidationError, ConfigFrozenError, handle_config_validation_failure
 
 
@@ -89,6 +94,12 @@ class ConfigLoader:
             ConfigValidationError: If validation fails
             FileNotFoundError: If configuration files not found
         """
+        # Load .env first so provider/base_url/model env vars are available to
+        # src/config/llm_factory.py and any os.environ reads downstream. Env
+        # vars override the YAML model defaults (see AGENTS.md).
+        if _load_dotenv is not None:
+            _load_dotenv()
+
         # Load base configuration
         if not self.base_config_path.exists():
             raise FileNotFoundError(f"Base configuration not found: {self.base_config_path}")

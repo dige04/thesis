@@ -16,15 +16,26 @@ experiment:
 
 agent:
   type: "langgraph_coding_agent"
-  main_model: "gpt-5.4"
-  summary_model: "gpt-4o-mini"        # for reflection + consolidation
-  classifier_model: "gpt-4o-mini"     # for type classification
-  embedding_model: "text-embedding-3-small"
+  # Model names are documented defaults. At RUNTIME the provider endpoint
+  # (base_url) + API key come from .env via src/config/llm_factory.py, and env
+  # vars (LLM_MAIN_MODEL, LLM_SUMMARY_MODEL, LLM_CLASSIFIER_MODEL) override
+  # these. See AGENTS.md "Running on Ollama Cloud".
+  # DEVIATION from v5 §0.1 (model frozen to GPT-5.4): switched to Ollama Cloud
+  # for all generative roles, held constant across all 6 conditions × 3 seeds.
+  main_model: "qwen3-coder:480b-cloud"
+  summary_model: "gpt-oss:20b-cloud"   # reflection + CLS consolidation
+  classifier_model: "gpt-oss:20b-cloud"  # 5-type classification
   temperature: 0
   max_steps_per_task: 20              # LOCKED
   max_tool_calls_per_task: 80
   max_test_runs_per_task: 5
   max_wall_time_minutes: 20
+
+reflection:
+  # Summary model for memory reflection (read at sequence_runner.py:622).
+  # DEVIATION from v5: Ollama Cloud instead of gpt-4o-mini.
+  model: "gpt-oss:20b-cloud"
+  temperature: 0
 
 memory:
   backend: "sqlite_faiss"
@@ -35,6 +46,11 @@ memory:
   retrieve_same_repo_only: true
   embedding_max_tokens: 7500          # hard cap before truncation
   injection_order: "best_last"
+  # Embedder lives here (sequence_runner reads memory.embedding_model). RUNTIME
+  # endpoint + key come from .env (EMBEDDING_* vars) via llm_factory.py.
+  # DEVIATION from v5: local Ollama embedder instead of text-embedding-3-small.
+  embedding_model: "nomic-embed-text-v2-moe"
+  embedding_dim: 768                  # MUST match embedder; rebuild FAISS if changed
 
 retrieval:
   scoring: "pure_cosine"              # IDENTICAL across all conditions
@@ -107,6 +123,10 @@ evaluation:
   confidence_level: 0.95
   effect_size: "rank_biserial"
   multiple_comparison_correction: "holm"
+  # DEVIATION from v5: Ollama Cloud is flat-rate (GPU-time), so per-token USD is
+  # not meaningful. The CL-F1-vs-cost Pareto x-axis uses this proxy instead.
+  # One of: usd | tokens | walltime. Also settable via COST_METRIC_MODE in .env.
+  cost_metric_mode: "tokens"
 
 statistical:
   primary_test: "wilcoxon_signed_rank"

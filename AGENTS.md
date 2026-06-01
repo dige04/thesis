@@ -1,165 +1,122 @@
-# CLAUDE.md — Project Memory for Claude Code
+# AGENTS.md — Contract & Runbook for Agentic Tools
 
-> Read this first. Read it on every session. It is the contract.
+> For any coding agent (Claude Code, Codex, Cursor, aider, Gemini, …) working in this repo.
+> **`CLAUDE.md` is the primary contract and `THESIS_FINAL_v5.md` is the design source of truth.** This file mirrors the rules and adds the operational runbook for running on Ollama Cloud. When this file and CLAUDE.md disagree, CLAUDE.md wins.
 
 ## What this repository is
 
-Research code for a master's thesis: **Memory Pruning and Forgetting Policies for AI Coding Agents — Impact on Performance Across Sequential Tasks**.
+Research code for a master's thesis: **Memory Pruning and Forgetting Policies for AI Coding Agents**. Six memory policies × 8 SWE-Bench-CL sequences × 3 seeds = **144 controlled runs**, evaluated with `eval_v3`, analyzed with sequence-level non-parametric statistics + task-level GLMM.
 
-We run six memory policies (No Memory, Full Memory, Random Prune, Recency Prune, Type-Aware Decay, CLS Consolidation) across all 8 SWE-Bench-CL sequences × 3 seeds = **144 controlled runs** on GPT-5.4, evaluate with the standard `eval_v3` harness, and analyze with sequence-level non-parametric statistics and task-level GLMM. The thesis tests whether proactive forgetting matches or beats full-memory accumulation on the Pareto frontier of CL-F1 vs cost.
+## Golden rules (do not violate without asking the user)
 
-## Single source of truth
+1. **Do not redesign during implementation.** Implement v5 faithfully. v5 §0.1 lists frozen decisions; §24 is the anti-creep manifesto.
+2. **Six conditions, locked.** No conditions 7/8/9.
+3. **Frozen invariants** (full table in CLAUDE.md): 8 official sequences with no re-ordering; 3 seeds × 6 conditions = 144; max 20 steps/task hard-fail; embedding payload `[Issue + Final Error + Final Diff]` < 7500 tokens; **pure cosine retrieval identical across all conditions**; best-item-**LAST** injection; 5-type taxonomy (`architectural, api_change, bug_fix, test_update, config`); Type-Aware Decay = `base × age^{-d} × (1+retrieval_count)^{0.5}`; CLS every k=5 tasks; Wilcoxon on N=8 sequence means + Holm; rank-biserial `r_rb` (NOT Cliff's delta); PR-AUC + VIF; GLMM binomial/logit; 5000-iter BCa; same-repo retrieval only.
+4. **Do not** embed raw trajectories, write chain-of-thought to logs, use accuracy for the helpful/harmful prediction, collapse `outcome` into `memory_type`, or check in `runs/`, `results/raw/`, `*.faiss`, `*.sqlite`, the dataset JSON, or wandb cache.
+5. **Log everything from Day 1** (v5 §11): `task_results.jsonl`, `memory_events.jsonl`, per-task trajectory files, before/after memory snapshots. Missing fields cannot be recovered.
+6. **TDD.** New file → read the relevant v5 section → write the file → write a pytest (at minimum assert frozen invariants hold) → `make lint` + `make test`.
 
-**`THESIS_FINAL_v5.md`** is authoritative for every design question. When in doubt, read it — do not invent. Specific cross-references appear throughout this file.
+## Runtime deviations from pre-registration (Ollama Cloud)
 
-If you (Claude Code) ever feel inclined to add a condition, change a formula, swap a statistical test, or modify a frozen decision: STOP and ask the user. Section 0.1 of v5 lists 26 frozen decisions; Section 24 (Anti-creep manifesto) lists what is explicitly out of scope.
+The experiment runs on **Ollama Cloud**, not GPT-5.4 (user-authorized 2026-06-01). See the deviation table **D1–D4 in CLAUDE.md** (model, embedder, cost metric, classifier structured-output). All four must be disclosed in the thesis Methods. The model is held constant across all conditions/seeds, so between-policy comparisons remain valid; absolute numbers are not comparable to GPT-5.4 baselines.
 
-## Frozen invariants — never violate without asking
+## Running on Ollama Cloud
 
-These are the most load-bearing decisions. Full list in v5 §0.1.
+### Provider architecture
+- **Chat / agent / summary / classifier** → Ollama **Cloud**, OpenAI-compatible at `https://ollama.com/v1` (needs an API key). Path is `/v1`, **not** `/api/v1`.
+- **Embeddings** → local Ollama daemon at `http://localhost:11434/v1` (Ollama Cloud serves **no** embedding model).
+- Both clients are built by **`src/config/llm_factory.py`** from `.env`. **Never set a global `OPENAI_BASE_URL`** — it would redirect embeddings to a cloud endpoint that has no embedder and break retrieval.
 
-| # | Invariant | Where enforced in code |
-|---|---|---|
-| 1 | All 8 official SWE-Bench-CL sequences, no self-generated, no re-ordering | `benchmark/swebenchcl_loader.py` |
-| 2 | 3 seeds for **all 6 conditions** (not just Random Prune) — total 144 runs | `configs/base.yaml` |
-| 3 | Max 20 steps per task, hard force-fail | `agents/coding_agent.py` |
-| 4 | Embedding payload = `[Issue + Final Error + Final Diff]` only, < 7500 tokens | `memory/store.py::_verify_embedding_size` |
-| 5 | Retrieval scoring = **pure cosine, identical across all 6 conditions** — no bonuses, no penalties | `memory/retriever.py::shared_retrieve` |
-| 6 | Injection order = relevance-sorted, **best item LAST** (Lost-in-the-Middle fix) | `agents/coding_agent.py::build_prompt_context` |
-| 7 | 5-type taxonomy: `architectural`, `api_change`, `bug_fix`, `test_update`, `config` — NOT outcome-based | `memory/classifier.py` |
-| 8 | Type-Aware Decay formula = `base × age^{-d(type)} × (1+retrieval_count)^{0.5}` (multiplicative, Anderson-Schooler) | `memory/policies/type_aware_decay.py` |
-| 9 | CLS consolidation = fixed every k=5 tasks (NOT trigger-on-overflow) | `memory/policies/cls_consolidation.py` |
-| 10 | Memory-item labels are **associated**, not causal | All feature-analysis code |
-| 11 | Primary statistical test = Wilcoxon signed-rank on N=8 sequence-level means, Holm correction on 5 pre-registered contrasts | `analysis/statistical_tests.py` |
-| 12 | Effect size = rank-biserial r_rb (NOT Cohen's d, NOT Cliff's delta) | `analysis/statistical_tests.py` |
-| 13 | Feature analysis uses **PR-AUC + VIF check** (NOT accuracy, NOT ROC-AUC) | `analysis/feature_importance.py` |
-| 14 | Task-level analysis = GLMM with binomial/logit, crossed random effect on task_id | `analysis/glmm.py` |
-| 15 | Bootstrap = 5000 iterations, BCa method | `analysis/statistical_tests.py` |
-| 16 | Same-repo retrieval only in main experiment | `memory/store.py::search` |
-
-## Anti-patterns (DO NOT do these)
-
-- Do not propose adding conditions 7, 8, 9. Six is locked.
-- Do not change frozen formula parameters without an explicit calibration result documented.
-- Do not modify retrieval scoring to add bonuses/penalties. Pure cosine, identical across conditions.
-- Do not embed raw trajectories. The 8K embedder cap will silently truncate and produce garbage.
-- Do not use Cliff's delta — use rank-biserial r_rb. They look similar but the thesis is locked on r_rb.
-- Do not use McNemar test on per-task data — it inflates effective N (pseudo-replication). Use Wilcoxon on sequence means.
-- Do not use accuracy for the helpful/harmful prediction — the class is ~20% positive. Use PR-AUC.
-- Do not collapse `outcome` into `memory_type`. They are orthogonal axes.
-- Do not write the agent's private chain-of-thought to trajectory logs. Action summaries + observations only.
-- Do not check in `runs/`, `results/raw/`, `*.faiss`, `*.sqlite`, or wandb cache. See `.gitignore`.
-- Do not auto-modify locked files (`THESIS_FINAL_v5.md`, this `CLAUDE.md`). Propose diffs in PR description and ask.
-
-## Repository layout (v5 §3.2)
-
-```
-src/
-  agents/         # LangGraph coding agent + tools + prompts
-  memory/         # MemoryRecord, MemoryStore, retriever, reflection, classifier
-    policies/     # 6 policies, one file each, all inherit from base.MemoryPolicy
-  benchmark/      # SWE-Bench-CL loader, task env (Docker), eval_v3 wrapper, sequence runner, CL-metrics
-  metrics/        # correctness, CL, efficiency, retrieval quality, Pareto, behavioral
-  analysis/       # aggregation, statistical tests, GLMM, feature importance, plots
-  configs/        # base.yaml + per-policy YAMLs
-
-runs/             # gitignored — per-run task results, memory events, trajectories, snapshots
-results/          # raw, aggregated, plots, tables
-logs/             # gitignored
-tests/            # pytest
-```
-
-## Commands (fill in as setup progresses)
-
+### One-time setup
 ```bash
-# Environment
-make setup                 # install deps, build Docker images
-make verify-env            # check API keys, VPS resources, FAISS, Docker
+# 1. Python env + deps
+python -m venv .venv && .venv/bin/python -m pip install -e ".[dev]"
 
-# Spike Week
-make smoke                 # 3-task smoke run on eval_v3 — Day 1 gate (>15% pass = GO)
-make pilot                 # 2 sequences × 6 conditions × 1 seed = 12 runs
+# 2. Dataset (already fetched by scripts/build_curriculum.py → data/SWE-Bench-CL-Curriculum.json)
+#    Re-fetch/rebuild if needed:
+.venv/bin/python scripts/build_curriculum.py        # downloads from thomasjoshi/agents-never-forget
 
-# Full experiment
-make run-condition POLICY=type_aware_decay SEED=1
-make run-all               # 144 runs (long-running, monitored via wandb + tmux)
+# 3. Ollama Cloud auth (generative models)
+ollama signin                                       # authenticate against ollama.com
+#    create an API key at https://ollama.com/settings/keys
 
-# Analysis
-make aggregate
-make stats
-make plots
+# 4. Local Ollama embedder (embeddings)
+ollama serve &                                      # if not already running
+ollama pull nomic-embed-text-v2-moe                 # 768-dim; or qwen3-embedding:0.6b (1024-dim)
 
-# Lint / test
-make lint                  # ruff + mypy
-make test                  # pytest
-make typecheck
-
-# Cost monitoring
-make cost-report           # daily spend summary from wandb
+# 5. Configure
+cp .env.example .env                                # then fill LLM_CHAT_API_KEY
 ```
 
-These commands are placeholders. Implement them in `Makefile` during Spike Week. Match the names — analysis scripts will call them by name.
+### `.env` (template in `.env.example`)
+| Var | Default | Purpose |
+|---|---|---|
+| `LLM_CHAT_BASE_URL` | `https://ollama.com/v1` | chat endpoint |
+| `LLM_CHAT_API_KEY` | *(required)* | ollama.com key |
+| `LLM_MAIN_MODEL` | `qwen3-coder:480b-cloud` | coding agent |
+| `LLM_SUMMARY_MODEL` | `gpt-oss:20b-cloud` | reflection + CLS summary |
+| `LLM_CLASSIFIER_MODEL` | `gpt-oss:20b-cloud` | 5-type classifier |
+| `EMBEDDING_BASE_URL` | `http://localhost:11434/v1` | local embedder |
+| `EMBEDDING_API_KEY` | `ollama` | ignored locally but required |
+| `EMBEDDING_MODEL` | `nomic-embed-text-v2-moe` | embedder |
+| `EMBEDDING_DIM` | `768` | **must** match embedder; rebuild FAISS if changed |
+| `COST_METRIC_MODE` | `tokens` | `usd` \| `tokens` \| `walltime` |
 
-## Calibration windows
+Env vars override `configs/base.yaml`. The repo stays runnable on OpenAI/GPT-5.4 by editing `.env` only.
 
-Two things are **TBD until calibration** and should not be hard-coded prematurely:
+### Quotas (verify live at ollama.com/settings)
+Ollama Cloud is subscription/GPU-time based. **Concurrency caps: Free=1, Pro=3, Max=10.** Quotas reset every **5h** (session) and **7d** (weekly). A 480B model over 144 runs × up to 20 steps/task is heavy — run sequentially (≤ tier cap), checkpoint/resume, and spread across reset windows.
 
-1. **`top_k` and `max_context_tokens`** — confirmed at end of **Spike Week (Friday gate)**. Defaults: `top_k=5`, `max_context_tokens=2000`. If pilot shows different optima, change *once*, then lock.
-2. **Type-Aware Decay `decay_d` per type** — confirmed at end of **Week 4 pilot**. Initial values in v5 §8 P4. One-parameter-per-type calibration only; do not grid-search.
+### Verify wiring before any run
+```bash
+.venv/bin/python - <<'PY'
+from src.config import llm_factory as f
+c = f.get_chat_client()
+print(c.chat.completions.create(model=f.main_model(),
+      messages=[{"role":"user","content":"say ok"}], temperature=0).choices[0].message.content)
+e = f.get_embedding_client()
+print(len(e.embeddings.create(model=f.embedding_model(), input="hi").data[0].embedding))  # expect EMBEDDING_DIM
+PY
+```
 
-After Week 4, all hyperparameters are frozen for the full 144 runs. Any later change requires re-running everything.
+## Current build status (verified 2026-06-01 — read before implementing)
 
-## Logging is mandatory
+⚠️ **The experiment CANNOT produce a valid data point yet.** Tests pass on leaf modules, but the integration spine is stubbed/broken. Blockers, in dependency order:
 
-Every task must produce:
+| Area | Status | Notes |
+|---|---|---|
+| `src/agents/langgraph_agent.py` | **stub** | every node is a TODO; no LLM call; `solve_task` always returns `patch=""` → `resolved=0`. THE gate. `src/agents/tools.py` (8 real tools) is dead code — wire it in. |
+| `src/benchmark/evaluator.py` (eval_v3) | **placeholder** | invalid `docker run --timeout=` flag; never applies patch / uses `test_patch`; substring result parsing. Rebuild around the public `swebench` package. |
+| `src/analysis/aggregate_results.py` CL-F1 | **placeholder** | `cl_f1 = resolved_rate`. Need real `a_{i,j}` matrix + **anchor-probe** (v5 FD#29 primary). |
+| Tuple/dict crash | **bug** | `policy.retrieve()` returns `list[tuple[float, MemoryRecord]]`; callers in `sequence_runner.py` (608, 683–691) and `langgraph_agent.py` (298, 326–336) call `.get()` → crashes all 5 memory conditions. Repair plan Task 1. |
+| CLS `memory_type="consolidated_summary"` | **bug** | rejected by `record.py` validator (5 types). Fix = assign cluster **majority** type. Crashes 24 CLS runs. |
+| `reflection.py` / CLS summary | **stub** | naive truncation / hardcoded f-string; no LLM. |
+| Run entry point | **missing** | `make pilot/run-all` are `echo` TODOs; `ExperimentRunner` has no CLI. |
+| Repair plan `docs/superpowers/plans/2026-05-27-memory-runner-integration-repair.md` | **unapplied** | Tasks 1–6 (tuple, same-repo FAISS, embedding construction, decay persistence, archive deltas, loader no-reorder). |
+| Trajectory + cost logging | **unwired** | `TrajectoryLogger` + `CostTracker` not called by `sequence_runner`. |
+| Off-by-one limits | **bug** | `> max_steps` allows 21; should be `>=`. |
+| Analysis bugs | **bugs** | `glmm.py` fake `glmer` import; feature_importance scaler-leak/GBM-weight/placeholder-features; rank-biserial zero-diff handling. (Analysis stage — not needed to *run*.) |
 
-- A row in `runs/{run_id}/task_results.jsonl` (schema in v5 §11.1)
-- Events appended to `runs/{run_id}/memory_events.jsonl` (schema in v5 §11.2)
-- A trajectory file `runs/{run_id}/trajectories/{task_id}.json` (schema in v5 §11.3)
-- Memory snapshots `before_task_{n}.json` and `after_task_{n}.json` in `runs/{run_id}/memory/snapshots/`
+### Path to first pilot (see `docs/superpowers/plans/2026-06-01-build-to-first-pilot.md`)
+1. ✅ env + deps + dataset + Ollama scaffolding (done 2026-06-01)
+2. Bugfix slice: repair plan Tasks 1–6 + CLS majority-type + off-by-one + agent tuple bug
+3. Wire `llm_factory` into `store.py` / `classifier.py` (+ JSON-mode classifier) and the new agent/reflection/CLS LLM calls
+4. Real LangGraph agent loop + wire `tools.py` + `task_env`
+5. Real `eval_v3` (around `swebench`) + real CL-F1/anchor-probe + cost-as-tokens
+6. Run entry point (`experiment_runner` CLI + Makefile) + trajectory/cost logging
+7. `make smoke` on 1 real task → `make pilot` (2 seq × 6 cond × 1 seed) → calibrate → lock → 144 runs
 
-If a field is missing at run time, it cannot be recovered. **Log everything from Day 1.** Schema changes mid-experiment invalidate prior runs.
+## Calibration windows (unchanged from v5)
+- `top_k` + `max_context_tokens`: confirm at Spike-Week Friday gate (defaults 5 / 2000). **Re-validate under the new embedder (D2).**
+- Type-Aware Decay `decay_d` per type: confirm at end of Week-4 pilot (one parameter per type, no grid search).
+- After calibration, all hyperparameters are frozen; any later change forces a full 144-run re-run.
 
-## When implementing a new file
+## Commands
+`make setup` · `make verify-env` · `make smoke` · `make pilot` · `make run-condition POLICY=… SEED=…` · `make run-all` · `make aggregate` · `make stats` · `make plots` · `make lint` · `make test` · `make typecheck` · `make cost-report`
+(Several are still `echo` TODO stubs — see build status.)
 
-1. Read the relevant v5 section for that component.
-2. Write the file. Match the schemas in v5 §11 and the YAML in v5 §13.
-3. Write a corresponding pytest in `tests/` — at minimum, test that frozen invariants hold (e.g., `test_embedding_size_assert`, `test_retrieval_is_identical_across_policies`).
-4. Run `make lint` and `make test` before declaring done.
-
-## When suggesting a change
-
-1. Identify which v5 frozen decision (if any) the change touches.
-2. If it touches a frozen decision: do NOT silently apply. Surface the trade-off in chat.
-3. If it doesn't touch a frozen decision: apply, note in commit message which v5 section the change implements.
-
-## When the user asks "should I add X?"
-
-Default answer: refer to v5 §24 (Anti-creep manifesto). The plan survived three rounds of review precisely because it stayed narrow. Convince yourself that "X" is essential for one of the locked hypotheses (H1-H5) before suggesting yes.
-
-## Communication style
-
-- The user is a master's researcher, communicates in Vietnamese, expects substantive synthesis.
-- Technical content stays in English (code, schemas, paper terminology). Conversational replies can be Vietnamese.
-- The user values directness and honest pushback. Do not perform agreement.
-- When the user proposes scope expansion, evaluate against §24 first.
-
-## Useful pointers
-
-| Need | Read v5 §  |
-|---|---|
-| What the 6 policies actually do | §8 |
-| Memory record schema | §5.2 |
-| Logging schemas | §11 |
-| YAML config | §13 |
-| Metrics definitions | §14 |
-| Statistical analysis | §15 |
-| Feature importance (PR-AUC + VIF) | §16 |
-| Week-by-week calendar | §21 |
-| Risks and mitigations | §22 |
-| Acceptance criteria | §23 |
-| Code stubs and interfaces | §25 |
+## Communication
+The user is a master's researcher; communicates in Vietnamese; expects substantive synthesis and honest pushback. Technical content (code, schemas, paper terms) stays in English. Evaluate any scope expansion against v5 §24 first.
 
 ---
-
-> **In one line:** Implement v5 faithfully. Do not redesign during implementation.
+> **In one line:** Implement v5 faithfully on Ollama Cloud; the four deviations (D1–D4 in CLAUDE.md) are declared and disclosed, nothing else changes.
