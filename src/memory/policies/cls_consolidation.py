@@ -283,16 +283,6 @@ class CLSConsolidationPolicy(MemoryPolicy):
         Args:
             memory_store: Persistent memory storage backend
         """
-
-    def _consolidate(self, memory_store: "MemoryStore") -> None:
-        """Perform CLS consolidation logic.
-
-        This is a helper method extracted for testing purposes.
-        The actual consolidation is triggered by maintain().
-
-        Args:
-            memory_store: Persistent memory storage backend
-        """
         # Get all active records and compute current step
         active_records = memory_store.active_records()
 
@@ -536,6 +526,34 @@ class CLSConsolidationPolicy(MemoryPolicy):
 
         return valid_clusters
 
+    @staticmethod
+    def _majority_memory_type(cluster: list["MemoryRecord"]) -> str:
+        """Return the most common memory_type among a cluster's records.
+
+        Consolidated records must stay within the frozen 5-type taxonomy
+        (Invariant #7). Instead of inventing a 6th type, a consolidated
+        record inherits the MAJORITY memory_type of its constituent records.
+
+        Tie-breaking is deterministic and alphabetical: among the types that
+        share the maximum count, the lexicographically smallest type name is
+        chosen (e.g. {"config": 2, "test_update": 2} -> "config"). This makes
+        consolidation reproducible across runs and seeds.
+
+        Args:
+            cluster: Non-empty list of MemoryRecord instances to consolidate.
+
+        Returns:
+            The majority memory_type (one of the 5 valid content types).
+        """
+        counts: dict[str, int] = {}
+        for record in cluster:
+            counts[record.memory_type] = counts.get(record.memory_type, 0) + 1
+
+        max_count = max(counts.values())
+        tied_types = [mt for mt, c in counts.items() if c == max_count]
+        # Deterministic tie-break: alphabetical (smallest type name wins)
+        return min(tied_types)
+
     def _consolidate_cluster(
         self,
         cluster: list["MemoryRecord"],
@@ -576,12 +594,17 @@ class CLSConsolidationPolicy(MemoryPolicy):
         # Create consolidated MemoryRecord
         from ..record import MemoryRecord
 
+        # Consolidated records MUST use one of the 5 valid memory_types
+        # (Invariant #7, 5-type taxonomy). We assign the cluster's MAJORITY
+        # memory_type; is_consolidated=True keeps the record identifiable.
+        consolidated_type = self._majority_memory_type(cluster)
+
         consolidated_record = MemoryRecord(
             memory_id=MemoryRecord.generate_id(),
             task_id=f"consolidated_{current_step}",
             repo=cluster[0].repo,  # All cluster members have same repo
             sequence_index=current_step,
-            memory_type="consolidated_summary",  # Special type for consolidated
+            memory_type=consolidated_type,  # Majority type of cluster (5-type taxonomy)
             outcome="unknown",  # Consolidated summaries don't have outcomes
             issue_summary=summary["summary"],
             patch_summary="",  # No patch for consolidated

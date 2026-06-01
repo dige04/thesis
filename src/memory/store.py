@@ -29,6 +29,7 @@ from .embedding_utils import (
     verify_embedding_size,
 )
 from .record import MemoryRecord
+from src.config.llm_factory import embedding_api_key, embedding_base_url
 from src.errors import EmbeddingSizeError, MemoryBudgetError, handle_memory_budget_violation
 
 logger = logging.getLogger(__name__)
@@ -104,8 +105,14 @@ class MemoryStore:
         self.faiss_path = self.memory_dir / "memory.faiss"
         self._init_faiss_index()
 
-        # Initialize OpenAI client for embeddings
-        self.openai_client = OpenAI()
+        # Initialize OpenAI-compatible client for embeddings. Endpoint + key
+        # come from llm_factory (.env-driven): local Ollama by default, so the
+        # client constructs without an OPENAI_API_KEY. The `OpenAI` symbol is
+        # kept importable so existing tests can patch `src.memory.store.OpenAI`.
+        self.openai_client = OpenAI(
+            base_url=embedding_base_url(),
+            api_key=embedding_api_key(),
+        )
 
         # Create schema
         self._create_schema()
@@ -478,33 +485,24 @@ class MemoryStore:
         if query_norm > 0:
             query_vector = query_vector / query_norm
 
-        # Perform FAISS search on all vectors (we'll filter results)
-        # Search for more than top_k to account for filtering
-        search_k = min(self.faiss_index.ntotal, max(top_k * 2, 100))
-        similarities, indices = self.faiss_index.search(
-            query_vector.reshape(1, -1).astype(np.float32),
-            search_k
-        )
-
-        # Filter results to only include candidate vector IDs
-        candidate_set = set(candidate_vector_ids)
-        results = []
-
-        for sim, idx in zip(similarities[0], indices[0], strict=False):
-            if idx in candidate_set:
-                # Find the corresponding record
-                for record in candidate_records:
-                    if int(record.embedding_vector_id) == idx:
-                        results.append((float(sim), record))
-                        break
-
-                if len(results) >= top_k:
-                    break
+        # Score EVERY same-repo candidate exactly by reconstructing its stored
+        # vector and computing pure cosine against the query. A global FAISS
+        # top-k could be entirely cross-repo and hide valid same-repo memories
+        # (Frozen Invariant #16); pure cosine, no bonuses/penalties (#5).
+        scored_candidates: list[tuple[float, MemoryRecord]] = []
+        for record in candidate_records:
+            vector_id = int(record.embedding_vector_id)
+            vector = self.faiss_index.reconstruct(vector_id).astype(np.float32)
+            vector_norm = np.linalg.norm(vector)
+            if vector_norm > 0:
+                vector = vector / vector_norm
+            similarity = float(np.dot(query_vector.astype(np.float32), vector))
+            scored_candidates.append((similarity, record))
 
         # Sort by similarity descending (highest first)
-        results.sort(key=lambda x: x[0], reverse=True)
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
-        return results[:top_k]
+        return scored_candidates[:top_k]
 
     def archive(
         self,
@@ -544,8 +542,32 @@ class MemoryStore:
 
         self.conn.commit()
 
-        # TODO: Log memory event to memory_events.jsonl
-        # This will be implemented when the logging system is in place
+        # NOTE: memory_events.jsonl logging for archive/consolidate is performed
+        # by SequenceRunner (which holds the current task context), not here —
+        # see SequenceRunner._execute_task archive-delta capture.
+
+    def archived_memory_ids_at_step(self, step: int) -> list[str]:
+        """Return memory IDs archived at a specific sequence step.
+
+        Used by SequenceRunner to compute the prune/consolidation delta around
+        policy.maintain() for snapshot logging and task-result fields.
+
+        Args:
+            step: Sequence step (archived_at_step) to match.
+
+        Returns:
+            Sorted list of memory_ids archived at that step.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT memory_id FROM memory_records
+            WHERE is_archived = 1 AND archived_at_step = ?
+            ORDER BY memory_id
+            """,
+            (step,),
+        )
+        return [row[0] for row in cursor.fetchall()]
 
     def active_records(self) -> list[MemoryRecord]:
         """Return all non-archived records.

@@ -746,3 +746,85 @@ class TestMemoryStoreCountActive:
         memory_store.archive(records[2].memory_id, reason="test", current_step=1)
         
         assert memory_store.count_active() == 3
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Repair-plan Task 2 (plan 2.3): same-repo search must score ALL same-repo
+# candidates exactly, not rely on a global FAISS top-k that can be entirely
+# cross-repo (Frozen Invariant #16). And Task 5 (plan 2.6): archived-at-step.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _insert_raw_record(store, memory_id, repo, vector_id):
+    """Insert a minimal record directly into SQLite (bypasses embedding call)."""
+    cur = store.conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO memory_records (
+            memory_id, task_id, repo, sequence_index,
+            memory_type, outcome,
+            issue_summary, patch_summary, failure_summary, test_summary,
+            files_touched, functions_touched, commands_run,
+            retrieved_memory_ids_used,
+            embedding_text, embedding_vector_id,
+            token_length, raw_trace_ref,
+            use_count, last_retrieved_at_step,
+            success_after_retrieval_count, failure_after_retrieval_count,
+            importance_score, is_consolidated, source_memory_ids,
+            is_archived, archived_reason, archived_at_step,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            memory_id, "task-x", repo, 0,
+            "bug_fix", "pass",
+            "issue", "patch", None, None,
+            "[]", "[]", "[]",
+            "[]",
+            "Issue: i\n\nPatch: p", str(vector_id),
+            8, None,
+            0, None,
+            0, 0,
+            0.0, 0, None,
+            0, None, None,
+            "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z",
+        ),
+    )
+    store.conn.commit()
+
+
+def test_same_repo_search_scores_all_candidates_even_when_global_hits_are_cross_repo(memory_store):
+    import faiss
+
+    memory_store.embedding_dim = 3
+    memory_store.faiss_index = faiss.IndexFlatIP(3)
+    memory_store.vector_id_to_memory_id = {}
+
+    def add(memory_id, repo, vector):
+        vec = np.array(vector, dtype=np.float32)
+        vec = vec / np.linalg.norm(vec)
+        vid = memory_store.faiss_index.ntotal
+        memory_store.faiss_index.add(vec.reshape(1, -1))
+        memory_store.vector_id_to_memory_id[vid] = memory_id
+        _insert_raw_record(memory_store, memory_id, repo, vid)
+
+    # 120 cross-repo vectors identical to the query (cosine 1.0) drown out the
+    # single same-repo candidate in any global top-k search.
+    for i in range(120):
+        add(f"MEM-X-{i}", "flask/flask", [1.0, 0.0, 0.0])
+    add("MEM-DJANGO", "django/django", [0.5, 0.5, 0.0])
+
+    query = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    results = memory_store.search(
+        query_vector=query, top_k=1, repo="django/django", same_repo_only=True
+    )
+    assert [rec.memory_id for _, rec in results] == ["MEM-DJANGO"]
+
+
+def test_archived_memory_ids_at_step_returns_only_step_matches(memory_store, sample_record):
+    memory_store.add(sample_record)
+    memory_store.archive(
+        memory_id=sample_record.memory_id, reason="type_aware_decay", current_step=4
+    )
+
+    assert memory_store.archived_memory_ids_at_step(4) == [sample_record.memory_id]
+    assert memory_store.archived_memory_ids_at_step(3) == []

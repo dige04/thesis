@@ -347,10 +347,82 @@ class TestFrozenDecisionCompliance:
     def test_all_limits_locked(self):
         """Test that all execution limits are locked to frozen values."""
         agent = CodingAgent()
-        
+
         # Verify all frozen limits
         assert agent.limits.max_steps == 20              # Frozen #3
         assert agent.limits.max_tool_calls == 80         # Locked
         assert agent.limits.max_test_runs == 5           # Locked
         assert agent.limits.max_wall_time_minutes == 20  # Locked
         assert agent.limits.temperature == 0.0           # Frozen #26
+
+
+class TestStrictStepBoundary:
+    """
+    Plan 2.9 / Report Issue 7: strict 'Max 20 steps' boundary enforcement.
+
+    Frozen Invariant #3 is a STRICT 'max 20 steps'. The 20th step must be
+    allowed; the 21st step must force-fail with timeout=True. The error raised
+    must be the canonical src.errors.AgentTimeoutError carrying task_id,
+    limit_type, limit_value, and actual_value (the positional-arg mismatch in
+    coding_agent.py must be fixed so the canonical signature is honored).
+    """
+
+    def test_uses_canonical_error_class(self):
+        """coding_agent must raise the canonical errors.AgentTimeoutError."""
+        from src.errors import AgentTimeoutError as CanonicalTimeout
+
+        # The symbol exported by coding_agent must be the canonical one.
+        assert AgentTimeoutError is CanonicalTimeout
+
+    def test_20th_step_allowed_21st_force_fails(self):
+        """20 steps allowed; the 21st force-fails with timeout=True."""
+        agent = CodingAgent()
+        agent.state.reset()
+
+        # 20 steps must all be allowed (no exception).
+        for _ in range(20):
+            agent._increment_step()
+        assert agent.state.step_count == 20
+        assert agent.state.timeout is False
+
+        # The 21st step must force-fail.
+        with pytest.raises(AgentTimeoutError) as exc_info:
+            agent._increment_step()
+
+        assert agent.state.timeout is True
+        assert agent.state.timeout_reason == "max_steps_exceeded"
+
+        err = exc_info.value
+        # Canonical signature attributes must be populated correctly.
+        assert err.limit_type == "max_steps"
+        assert err.limit_value == 20
+        assert err.actual_value == 21
+        # task_id is part of the canonical signature and must be set, not
+        # swallowed into a positional slot.
+        assert hasattr(err, "task_id")
+
+    def test_tool_call_boundary_uses_canonical_signature(self):
+        """81st tool call force-fails with a well-formed canonical error."""
+        agent = CodingAgent()
+        agent.state.reset()
+        for _ in range(80):
+            agent._increment_tool_call()
+        with pytest.raises(AgentTimeoutError) as exc_info:
+            agent._increment_tool_call()
+        err = exc_info.value
+        assert err.limit_type == "max_tool_calls"
+        assert err.limit_value == 80
+        assert err.actual_value == 81
+
+    def test_test_run_boundary_uses_canonical_signature(self):
+        """6th test run force-fails with a well-formed canonical error."""
+        agent = CodingAgent()
+        agent.state.reset()
+        for _ in range(5):
+            agent._increment_test_run()
+        with pytest.raises(AgentTimeoutError) as exc_info:
+            agent._increment_test_run()
+        err = exc_info.value
+        assert err.limit_type == "max_test_runs"
+        assert err.limit_value == 5
+        assert err.actual_value == 6

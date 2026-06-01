@@ -373,17 +373,38 @@ class SequenceRunner:
                 retrieved_memories=retrieved_memories,
             )
 
-            # Step 7: Maintain policy (prune/consolidate)
+            # Step 7: Maintain policy (prune/consolidate), capturing the archive
+            # delta so pruned IDs reach the after-task snapshot, the memory
+            # event log, and the task result (mandatory logging, v5 §11).
             logger.debug(f"Running policy maintenance for {task.task_id}")
+            archived_before = set(
+                self.memory_store.archived_memory_ids_at_step(task.sequence_index)
+            )
             self.policy.maintain(self.memory_store)
+            archived_after = set(
+                self.memory_store.archived_memory_ids_at_step(task.sequence_index)
+            )
+            pruned_memory_ids = sorted(archived_after - archived_before)
+            consolidated_memory_ids: list[str] = []
 
-            # Step 8: Generate "after_task" memory snapshot
+            # Emit an archive event per newly-pruned memory.
+            for pruned_id in pruned_memory_ids:
+                self.memory_event_logger.log_archive(
+                    memory_id=pruned_id,
+                    step=task.sequence_index,
+                    task_id=task.task_id,
+                    repo=task.repo,
+                    reason=self.policy.name,
+                )
+
+            # Step 8: Generate "after_task" memory snapshot (with prune delta)
             logger.debug(f"Generating after_task snapshot for {task.task_id}")
             memory_stats_after = self.memory_store.stats()
             self.snapshot_logger.log_snapshot(
                 step=task.sequence_index,
                 boundary="after_task",
                 active_records=self.memory_store.active_records(),
+                archived_this_step=pruned_memory_ids,
                 current_step=task.sequence_index,
             )
 
@@ -398,6 +419,8 @@ class SequenceRunner:
                 memory_stats_before=memory_stats_before,
                 memory_stats_after=memory_stats_after,
                 task_wall_time=task_wall_time,
+                pruned_memory_ids=pruned_memory_ids,
+                consolidated_memory_ids=consolidated_memory_ids,
             )
 
             self.task_logger.log_task_result(task_result)
@@ -569,12 +592,40 @@ class SequenceRunner:
             "execution_time": eval_result.execution_time,
         }
 
+    def _retrieved_memory_ids(
+        self,
+        retrieved_memories: list[tuple[float, Any]],
+    ) -> list[str]:
+        """Return memory IDs from policy retrieval tuples ``(score, record)``."""
+        return [record.memory_id for _, record in retrieved_memories]
+
+    def _retrieved_memory_log_fields(
+        self,
+        task: Task,
+        retrieved_memories: list[tuple[float, Any]],
+    ) -> dict[str, list[Any]]:
+        """Build task-result log fields from policy retrieval tuples.
+
+        policy.retrieve()/shared_retrieve return ``list[tuple[float, MemoryRecord]]``;
+        normalization to id/score/type/age lists happens only here, at the
+        logging boundary (the retrieval API stays tuple-shaped).
+        """
+        return {
+            "ids": [record.memory_id for _, record in retrieved_memories],
+            "scores": [float(score) for score, _ in retrieved_memories],
+            "types": [record.memory_type for _, record in retrieved_memories],
+            "ages": [
+                max(0, task.sequence_index - record.sequence_index)
+                for _, record in retrieved_memories
+            ],
+        }
+
     def _reflect_and_write(
         self,
         task: Task,
         agent_result: dict[str, Any],
         eval_result: dict[str, Any],
-        retrieved_memories: list[dict[str, Any]],
+        retrieved_memories: list[tuple[float, Any]],
     ) -> dict[str, Any] | None:
         """Run reflection step and write memory record.
 
@@ -603,10 +654,8 @@ class SequenceRunner:
             "test_output": eval_result.get("error"),
         }
 
-        # Extract retrieved memory IDs
-        retrieved_memory_ids = [
-            mem.get("memory_id", "") for mem in retrieved_memories
-        ]
+        # Extract retrieved memory IDs from policy tuples (score, record)
+        retrieved_memory_ids = self._retrieved_memory_ids(retrieved_memories)
 
         try:
             # Run reflection and write memory
@@ -659,10 +708,12 @@ class SequenceRunner:
         seed: int,
         agent_result: dict[str, Any],
         eval_result: dict[str, Any],
-        retrieved_memories: list[dict[str, Any]],
+        retrieved_memories: list[tuple[float, Any]],
         memory_stats_before: dict[str, Any],
         memory_stats_after: dict[str, Any],
         task_wall_time: float,
+        pruned_memory_ids: list[str] | None = None,
+        consolidated_memory_ids: list[str] | None = None,
     ) -> TaskResult:
         """Build TaskResult from execution data.
 
@@ -679,18 +730,12 @@ class SequenceRunner:
         Returns:
             TaskResult instance ready for logging
         """
-        # Extract retrieved memory data
-        retrieved_memory_ids = [mem.get("memory_id", "") for mem in retrieved_memories]
-        retrieved_memory_scores = [
-            mem.get("similarity", 0.0) for mem in retrieved_memories
-        ]
-        retrieved_memory_types = [
-            mem.get("memory_type", "unknown") for mem in retrieved_memories
-        ]
-        retrieved_memory_ages = [
-            max(0, task.sequence_index - mem.get("sequence_index", 0))
-            for mem in retrieved_memories
-        ]
+        # Extract retrieved memory data from policy tuples (score, record)
+        retrieved_fields = self._retrieved_memory_log_fields(task, retrieved_memories)
+        retrieved_memory_ids = retrieved_fields["ids"]
+        retrieved_memory_scores = retrieved_fields["scores"]
+        retrieved_memory_types = retrieved_fields["types"]
+        retrieved_memory_ages = retrieved_fields["ages"]
 
         # Calculate syntax error rate
         syntax_error_rate = (
@@ -735,9 +780,9 @@ class SequenceRunner:
             memory_count_after=memory_stats_after["active_count"],
             memory_tokens_before=memory_stats_before["total_tokens"],
             memory_tokens_after=memory_stats_after["total_tokens"],
-            # Memory operations
-            pruned_memory_ids=[],  # TODO: Track pruned IDs from policy.maintain()
-            consolidated_memory_ids=[],  # TODO: Track consolidated IDs
+            # Memory operations (captured around policy.maintain())
+            pruned_memory_ids=pruned_memory_ids or [],
+            consolidated_memory_ids=consolidated_memory_ids or [],
             # Task metadata
             task_difficulty=task.difficulty_label,
             error_message=agent_result.get("error_message"),

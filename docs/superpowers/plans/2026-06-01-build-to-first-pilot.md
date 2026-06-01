@@ -21,15 +21,18 @@ This plan supersedes nothing in the 2026-05-27 repair plan; it **absorbs** that 
 
 ---
 
-## Phase 1 — Provider plumbing fixes that unblock tests
-- [ ] **1.1** Create `runs/` and `results/raw/`, `results/aggregated/`, `results/plots/`, `results/tables/` with `.gitkeep`; fix `tests/test_setup.py` (2 failures).
-- [ ] **1.2** Add `tests/test_llm_factory.py`: env precedence (override > env > default), `embedding_dim()` int coercion, separate chat/embedding base_urls, `reset_clients()`.
+## Phase 1 — Provider plumbing fixes that unblock tests  ✅ DONE (2026-06-01)
+- [x] **1.1** Created `runs/`, `logs/`, `results/{raw,aggregated,plots}/` with tracked `.gitkeep` (+ `.gitignore` negations); `tests/test_setup.py` → 7 pass.
+- [x] **1.2** `tests/test_llm_factory.py` (13 tests): precedence, `embedding_dim()` int coercion, distinct chat/embedding base_urls, `reset_clients()`.
+- [x] **3.1 (pulled forward)** `store.py` builds its embedding client via `llm_factory.get_embedding_client` semantics — `OpenAI(base_url=embedding_base_url(), api_key=embedding_api_key())` — so it constructs without `OPENAI_API_KEY`. The `OpenAI` symbol is kept so existing mocks still patch `src.memory.store.OpenAI`.
 
-**Acceptance:** `make test` → only the 11 retriever errors remain (cleared in 3.1).
+> **Carry-over:** the 11 `tests/test_memory_retriever.py` tests are still RED. They are **pre-existing** (baseline = errors): their `temp_memory_store` fixture never mocked embeddings, so they make a real call to `localhost:11434`. My change flipped them error→fail (construction now succeeds). FIX (Phase 3 test-infra): add a deterministic embedding mock to that fixture **without** breaking the pure-cosine/best-last ordering assertions. Net suite: 745→**774 pass**, 13→11 red, no green→red regression.
 
 ---
 
-## Phase 2 — Bugfix slice (absorbs 2026-05-27 repair plan + extras)
+## Phase 2 — Bugfix slice (absorbs 2026-05-27 repair plan + extras)  ✅ DONE (2026-06-01)
+All items below applied test-first (RED→GREEN). 2.1/2.3/2.4/2.6/2.2 done by main agent; 2.5/2.7/2.8/2.9 by a parallel bugfix workflow. **Correction to 2.9:** the report's "off-by-one (`>`→`>=`)" was WRONG — the limit counters are *post-increment*, so `>` already gives the exact "20 allowed, 21 force-fail" boundary (Invariant #3); flipping to `>=` would wrongly allow only 19. The real defect was the `AgentTimeoutError` positional-arg mismatch in `coding_agent.py`, now fixed to the canonical `errors.AgentTimeoutError` signature. `limit_tracker.py` was already correct and left unchanged.
+
 Apply each with its test (TDD). Files/lines are from the 2026-06-01 verified review.
 
 - [ ] **2.1 Tuple/dict in `sequence_runner.py`** (repair Task 1): add `_retrieved_memory_ids` / `_retrieved_memory_log_fields`; extend `_build_task_result` with `pruned_memory_ids`/`consolidated_memory_ids`. Lines 608, 683–691.

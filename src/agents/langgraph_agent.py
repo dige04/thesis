@@ -293,9 +293,10 @@ class CodingAgent:
             token_budget=self.max_context_tokens,
         )
 
-        # Store retrieved memories (already sorted ascending: best LAST)
+        # Store retrieved memories (already sorted ascending: best LAST).
+        # policy.retrieve() returns list[tuple[float, MemoryRecord]].
         state.retrieved_memories = retrieved
-        state.retrieved_memory_ids = [m.get("memory_id", "") for m in retrieved]
+        state.retrieved_memory_ids = [record.memory_id for _, record in retrieved]
 
         return state
 
@@ -320,21 +321,10 @@ class CodingAgent:
             'sequence_index': state.sequence_index,
         })()
 
-        # Convert retrieved memories to scored format (similarity, MemoryRecord)
-        # Memories are already sorted ascending (best LAST) from retrieval
-        scored_memories = []
-        for mem in state.retrieved_memories:
-            # Create a simple object with required attributes
-            record = type('MemoryRecord', (), {
-                'memory_id': mem.get('memory_id', 'UNKNOWN'),
-                'memory_type': mem.get('memory_type', 'unknown'),
-                'outcome': mem.get('outcome', 'unknown'),
-                'sequence_index': mem.get('sequence_index', 0),
-                'embedding_text': mem.get('embedding_text', mem.get('content', '')),
-            })()
-
-            similarity = mem.get('similarity', 0.0)
-            scored_memories.append((similarity, record))
+        # state.retrieved_memories is already list[tuple[float, MemoryRecord]]
+        # from policy.retrieve(); build_prompt_context consumes that shape
+        # directly (best item LAST is preserved by the ascending sort).
+        scored_memories = list(state.retrieved_memories)
 
         # Build prompt context using the proper function
         # This ensures consistent formatting and Lost-in-the-Middle mitigation

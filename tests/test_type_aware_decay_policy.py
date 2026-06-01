@@ -10,6 +10,8 @@ Tests verify:
 **Validates: Requirements 12**
 """
 
+from unittest.mock import Mock
+
 from src.memory.policies.type_aware_decay import TypeAwareDecayPolicy, TYPE_PARAMS
 from src.memory.record import MemoryRecord
 
@@ -55,6 +57,13 @@ class MockMemoryStore:
     def count_active(self):
         """Count non-archived records."""
         return len(self.active_records())
+
+    def update_importance_score(self, memory_id, score):
+        """Mock importance-score persistence (mirrors real MemoryStore)."""
+        for record in self.records:
+            if record.memory_id == memory_id:
+                record.importance_score = score
+                break
 
 
 def create_mock_record(memory_id, sequence_index, memory_type="bug_fix", use_count=0):
@@ -339,6 +348,27 @@ class TestTypeAwareDecayPolicyMaintain:
         # All records should have updated importance_score
         for record in store.active_records():
             assert record.importance_score > 0.0
+
+    def test_maintain_persists_importance_scores_to_store(self):
+        """Verify maintain() persists each computed score via update_importance_score."""
+        records = [
+            create_mock_record("MEM-001", sequence_index=0, memory_type="architectural"),
+            create_mock_record("MEM-002", sequence_index=2, memory_type="config"),
+        ]
+        store = MockMemoryStore()
+        store.records.extend(records)
+        store.update_importance_score = Mock()
+
+        policy = TypeAwareDecayPolicy(max_records=10)
+        policy.maintain(store)
+
+        assert store.update_importance_score.call_count == 2
+        updated_ids = {
+            call.args[0] for call in store.update_importance_score.call_args_list
+        }
+        assert updated_ids == {"MEM-001", "MEM-002"}
+        for call in store.update_importance_score.call_args_list:
+            assert call.args[1] > 0
 
 
 class TestTypeAwareDecayFormula:

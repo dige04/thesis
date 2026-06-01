@@ -156,8 +156,11 @@ class TestMemoryRecordConstruction:
         assert record.commands_run == ["pytest"]
         assert record.retrieved_memory_ids_used == ["MEM-001", "MEM-002"]
         assert record.memory_id.startswith("MEM-")
-        assert "Issue:" in record.embedding_text
-        assert "Patch:" in record.embedding_text
+        # embedding_text is now built by MemoryStore.add() (Invariant #4
+        # truncation), NOT pre-set by reflection — see plan 2.4 / repair Task 3
+        # and test_construct_memory_record_leaves_embedding_to_store.
+        assert record.embedding_text == ""
+        assert record.token_length == 0
 
 
 class TestEmbeddingTextConstruction:
@@ -539,3 +542,37 @@ class TestRequirement15Compliance:
 
         # Verify classify was called before write
         assert call_order == ["classify", "write"]
+
+
+def test_construct_memory_record_leaves_embedding_to_store():
+    """plan 2.4 / repair Task 3: reflection must NOT pre-set embedding_text;
+    MemoryStore.add() owns canonical (truncating) construction (Invariant #4)."""
+    task = Mock()
+    task.task_id = "django__django-1"
+    task.repo = "django/django"
+    task.issue_text = "Fix query bug"
+
+    reflection_data = {
+        "issue_summary": "Fix query bug",
+        "patch_summary": "diff --git a/q.py b/q.py",
+        "failure_summary": None,
+        "test_summary": None,
+        "files_touched": ["q.py"],
+        "functions_touched": [],
+        "commands_run": ["pytest"],
+        "outcome": "pass",
+    }
+
+    record = _construct_memory_record(
+        task=task,
+        reflection_data=reflection_data,
+        memory_type="bug_fix",
+        retrieved_memory_ids=[],
+        sequence_index=0,
+    )
+
+    assert record.embedding_text == ""
+    assert record.token_length == 0
+    # Summaries stay populated so MemoryStore.add() can build the payload.
+    assert record.issue_summary == "Fix query bug"
+    assert record.patch_summary == "diff --git a/q.py b/q.py"

@@ -16,17 +16,12 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-
-class AgentTimeoutError(Exception):
-    """Raised when agent execution exceeds any hard limit."""
-
-    def __init__(self, limit_type: str, limit_value: int, actual_value: int):
-        self.limit_type = limit_type
-        self.limit_value = limit_value
-        self.actual_value = actual_value
-        super().__init__(
-            f"Agent exceeded {limit_type} limit: {actual_value} > {limit_value}"
-        )
+# Use the canonical AgentTimeoutError defined in src/errors.py. Re-exported here
+# so existing imports (`from src.agents.coding_agent import AgentTimeoutError`)
+# resolve to the single, authoritative exception with the full signature
+# (message, task_id, limit_type, limit_value, actual_value). A previous local
+# 3-arg definition caused a positional-arg mismatch at the raise sites below.
+from src.errors import AgentTimeoutError
 
 
 @dataclass
@@ -68,6 +63,7 @@ class AgentExecutionState:
     start_time: float | None = None
     timeout: bool = False
     timeout_reason: str | None = None
+    task_id: str | None = None
 
     def reset(self):
         """Reset state for new task."""
@@ -77,6 +73,7 @@ class AgentExecutionState:
         self.start_time = time.time()
         self.timeout = False
         self.timeout_reason = None
+        self.task_id = None
 
     def elapsed_minutes(self) -> float:
         """Get elapsed time in minutes."""
@@ -132,14 +129,22 @@ class CodingAgent:
         Raises:
             AgentTimeoutError: If any limit is exceeded
         """
-        # Check step limit (CRITICAL - frozen decision #3)
+        # Check step limit (CRITICAL - frozen decision #3).
+        # Counters are post-increment (count == steps taken so far). With ">",
+        # 20 steps are allowed and the 21st force-fails — exactly the strict
+        # "Max 20 steps" boundary required by Frozen Invariant #3.
         if self.state.step_count > self.limits.max_steps:
             self.state.timeout = True
             self.state.timeout_reason = "max_steps_exceeded"
             raise AgentTimeoutError(
-                "max_steps",
-                self.limits.max_steps,
-                self.state.step_count
+                message=(
+                    f"Agent exceeded max_steps limit: "
+                    f"{self.state.step_count} > {self.limits.max_steps}"
+                ),
+                task_id=self.state.task_id,
+                limit_type="max_steps",
+                limit_value=self.limits.max_steps,
+                actual_value=self.state.step_count,
             )
 
         # Check tool call limit
@@ -147,9 +152,14 @@ class CodingAgent:
             self.state.timeout = True
             self.state.timeout_reason = "max_tool_calls_exceeded"
             raise AgentTimeoutError(
-                "max_tool_calls",
-                self.limits.max_tool_calls,
-                self.state.tool_call_count
+                message=(
+                    f"Agent exceeded max_tool_calls limit: "
+                    f"{self.state.tool_call_count} > {self.limits.max_tool_calls}"
+                ),
+                task_id=self.state.task_id,
+                limit_type="max_tool_calls",
+                limit_value=self.limits.max_tool_calls,
+                actual_value=self.state.tool_call_count,
             )
 
         # Check test run limit
@@ -157,20 +167,30 @@ class CodingAgent:
             self.state.timeout = True
             self.state.timeout_reason = "max_test_runs_exceeded"
             raise AgentTimeoutError(
-                "max_test_runs",
-                self.limits.max_test_runs,
-                self.state.test_run_count
+                message=(
+                    f"Agent exceeded max_test_runs limit: "
+                    f"{self.state.test_run_count} > {self.limits.max_test_runs}"
+                ),
+                task_id=self.state.task_id,
+                limit_type="max_test_runs",
+                limit_value=self.limits.max_test_runs,
+                actual_value=self.state.test_run_count,
             )
 
-        # Check wall time limit
+        # Check wall time limit (hard cap: >= is correct for a time threshold)
         elapsed = self.state.elapsed_minutes()
         if elapsed >= self.limits.max_wall_time_minutes:
             self.state.timeout = True
             self.state.timeout_reason = "max_wall_time_exceeded"
             raise AgentTimeoutError(
-                "max_wall_time_minutes",
-                self.limits.max_wall_time_minutes,
-                int(elapsed)
+                message=(
+                    f"Agent exceeded max_wall_time_minutes limit: "
+                    f"{int(elapsed)} >= {self.limits.max_wall_time_minutes}"
+                ),
+                task_id=self.state.task_id,
+                limit_type="max_wall_time_minutes",
+                limit_value=self.limits.max_wall_time_minutes,
+                actual_value=int(elapsed),
             )
 
     def _increment_step(self) -> None:
@@ -228,6 +248,7 @@ class CodingAgent:
         """
         # Reset state for new task
         self.state.reset()
+        self.state.task_id = task.get("task_id")
 
         try:
             # Check limits immediately to catch wall time issues

@@ -604,6 +604,72 @@ class TestCLSConsolidationPolicyDocumentation:
         assert "fallback" in CLSConsolidationPolicy.maintain.__doc__.lower()
 
 
+class TestCLSConsolidationPolicyConsolidatedRecordType:
+    """Test consolidated record memory_type respects 5-type taxonomy (Invariant #7).
+
+    Bug 1 (plan 2.8): consolidated records previously used
+    memory_type="consolidated_summary", which the MemoryRecord validator
+    rejects with ValueError before store.add() is ever reached. The fix
+    assigns the cluster's MAJORITY memory_type instead. Ties are broken
+    alphabetically (smallest type name wins).
+    """
+
+    def test_consolidated_record_type_is_valid_and_majority(self):
+        """Consolidated record's memory_type is in VALID_MEMORY_TYPES and equals
+        the majority type of the input cluster, and store.add() does not raise."""
+        from src.memory.record import VALID_MEMORY_TYPES
+
+        policy = CLSConsolidationPolicy(max_records=100)
+        store = MockMemoryStore()
+
+        # Cluster of 3 memories: 2 bug_fix, 1 config -> majority is bug_fix
+        cluster = [
+            create_mock_record("mem-c0", 0, memory_type="bug_fix"),
+            create_mock_record("mem-c1", 1, memory_type="bug_fix"),
+            create_mock_record("mem-c2", 2, memory_type="config"),
+        ]
+        for record in cluster:
+            store.records.append(record)
+
+        # Must NOT raise ValueError (previously raised inside MemoryRecord ctor)
+        policy._consolidate_cluster(cluster, store, current_step=20)
+
+        consolidated = [r for r in store.records if r.is_consolidated]
+        assert len(consolidated) == 1
+        consolidated_record = consolidated[0]
+
+        # Type must be in the frozen 5-type taxonomy
+        assert consolidated_record.memory_type in VALID_MEMORY_TYPES
+        # Type must equal the majority type of the cluster
+        assert consolidated_record.memory_type == "bug_fix"
+        # is_consolidated flag preserved for identifiability
+        assert consolidated_record.is_consolidated is True
+
+    def test_consolidated_record_type_tie_breaks_alphabetically(self):
+        """On a tie, the majority type is broken deterministically (alphabetical)."""
+        from src.memory.record import VALID_MEMORY_TYPES
+
+        policy = CLSConsolidationPolicy(max_records=100)
+        store = MockMemoryStore()
+
+        # Tie: 1 test_update, 1 config -> alphabetical winner is "config"
+        cluster = [
+            create_mock_record("mem-t0", 0, memory_type="test_update"),
+            create_mock_record("mem-t1", 1, memory_type="config"),
+            create_mock_record("mem-t2", 2, memory_type="test_update"),
+            create_mock_record("mem-t3", 3, memory_type="config"),
+        ]
+        for record in cluster:
+            store.records.append(record)
+
+        policy._consolidate_cluster(cluster, store, current_step=20)
+
+        consolidated = [r for r in store.records if r.is_consolidated]
+        assert len(consolidated) == 1
+        assert consolidated[0].memory_type in VALID_MEMORY_TYPES
+        assert consolidated[0].memory_type == "config"
+
+
 class TestCLSConsolidationPolicyFrozenInvariants:
     """Test frozen invariants from design document."""
 

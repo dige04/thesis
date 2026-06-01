@@ -121,9 +121,15 @@ class SWEBenchCLLoader:
             task = self._parse_task(task_data)
             tasks.append(task)
 
-        # Requirement 1: Preserve chronological ordering
-        # Sort by sequence_index to ensure chronological order
-        tasks.sort(key=lambda t: t.sequence_index)
+        # Frozen Decision #1: Preserve chronological ordering.
+        # Official SWE-Bench-CL data must already be ordered by sequence_index.
+        # Refuse to silently reorder it; raise instead.
+        sequence_indices = [task.sequence_index for task in tasks]
+        if sequence_indices != sorted(sequence_indices):
+            raise ValueError(
+                f"Tasks in sequence '{sequence_name}' must already be ordered by "
+                "sequence_index. Refusing to reorder official SWE-Bench-CL data."
+            )
 
         # Construct Sequence object (validation happens in __post_init__)
         sequence = Sequence(

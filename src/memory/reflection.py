@@ -286,13 +286,11 @@ def _construct_memory_record(
     # Generate unique memory ID
     memory_id = MemoryRecord.generate_id()
 
-    # Construct embedding text (Issue + Error + Diff only, < 7500 tokens)
-    # Requirement 4: Embedding payload construction
-    embedding_text = _construct_embedding_text(
-        issue_summary=reflection_data["issue_summary"],
-        failure_summary=reflection_data["failure_summary"],
-        patch_summary=reflection_data["patch_summary"]
-    )
+    # NOTE: embedding_text is deliberately left empty here. MemoryStore.add()
+    # owns canonical embedding construction via embedding_utils.construct_
+    # embedding_text, which enforces the <7500-token truncation (Invariant #4).
+    # Pre-building it here would bypass that cap. The issue/failure/patch
+    # summaries below give add() everything it needs.
 
     # Create MemoryRecord
     record = MemoryRecord(
@@ -320,8 +318,8 @@ def _construct_memory_record(
         # Retrieval provenance
         retrieved_memory_ids_used=retrieved_memory_ids,
 
-        # Embedding (vector_id will be set by MemoryStore.add())
-        embedding_text=embedding_text,
+        # Embedding (text + vector_id + token_length all set by MemoryStore.add())
+        embedding_text="",
         embedding_vector_id="",  # Set by store
 
         # Size (will be computed by store)
