@@ -98,8 +98,14 @@ policies:
     fallback_prune: "type_aware_decay"
 
 execution:
-  docker_max_workers: 4               # increase gradually, monitor iostat
-  vps_arch: "x86_64"
+  # D5 (authorized 2026-06-02): the actual host is LOCAL arm64 macOS, NOT the
+  # v5 §0.1 #4/#5 x86_64 VPS. The vps_* keys below are retained as the v5
+  # reference spec (provenance/schema compat); host_arch records the real arch.
+  # Runtime concurrency is sequential-first (decision K) regardless of the
+  # docker_max_workers default; bounded parallelism (<=3) is a post-pilot switch.
+  host_arch: "arm64"                  # actual execution arch (D5); overrides v5 §0.1 #4/#5
+  docker_max_workers: 4               # v5 reference; runner runs sequentially for the pilot
+  vps_arch: "x86_64"                  # v5 reference VPS spec (provenance)
   vps_ram_gb: 32
   vps_disk_gb: 250
   vps_cores: 8

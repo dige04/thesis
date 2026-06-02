@@ -91,6 +91,18 @@ These are NOT debatable during implementation. Any deviation must be justified i
 | 29 | Primary CL-Stability estimator | Anchor probe (§14.2): k=5 anchors per sequence, 4 probe points; full `a_{i,j}` matrix demoted to supplementary (§14.3) |
 | 30 | H1 rejection rule (D-0.1) | α-strict: H1 rejected for policy P iff H1a outcome is C (P degraded). H1b is reported as an independent secondary claim, not part of the rejection rule. |
 
+> **Runtime overrides (authorized 2026-06-01 / 2026-06-02 — deviations D1–D5, full table in CLAUDE.md).**
+>
+> Each override below is held **constant across all 6 conditions × 3 seeds** (a fixed factor), so between-policy inference (H1–H5) is unaffected. All must be disclosed in Methods → "Deviations from pre-registration." Absolute resolve rates become non-comparable to GPT-5.4 / SWE-Bench leaderboards.
+>
+> - **#2 Base model** (D1): GPT-5.4 → `qwen3-coder:480b-cloud` (agent) + `gpt-oss:20b-cloud` (summary/classifier) on Ollama Cloud.
+> - **#4 Eval harness + #5 Compute environment** (D5): x86_64 VPS (32 GB / 250 GB / 8 c) → **local arm64 macOS**; swebench **arm64** instance images, build-on-demand. A Spike-Week build-probe over all 273 `instance_id`s produces a deterministic exclusion list of arm64-unbuildable tasks, applied *identically across all conditions* under the existing #6 "documented compute trade-off" clause (disclose per-sequence counts; escalate to x86_64 if >15%/sequence).
+> - **Embedder** (D2): → local `nomic-embed-text-v2-moe` 768-d (#18 payload rule unchanged); re-validate `top_k`/`max_context_tokens` under it.
+> - **Cost metric** (D3): per-token USD → token count (provider-independent compute proxy); Pareto x-axis = total tokens.
+> - **Classifier structured output** (D4): `beta.chat.completions.parse` → JSON-mode + Pydantic (#16/#17 task unchanged; log + disclose failure rate).
+>
+> All other §0.1 decisions stand unchanged — in particular **D-0.3** (`decay_d` not calibrated; pilot is a sanity check), **#9** (anchor-probe primary CL-Stability), **#19** (pure-cosine retrieval), **#20** (best-item-last), **#21** (max-20 hard fail).
+
 ---
 
 # 1. Research question, sub-questions, hypotheses

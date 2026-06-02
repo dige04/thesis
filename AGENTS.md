@@ -79,6 +79,14 @@ print(len(e.embeddings.create(model=f.embedding_model(), input="hi").data[0].emb
 PY
 ```
 
+## Execution model (arm64 unified container — locked 2026-06-02, deviation D5)
+
+- **Host:** local **arm64 macOS** (Docker `linux/arm64`). NOT the v5 §0.1 #4/#5 x86_64 VPS. Keep ≥ ~60 GB free; build-on-demand + prune images between tasks.
+- **Per task:** one live container started from the swebench **arm64 instance image** (repo @ `base_commit` + deps installed). The ReAct agent's tools act *inside* it via `docker exec` (writes via `docker cp`/stdin); `get_patch` = in-container `git diff`. The ReAct loop + LLM stay on the host → Ollama Cloud; only tool *effects* relocate.
+- **Eval ground-truth:** loaded from canonical **`princeton-nlp/SWE-bench_Verified`** by `instance_id` (`FAIL_TO_PASS`/`PASS_TO_PASS`/`version`/`environment_setup_commit`; the curriculum JSON dropped these). Curriculum = ordering + `issue_text` only. Eval applies `test_patch` + runs F2P/P2P in the same/fresh instance container.
+- **Build-probe (Phase 5.0, GATE):** before any run, probe all 273 ids for Verified coverage + arm64 buildability → deterministic exclusion list (applied identically across all 6×3). Escalate to x86_64 if >15%/sequence unbuildable.
+- **Throughput:** sequential-first (1 run at a time); task-boundary checkpoint/resume via `after_task` snapshots survives the Ollama 5h/7d resets. Parallelism ≤3 (Pro cap) only after the pilot is stable.
+
 ## Current build status (verified 2026-06-01 — read before implementing)
 
 ⚠️ **The experiment CANNOT produce a valid data point yet.** Tests pass on leaf modules, but the integration spine is stubbed/broken. Blockers, in dependency order:
@@ -108,7 +116,7 @@ PY
 
 ## Calibration windows (unchanged from v5)
 - `top_k` + `max_context_tokens`: confirm at Spike-Week Friday gate (defaults 5 / 2000). **Re-validate under the new embedder (D2).**
-- Type-Aware Decay `decay_d` per type: confirm at end of Week-4 pilot (one parameter per type, no grid search).
+- Type-Aware Decay `decay_d` per type: **NOT calibrated** (locked per v5 D-0.3, §8 P4). The per-type values are theoretical and frozen at design time. The Week-4 pilot is a *sanity check only* — if Type-Aware underperforms Random Prune it is a real signal carried into the main run, not a calibration trigger.
 - After calibration, all hyperparameters are frozen; any later change forces a full 144-run re-run.
 
 ## Commands
