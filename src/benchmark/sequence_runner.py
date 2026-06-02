@@ -162,7 +162,7 @@ class SequenceRunner:
         # Check if pilot mode is enabled for retrieval quality logging
         self.pilot_mode_enabled = config.get("experiment", {}).get("pilot_mode", {}).get("enabled", False)
         self.log_retrieval_quality = config.get("experiment", {}).get("pilot_mode", {}).get("log_retrieval_quality", False)
-        
+
         # Initialize retrieval quality metrics storage
         self.retrieval_quality_metrics: list[RetrievalQualityMetrics] = []
 
@@ -275,7 +275,7 @@ class SequenceRunner:
         finally:
             # Close memory store
             self.memory_store.close()
-            
+
             # Save retrieval quality metrics if pilot mode enabled
             if self.pilot_mode_enabled and self.log_retrieval_quality and self.retrieval_quality_metrics:
                 self._save_retrieval_quality_metrics()
@@ -463,7 +463,7 @@ class SequenceRunner:
             f"Retrieved {len(retrieved)} memories for {task.task_id} "
             f"(top_k={top_k}, budget={token_budget})"
         )
-        
+
         # Compute retrieval quality metrics if pilot mode enabled
         if self.pilot_mode_enabled and self.log_retrieval_quality:
             all_available = self.memory_store.active_records()
@@ -827,11 +827,12 @@ class SequenceRunner:
         """
         import json
         from dataclasses import asdict
+
         from src.metrics.retrieval_quality import aggregate_retrieval_quality
-        
+
         # Aggregate metrics
         aggregated = aggregate_retrieval_quality(self.retrieval_quality_metrics)
-        
+
         # Build output data
         output = {
             "run_id": self.run_id,
@@ -841,12 +842,12 @@ class SequenceRunner:
                 asdict(metrics) for metrics in self.retrieval_quality_metrics
             ],
         }
-        
+
         # Save to file
         output_file = self.run_dir / "retrieval_quality_metrics.json"
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(output, f, indent=2)
-        
+
         logger.info(
             f"Saved retrieval quality metrics to {output_file}: "
             f"mean_precision@k={aggregated['mean_precision_at_k']:.3f}, "

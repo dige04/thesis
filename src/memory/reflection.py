@@ -21,7 +21,10 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from src.config.llm_factory import get_chat_client
-from src.errors import ClassifierError, ReflectionError, handle_classifier_failure, handle_reflection_failure
+from src.errors import (
+    ClassifierError,
+    ReflectionError,
+)
 
 from .classifier import classify_memory_type
 from .record import MemoryRecord

@@ -34,7 +34,7 @@ from src.config.llm_factory import get_chat_client, summary_model
 from ..embedding_utils import _truncate_to_token_budget, count_tokens
 from ..retriever import shared_retrieve
 from .base import MemoryPolicy
-from .type_aware_decay import TYPE_PARAMS, TypeAwareDecayPolicy
+from .type_aware_decay import TypeAwareDecayPolicy
 
 if TYPE_CHECKING:
     from ..record import MemoryRecord
@@ -166,7 +166,7 @@ class CLSConsolidationPolicy(MemoryPolicy):
     """
 
     name = "cls_consolidation"
-    
+
     # Expose frozen parameters as class attributes for testing
     CONSOLIDATION_INTERVAL = CONSOLIDATION_INTERVAL
     MIN_CLUSTER_SIZE = MIN_CLUSTER_SIZE
@@ -446,7 +446,7 @@ class CLSConsolidationPolicy(MemoryPolicy):
             - Consolidation respects repository boundaries
             - Each repo is processed independently
         """
-        repo_groups: dict[str, list["MemoryRecord"]] = {}
+        repo_groups: dict[str, list[MemoryRecord]] = {}
 
         for record in candidates:
             if record.repo not in repo_groups:
@@ -551,7 +551,7 @@ class CLSConsolidationPolicy(MemoryPolicy):
         ).fit(distance_matrix)
 
         # Group by cluster ID
-        clusters: dict[int, list["MemoryRecord"]] = {}
+        clusters: dict[int, list[MemoryRecord]] = {}
 
         for idx, cluster_id in enumerate(clustering.labels_):
             if cluster_id == -1:

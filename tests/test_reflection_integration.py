@@ -8,18 +8,18 @@ Requirements: 15
 Design: §9 Memory Writing & Reflection Step
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 
-from src.memory.reflection import (
-    reflect_and_write_memory,
-    ReflectionError,
-    _extract_reflection_data,
-    _construct_memory_record,
-    _construct_embedding_text,
-)
+import pytest
+
 from src.memory.classifier import ClassifierError
-from src.memory.record import VALID_MEMORY_TYPES, VALID_OUTCOMES
+from src.memory.reflection import (
+    ReflectionError,
+    _construct_embedding_text,
+    _construct_memory_record,
+    _extract_reflection_data,
+    reflect_and_write_memory,
+)
 
 
 class TestReflectionExtraction:

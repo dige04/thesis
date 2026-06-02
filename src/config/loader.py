@@ -7,18 +7,18 @@ Requirements:
 - Requirement 26: Configuration Management
 """
 
-import os
-from pathlib import Path
-from typing import Any, Dict, Optional
-import yaml
 from copy import deepcopy
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 try:
     from dotenv import load_dotenv as _load_dotenv
 except Exception:  # pragma: no cover - dependency optional during setup
     _load_dotenv = None
 
-from src.errors import ConfigValidationError, ConfigFrozenError, handle_config_validation_failure
+from src.errors import ConfigFrozenError, ConfigValidationError
 
 
 class ConfigLoader:
@@ -34,7 +34,7 @@ class ConfigLoader:
         config: The merged configuration dictionary
         is_frozen: Whether the configuration is frozen (immutable)
     """
-    
+
     # Required top-level keys that must be present in base.yaml
     REQUIRED_KEYS = [
         "experiment",
@@ -47,7 +47,7 @@ class ConfigLoader:
         "evaluation",
         "statistical",
     ]
-    
+
     # Parameters that must be positive (> 0)
     POSITIVE_PARAMS = [
         ("memory", "max_context_tokens"),
@@ -62,14 +62,14 @@ class ConfigLoader:
         ("execution", "docker_max_workers"),
         ("evaluation", "bootstrap_iterations"),
     ]
-    
+
     # Parameters that are locked after calibration (Week 4)
     CALIBRATION_PARAMS = [
         ("memory", "top_k"),
         ("memory", "max_context_tokens"),
         ("policies", "type_aware_decay", "type_params"),
     ]
-    
+
     def __init__(self, base_config_path: str = "configs/base.yaml"):
         """Initialize configuration loader.
         
@@ -77,11 +77,11 @@ class ConfigLoader:
             base_config_path: Path to base configuration file
         """
         self.base_config_path = Path(base_config_path)
-        self.config: Dict[str, Any] = {}
+        self.config: dict[str, Any] = {}
         self.is_frozen = False
         self._calibration_frozen = False
-        
-    def load(self, policy_name: Optional[str] = None) -> Dict[str, Any]:
+
+    def load(self, policy_name: str | None = None) -> dict[str, Any]:
         """Load configuration with optional policy-specific overrides.
         
         Args:
@@ -103,28 +103,28 @@ class ConfigLoader:
         # Load base configuration
         if not self.base_config_path.exists():
             raise FileNotFoundError(f"Base configuration not found: {self.base_config_path}")
-        
-        with open(self.base_config_path, 'r') as f:
+
+        with open(self.base_config_path) as f:
             self.config = yaml.safe_load(f)
-        
+
         # Validate base configuration
         self._validate_required_keys()
         self._validate_positive_values()
-        
+
         # Load and merge policy-specific overrides if provided
         if policy_name:
             policy_config_path = self.base_config_path.parent / "policies" / f"{policy_name}.yaml"
             if policy_config_path.exists():
-                with open(policy_config_path, 'r') as f:
+                with open(policy_config_path) as f:
                     policy_overrides = yaml.safe_load(f)
                 # Only merge if file contains actual data (not just comments/empty)
                 if policy_overrides:
                     self._merge_overrides(policy_overrides)
                     # Re-validate after merge
                     self._validate_positive_values()
-        
+
         return deepcopy(self.config)
-    
+
     def _validate_required_keys(self) -> None:
         """Validate that all required top-level keys are present.
         
@@ -136,7 +136,7 @@ class ConfigLoader:
             raise ConfigValidationError(
                 f"Missing required configuration keys: {', '.join(missing_keys)}"
             )
-    
+
     def _validate_positive_values(self) -> None:
         """Validate that critical parameters have positive values.
         
@@ -149,12 +149,12 @@ class ConfigLoader:
             if value is not None and (not isinstance(value, (int, float)) or value <= 0):
                 param_name = ".".join(path)
                 errors.append(f"{param_name} must be positive (got {value})")
-        
+
         if errors:
             raise ConfigValidationError(
-                f"Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+                "Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
             )
-    
+
     def _get_nested_value(self, path: tuple) -> Any:
         """Get value from nested dictionary using path tuple.
         
@@ -170,7 +170,7 @@ class ConfigLoader:
                 return None
             current = current[key]
         return current
-    
+
     def _set_nested_value(self, path: tuple, value: Any) -> None:
         """Set value in nested dictionary using path tuple.
         
@@ -184,16 +184,16 @@ class ConfigLoader:
                 current[key] = {}
             current = current[key]
         current[path[-1]] = value
-    
-    def _merge_overrides(self, overrides: Dict[str, Any]) -> None:
+
+    def _merge_overrides(self, overrides: dict[str, Any]) -> None:
         """Merge policy-specific overrides into base configuration.
         
         Args:
             overrides: Dictionary of override values
         """
         self._deep_merge(self.config, overrides)
-    
-    def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> None:
+
+    def _deep_merge(self, base: dict[str, Any], override: dict[str, Any]) -> None:
         """Recursively merge override dictionary into base dictionary.
         
         Args:
@@ -205,7 +205,7 @@ class ConfigLoader:
                 self._deep_merge(base[key], value)
             else:
                 base[key] = value
-    
+
     def freeze(self) -> None:
         """Freeze configuration to prevent further modifications.
         
@@ -213,7 +213,7 @@ class ConfigLoader:
         all hyperparameters for the full 144-run experiment.
         """
         self.is_frozen = True
-    
+
     def freeze_calibration_params(self) -> None:
         """Freeze calibration-specific parameters after Week 4.
         
@@ -221,7 +221,7 @@ class ConfigLoader:
         while allowing other configuration changes.
         """
         self._calibration_frozen = True
-    
+
     def update_calibration_param(self, path: tuple, value: Any) -> None:
         """Update a calibration parameter (only allowed before freezing).
         
@@ -237,17 +237,17 @@ class ConfigLoader:
             raise ConfigFrozenError(
                 f"Cannot update {'.'.join(path)}: calibration parameters are frozen"
             )
-        
+
         # Verify this is a calibration parameter
         if path not in self.CALIBRATION_PARAMS:
             raise ConfigValidationError(
                 f"{'.'.join(path)} is not a calibration parameter. "
                 f"Calibration parameters: {['.'.join(p) for p in self.CALIBRATION_PARAMS]}"
             )
-        
+
         self._set_nested_value(path, value)
         self._validate_positive_values()
-    
+
     def get(self, *path: str, default: Any = None) -> Any:
         """Get configuration value using dot-notation path.
         
@@ -260,8 +260,8 @@ class ConfigLoader:
         """
         value = self._get_nested_value(path)
         return value if value is not None else default
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Return a deep copy of the configuration dictionary.
         
         Returns:
@@ -272,8 +272,8 @@ class ConfigLoader:
 
 # Convenience functions for common use cases
 
-def load_config(policy_name: Optional[str] = None, 
-                base_config_path: str = "configs/base.yaml") -> Dict[str, Any]:
+def load_config(policy_name: str | None = None,
+                base_config_path: str = "configs/base.yaml") -> dict[str, Any]:
     """Load configuration with optional policy overrides.
     
     Args:
@@ -291,8 +291,8 @@ def load_config(policy_name: Optional[str] = None,
     return loader.load(policy_name)
 
 
-def get_policy_config(policy_name: str, 
-                      base_config_path: str = "configs/base.yaml") -> Dict[str, Any]:
+def get_policy_config(policy_name: str,
+                      base_config_path: str = "configs/base.yaml") -> dict[str, Any]:
     """Get configuration for a specific policy.
     
     Args:
@@ -310,8 +310,8 @@ def get_policy_config(policy_name: str,
         >>> max_records = policy_config["max_records"]
     """
     config = load_config(policy_name, base_config_path)
-    
+
     if "policies" not in config or policy_name not in config["policies"]:
         raise KeyError(f"Policy '{policy_name}' not found in configuration")
-    
+
     return config["policies"][policy_name]

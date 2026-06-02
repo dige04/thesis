@@ -24,13 +24,13 @@ import faiss
 import numpy as np
 from openai import OpenAI
 
+from src.config.llm_factory import embedding_api_key, embedding_base_url
+
 from .embedding_utils import (
     construct_embedding_text,
     verify_embedding_size,
 )
 from .record import MemoryRecord
-from src.config.llm_factory import embedding_api_key, embedding_base_url
-from src.errors import EmbeddingSizeError, MemoryBudgetError, handle_memory_budget_violation
 
 logger = logging.getLogger(__name__)
 

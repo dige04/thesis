@@ -6,14 +6,15 @@ instantiated correctly. Full integration tests with actual API calls
 are in test_classifier_integration.py.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.memory.classifier import (
-    MemoryClassifier,
     ClassifierError,
-    classify_memory_type,
+    MemoryClassifier,
     MemoryTypeEnum,
+    classify_memory_type,
 )
 from src.memory.record import VALID_MEMORY_TYPES
 

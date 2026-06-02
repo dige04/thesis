@@ -9,11 +9,8 @@ import subprocess
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest
-
 from src.agents import langgraph_agent
 from src.agents.langgraph_agent import CodingAgent
-
 
 # --- fake OpenAI-compatible chat client -------------------------------------
 

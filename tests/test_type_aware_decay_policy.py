@@ -12,7 +12,7 @@ Tests verify:
 
 from unittest.mock import Mock
 
-from src.memory.policies.type_aware_decay import TypeAwareDecayPolicy, TYPE_PARAMS
+from src.memory.policies.type_aware_decay import TYPE_PARAMS, TypeAwareDecayPolicy
 from src.memory.record import MemoryRecord
 
 
@@ -136,16 +136,16 @@ class TestTypeAwareDecayPolicyTypeParams:
         """Verify TYPE_PARAMS has locked values from THESIS_FINAL_v5.md §8 P4 (Req 12.4)."""
         # architectural: base=1.0, decay=0.05 (Sacred)
         assert TYPE_PARAMS["architectural"] == (1.0, 0.05, "Sacred")
-        
+
         # api_change: base=0.8, decay=0.15 (Critical)
         assert TYPE_PARAMS["api_change"] == (0.8, 0.15, "Critical")
-        
+
         # bug_fix: base=0.6, decay=0.25 (Important)
         assert TYPE_PARAMS["bug_fix"] == (0.6, 0.25, "Important")
-        
+
         # test_update: base=0.4, decay=0.35 (Expendable)
         assert TYPE_PARAMS["test_update"] == (0.4, 0.35, "Expendable")
-        
+
         # config: base=0.3, decay=0.40 (Expendable)
         assert TYPE_PARAMS["config"] == (0.3, 0.40, "Expendable")
 
@@ -159,6 +159,7 @@ class TestTypeAwareDecayPolicyRetrieve:
     def test_retrieve_uses_shared_retrieve(self):
         """Verify retrieve() uses shared_retrieve (Req 12.1, Frozen Invariant #5)."""
         import inspect
+
         from src.memory.policies.type_aware_decay import TypeAwareDecayPolicy
 
         # Get source code of retrieve method
@@ -533,10 +534,10 @@ class TestTypeAwareDecayLowestScoring:
 
         # Old architectural memory (high base, but very old)
         old_arch = create_mock_record("mem-old-arch", 5, "architectural", use_count=0)
-        
+
         # Recent config memory (low base, but very recent and frequently used)
         recent_config = create_mock_record("mem-recent-config", 48, "config", use_count=10)
-        
+
         # Medium bug_fix memory
         medium_bug = create_mock_record("mem-medium-bug", 30, "bug_fix", use_count=3)
 
@@ -622,7 +623,7 @@ class TestTypeAwareDecayEdgeCases:
         unknown_record = create_mock_record("mem-unknown", 10, "config", use_count=1)
         # Manually set to unknown type after creation
         unknown_record.memory_type = "unknown_type"
-        
+
         known_record = create_mock_record("mem-known", 10, "architectural", use_count=1)
         store.records.extend([unknown_record, known_record])
 

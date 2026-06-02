@@ -33,7 +33,7 @@
   },
   "build": {
     "buildCommand": "make build",
-    "testCommand": "cd /Users/leodinh/Documents/personal/thesis\n.venv/bin/python -m pytest -q -p no:cacheprovider --no-cov 2>&1 | tail -16",
+    "testCommand": "cd /Users/leodinh/Documents/personal/thesis\n.venv/bin/python -m pytest -q -p no:cacheprovider --no-cov 2>&1 | tail -6",
     "lintCommand": "ruff check",
     "devCommand": null,
     "scripts": {}
@@ -216,6 +216,12 @@
       "type": "file"
     },
     {
+      "path": "tests/test_memory_retriever.py",
+      "accessCount": 4,
+      "lastAccessed": 1780387071515,
+      "type": "file"
+    },
+    {
       "path": "configs/base.yaml",
       "accessCount": 3,
       "lastAccessed": 1780385621898,
@@ -282,6 +288,12 @@
       "type": "file"
     },
     {
+      "path": "src/memory/store.py",
+      "accessCount": 2,
+      "lastAccessed": 1780386999296,
+      "type": "file"
+    },
+    {
       "path": ".env.example",
       "accessCount": 1,
       "lastAccessed": 1780384861379,
@@ -315,12 +327,6 @@
       "path": "src/config/llm_factory.py",
       "accessCount": 1,
       "lastAccessed": 1780385036185,
-      "type": "file"
-    },
-    {
-      "path": "src/memory/store.py",
-      "accessCount": 1,
-      "lastAccessed": 1780385037126,
       "type": "file"
     },
     {

@@ -19,15 +19,12 @@ Design: THESIS_FINAL_v5.md §12, §16
 """
 
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 from src.benchmark.experiment_runner import (
     ExperimentRunner,
-    ExperimentSummary,
     RunConfig,
 )
 from src.benchmark.models import Sequence, Task

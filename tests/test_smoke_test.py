@@ -4,8 +4,6 @@ Tests for Task 19.2: Implement smoke test
 """
 
 import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 

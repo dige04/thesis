@@ -7,7 +7,6 @@ Tests Task 18.2: Implement result tables.
 import tempfile
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 
