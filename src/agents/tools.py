@@ -11,11 +11,25 @@ This module provides all tools available to the coding agent:
 - run_tests: Run test commands
 - get_patch: Generate a git diff patch
 
+Execution backend seam (Phase 4.8, decisions A+G)
+-------------------------------------------------
+``AgentTools`` keeps the tracker, validation, and diff-application logic and
+delegates the raw I/O + command execution to an ``ExecutionBackend``:
+
+- ``LocalBackend``     — subprocess + filesystem against a checked-out working
+  directory (the original behavior; the default; used by unit tests).
+- ``ContainerBackend`` — ``docker exec`` / ``docker cp`` against one live
+  per-task container started from the swebench **arm64 instance image** (deps
+  installed). Only the tool *effects* relocate into the container; the ReAct
+  loop, LimitTracker, trajectory logging, and the Ollama LLM path are unchanged.
+
 Tool call tracking is implemented for behavioral metrics (Requirement 29).
 """
 
 import os
+import shlex
 import subprocess
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -63,134 +77,338 @@ class ToolCallTracker:
         return breakdown
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Execution backends
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ExecutionBackend(ABC):
+    """Raw I/O + command execution against a repository checkout.
+
+    All paths are RELATIVE to the repository root. Implementations relocate
+    *where* the effects happen (host filesystem vs. inside a Docker container)
+    without changing the agent's tool semantics.
+    """
+
+    @abstractmethod
+    def exists(self, rel_path: str) -> bool: ...
+
+    @abstractmethod
+    def is_file(self, rel_path: str) -> bool: ...
+
+    @abstractmethod
+    def is_dir(self, rel_path: str) -> bool: ...
+
+    @abstractmethod
+    def read_text(self, rel_path: str) -> str: ...
+
+    @abstractmethod
+    def write_text(self, rel_path: str, content: str) -> None: ...
+
+    @abstractmethod
+    def list_files(self, rel_dir: str, pattern: str) -> list[str]:
+        """Return sorted repo-relative paths of files in rel_dir matching pattern
+        (non-recursive, like ``Path.glob(pattern)``)."""
+
+    @abstractmethod
+    def run(self, command: str, timeout: int) -> dict[str, Any]:
+        """Run a shell command at the repo root.
+
+        Returns {stdout, stderr, return_code}. Raises subprocess.TimeoutExpired
+        on timeout (the caller maps it to a failure dict)."""
+
+    @abstractmethod
+    def search_code(self, query: str, file_pattern: str) -> list[dict[str, Any]]:
+        """grep -rn -E <query> for repo-relative matches [{file, line, content}]."""
+
+    @abstractmethod
+    def git_diff(self) -> str:
+        """Unified diff of all changes vs HEAD, including untracked files."""
+
+
+class LocalBackend(ExecutionBackend):
+    """Host filesystem + subprocess backend (original behavior; unit-test default)."""
+
+    def __init__(self, working_dir: str | Path):
+        self.working_dir = Path(working_dir)
+        if not self.working_dir.exists():
+            raise ValueError(f"Working directory does not exist: {working_dir}")
+
+    def _p(self, rel_path: str) -> Path:
+        return self.working_dir / rel_path
+
+    def exists(self, rel_path: str) -> bool:
+        return self._p(rel_path).exists()
+
+    def is_file(self, rel_path: str) -> bool:
+        return self._p(rel_path).is_file()
+
+    def is_dir(self, rel_path: str) -> bool:
+        return self._p(rel_path).is_dir()
+
+    def read_text(self, rel_path: str) -> str:
+        with open(self._p(rel_path), encoding="utf-8") as f:
+            return f.read()
+
+    def write_text(self, rel_path: str, content: str) -> None:
+        file_path = self._p(rel_path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+    def list_files(self, rel_dir: str, pattern: str) -> list[str]:
+        dir_path = self._p(rel_dir)
+        files = []
+        for file_path in dir_path.glob(pattern):
+            if file_path.is_file():
+                files.append(os.path.relpath(file_path, self.working_dir))
+        return sorted(files)
+
+    def run(self, command: str, timeout: int) -> dict[str, Any]:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            cwd=self.working_dir,
+            timeout=timeout,
+        )
+        return {
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "return_code": result.returncode,
+        }
+
+    def search_code(self, query: str, file_pattern: str) -> list[dict[str, Any]]:
+        cmd = ["grep", "-rn", "-E", query, str(self.working_dir)]
+        if file_pattern != "*":
+            cmd.extend(["--include", file_pattern])
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=self.working_dir)
+        matches = []
+        for line in result.stdout.split("\n"):
+            if not line:
+                continue
+            parts = line.split(":", 2)
+            if len(parts) >= 3:
+                rel_path = os.path.relpath(parts[0], self.working_dir)
+                matches.append({
+                    "file": rel_path,
+                    "line": int(parts[1]),
+                    "content": parts[2].strip(),
+                })
+        return matches
+
+    def git_diff(self) -> str:
+        result = subprocess.run(
+            ["git", "diff", "HEAD"],
+            capture_output=True, text=True, cwd=self.working_dir,
+        )
+        patch = result.stdout
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True, text=True, cwd=self.working_dir,
+        )
+        if untracked.stdout:
+            for file_path in untracked.stdout.strip().split("\n"):
+                if not file_path:
+                    continue
+                try:
+                    with open(self.working_dir / file_path, encoding="utf-8") as f:
+                        content = f.read()
+                    patch += f"\n--- /dev/null\n+++ b/{file_path}\n"
+                    for line in content.split("\n"):
+                        patch += f"+{line}\n"
+                except Exception:
+                    pass
+        return patch
+
+
+class ContainerBackend(ExecutionBackend):
+    """``docker exec``/``docker cp`` backend against one live per-task container.
+
+    The container is started elsewhere (the per-task lifecycle, shared with the
+    eval harness — decision A) from the swebench arm64 instance image, which has
+    the repo checked out at ``repo_dir`` (default ``/testbed``) with deps
+    installed. This backend only *acts inside* it.
+
+    NOTE: requires a running Docker daemon + the instance container; it cannot be
+    exercised by the host-only unit tests beyond command-construction checks.
+    """
+
+    def __init__(self, container_id: str, repo_dir: str = "/testbed", docker_bin: str = "docker"):
+        self.container_id = container_id
+        self.repo_dir = repo_dir.rstrip("/")
+        self.docker_bin = docker_bin
+
+    # -- docker plumbing -----------------------------------------------------
+    def _abs(self, rel_path: str) -> str:
+        return f"{self.repo_dir}/{rel_path}".rstrip("/") if rel_path not in (".", "") else self.repo_dir
+
+    def _exec(self, shell_cmd: str, timeout: int | None = None, stdin: str | None = None) -> subprocess.CompletedProcess:
+        """Run ``sh -c shell_cmd`` inside the container at repo_dir."""
+        argv = [self.docker_bin, "exec", "-i", self.container_id, "sh", "-c",
+                f"cd {shlex.quote(self.repo_dir)} && {shell_cmd}"]
+        return subprocess.run(
+            argv, capture_output=True, text=True, timeout=timeout,
+            input=stdin if stdin is not None else None,
+        )
+
+    def exists(self, rel_path: str) -> bool:
+        return self._exec(f"test -e {shlex.quote(self._abs(rel_path))}").returncode == 0
+
+    def is_file(self, rel_path: str) -> bool:
+        return self._exec(f"test -f {shlex.quote(self._abs(rel_path))}").returncode == 0
+
+    def is_dir(self, rel_path: str) -> bool:
+        return self._exec(f"test -d {shlex.quote(self._abs(rel_path))}").returncode == 0
+
+    def read_text(self, rel_path: str) -> str:
+        proc = self._exec(f"cat {shlex.quote(self._abs(rel_path))}")
+        if proc.returncode != 0:
+            raise FileNotFoundError(f"File not found in container: {rel_path}")
+        return proc.stdout
+
+    def write_text(self, rel_path: str, content: str) -> None:
+        abs = self._abs(rel_path)
+        proc = self._exec(
+            f"mkdir -p \"$(dirname {shlex.quote(abs)})\" && cat > {shlex.quote(abs)}",
+            stdin=content,
+        )
+        if proc.returncode != 0:
+            raise OSError(f"write_text failed in container: {proc.stderr}")
+
+    def list_files(self, rel_dir: str, pattern: str) -> list[str]:
+        # Non-recursive (maxdepth 1), like Path.glob(pattern). Paths are made
+        # repo-relative to match LocalBackend output.
+        abs_dir = self._abs(rel_dir)
+        proc = self._exec(
+            f"find {shlex.quote(abs_dir)} -maxdepth 1 -type f -name {shlex.quote(pattern)}"
+        )
+        files = []
+        for line in proc.stdout.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            rel = os.path.relpath(line, self.repo_dir)
+            files.append(rel)
+        return sorted(files)
+
+    def run(self, command: str, timeout: int) -> dict[str, Any]:
+        proc = self._exec(command, timeout=timeout)
+        return {"stdout": proc.stdout, "stderr": proc.stderr, "return_code": proc.returncode}
+
+    def search_code(self, query: str, file_pattern: str) -> list[dict[str, Any]]:
+        include = f" --include {shlex.quote(file_pattern)}" if file_pattern != "*" else ""
+        proc = self._exec(f"grep -rn -E {shlex.quote(query)}{include} .")
+        matches = []
+        for line in proc.stdout.split("\n"):
+            if not line:
+                continue
+            parts = line.split(":", 2)
+            if len(parts) >= 3:
+                matches.append({
+                    "file": parts[0].lstrip("./"),
+                    "line": int(parts[1]),
+                    "content": parts[2].strip(),
+                })
+        return matches
+
+    def git_diff(self) -> str:
+        patch = self._exec("git diff HEAD").stdout
+        untracked = self._exec("git ls-files --others --exclude-standard").stdout
+        if untracked:
+            for file_path in untracked.strip().split("\n"):
+                if not file_path:
+                    continue
+                proc = self._exec(f"cat {shlex.quote(file_path)}")
+                if proc.returncode != 0:
+                    continue
+                patch += f"\n--- /dev/null\n+++ b/{file_path}\n"
+                for line in proc.stdout.split("\n"):
+                    patch += f"+{line}\n"
+        return patch
+
+
 class AgentTools:
     """
     Collection of tools available to the coding agent.
 
-    All tools operate within a working directory (repository checkout).
-    Tool calls are tracked for behavioral metrics analysis.
+    Tool semantics are backend-agnostic: validation, tracking, and diff
+    application live here, while raw I/O + command execution are delegated to an
+    ``ExecutionBackend``. Pass ``working_dir`` for the default ``LocalBackend``,
+    or an explicit ``backend`` (e.g. ``ContainerBackend``) for in-container runs.
     """
 
-    def __init__(self, working_dir: str, tracker: ToolCallTracker | None = None):
+    def __init__(
+        self,
+        working_dir: str | None = None,
+        tracker: ToolCallTracker | None = None,
+        backend: ExecutionBackend | None = None,
+    ):
         """
         Initialize agent tools.
 
         Args:
-            working_dir: Path to the repository working directory
-            tracker: Optional tool call tracker for behavioral metrics
+            working_dir: Repository working directory (used to build a default
+                LocalBackend when ``backend`` is not provided).
+            tracker: Optional tool call tracker for behavioral metrics.
+            backend: Optional explicit execution backend (overrides working_dir).
         """
-        self.working_dir = Path(working_dir)
+        if backend is None:
+            if working_dir is None:
+                raise ValueError("AgentTools requires either working_dir or backend")
+            backend = LocalBackend(working_dir)
+        self.backend = backend
+        # Preserve the original attribute for callers/tests that read it.
+        self.working_dir = getattr(backend, "working_dir", None)
         self.tracker = tracker or ToolCallTracker()
 
-        # Ensure working directory exists
-        if not self.working_dir.exists():
-            raise ValueError(f"Working directory does not exist: {working_dir}")
-
     def read_file(self, path: str) -> str:
-        """
-        Read the contents of a file.
-
-        Args:
-            path: Relative path to the file within the working directory
-
-        Returns:
-            File contents as a string
-
-        Raises:
-            FileNotFoundError: If the file does not exist
-            PermissionError: If the file cannot be read
-        """
+        """Read the contents of a file (relative to the repo root)."""
         args = {"path": path}
-        file_path = self.working_dir / path
 
-        if not file_path.exists():
+        if not self.backend.exists(path):
             error = f"File not found: {path}"
             self.tracker.record_call("read_file", args, None, error)
             raise FileNotFoundError(error)
 
-        if not file_path.is_file():
+        if not self.backend.is_file(path):
             error = f"Path is not a file: {path}"
             self.tracker.record_call("read_file", args, None, error)
             raise ValueError(error)
 
         try:
-            with open(file_path, encoding="utf-8") as f:
-                content = f.read()
-
+            content = self.backend.read_text(path)
             self.tracker.record_call("read_file", args, len(content))
             return content
-
         except Exception as e:
-            # Only track unexpected errors (file system errors, encoding errors, etc.)
             self.tracker.record_call("read_file", args, None, str(e))
             raise
 
     def write_file(self, path: str, content: str) -> None:
-        """
-        Write content to a file, creating it if it doesn't exist.
-
-        Args:
-            path: Relative path to the file within the working directory
-            content: Content to write to the file
-
-        Raises:
-            PermissionError: If the file cannot be written
-        """
+        """Write content to a file, creating parents if needed."""
         args = {"path": path, "content_length": len(content)}
         try:
-            file_path = self.working_dir / path
-
-            # Create parent directories if they don't exist
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-
+            self.backend.write_text(path, content)
             self.tracker.record_call("write_file", args, "success")
-
         except Exception as e:
             self.tracker.record_call("write_file", args, None, str(e))
             raise
 
     def edit_file(self, path: str, diff: str) -> None:
-        """
-        Apply diff-style edits to a file.
-
-        The diff format is a simplified unified diff:
-        - Lines starting with '-' are removed
-        - Lines starting with '+' are added
-        - Lines starting with ' ' (space) are context lines
-
-        Args:
-            path: Relative path to the file within the working directory
-            diff: Diff string to apply
-
-        Raises:
-            FileNotFoundError: If the file does not exist
-            ValueError: If the diff cannot be applied
-        """
+        """Apply simplified diff-style edits to a file."""
         args = {"path": path, "diff_length": len(diff)}
-        file_path = self.working_dir / path
 
-        if not file_path.exists():
+        if not self.backend.exists(path):
             error = f"File not found: {path}"
             self.tracker.record_call("edit_file", args, None, error)
             raise FileNotFoundError(error)
 
         try:
-            # Read current content
-            with open(file_path, encoding="utf-8") as f:
-                lines = f.readlines()
-
-            # Apply diff
+            lines = self.backend.read_text(path).splitlines(keepends=True)
             new_lines = self._apply_diff(lines, diff)
-
-            # Write modified content
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.writelines(new_lines)
-
+            self.backend.write_text(path, "".join(new_lines))
             self.tracker.record_call("edit_file", args, "success")
-
         except Exception as e:
             self.tracker.record_call("edit_file", args, None, str(e))
             raise
@@ -199,8 +417,9 @@ class AgentTools:
         """
         Apply a simplified diff to a list of lines.
 
-        This is a basic implementation that processes the diff line by line.
-        For production use, consider using a proper diff library.
+        - Lines starting with ' ' are context (kept).
+        - Lines starting with '-' are removed.
+        - Lines starting with '+' are added.
         """
         diff_lines = diff.split("\n")
         result = []
@@ -209,154 +428,59 @@ class AgentTools:
         for diff_line in diff_lines:
             if not diff_line:
                 continue
-
             if diff_line.startswith(" "):
-                # Context line - keep original
                 if line_idx < len(lines):
                     result.append(lines[line_idx])
                     line_idx += 1
             elif diff_line.startswith("-"):
-                # Remove line
                 line_idx += 1
             elif diff_line.startswith("+"):
-                # Add line
                 result.append(diff_line[1:] + "\n")
 
-        # Append remaining lines
         result.extend(lines[line_idx:])
-
         return result
 
     def search_code(self, query: str, file_pattern: str = "*") -> list[dict[str, Any]]:
-        """
-        Search for code patterns in the repository using grep.
-
-        Args:
-            query: Search query (regex pattern)
-            file_pattern: Optional file pattern to limit search (e.g., "*.py")
-
-        Returns:
-            List of matches with file path, line number, and content
-        """
+        """Search for code patterns in the repository using grep."""
         args = {"query": query, "file_pattern": file_pattern}
         try:
-            # Use grep for searching
-            cmd = [
-                "grep",
-                "-rn",  # recursive, with line numbers
-                "-E",   # extended regex
-                query,
-                str(self.working_dir),
-            ]
-
-            if file_pattern != "*":
-                cmd.extend(["--include", file_pattern])
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=self.working_dir,
-            )
-
-            # Parse grep output
-            matches = []
-            for line in result.stdout.split("\n"):
-                if not line:
-                    continue
-
-                parts = line.split(":", 2)
-                if len(parts) >= 3:
-                    file_path = parts[0]
-                    line_num = parts[1]
-                    content = parts[2]
-
-                    # Make path relative to working_dir
-                    rel_path = os.path.relpath(file_path, self.working_dir)
-
-                    matches.append({
-                        "file": rel_path,
-                        "line": int(line_num),
-                        "content": content.strip(),
-                    })
-
+            matches = self.backend.search_code(query, file_pattern)
             self.tracker.record_call("search_code", args, len(matches))
             return matches
-
         except Exception as e:
             self.tracker.record_call("search_code", args, None, str(e))
             raise
 
     def list_files(self, path: str = ".", pattern: str = "*") -> list[str]:
-        """
-        List files in a directory.
-
-        Args:
-            path: Relative path to the directory (default: current directory)
-            pattern: Optional glob pattern to filter files (e.g., "*.py")
-
-        Returns:
-            List of relative file paths
-        """
+        """List files in a directory (non-recursive glob)."""
         args = {"path": path, "pattern": pattern}
-        dir_path = self.working_dir / path
 
-        if not dir_path.exists():
+        if not self.backend.exists(path):
             error = f"Directory not found: {path}"
             self.tracker.record_call("list_files", args, None, error)
             raise FileNotFoundError(error)
 
-        if not dir_path.is_dir():
+        if not self.backend.is_dir(path):
             error = f"Path is not a directory: {path}"
             self.tracker.record_call("list_files", args, None, error)
             raise ValueError(error)
 
         try:
-            # Use glob to find matching files
-            files = []
-            for file_path in dir_path.glob(pattern):
-                if file_path.is_file():
-                    rel_path = os.path.relpath(file_path, self.working_dir)
-                    files.append(rel_path)
-
+            files = self.backend.list_files(path, pattern)
             self.tracker.record_call("list_files", args, len(files))
-            return sorted(files)
-
+            return files
         except Exception as e:
             self.tracker.record_call("list_files", args, None, str(e))
             raise
 
     def run_command(self, command: str, timeout: int = 60) -> dict[str, Any]:
-        """
-        Execute a shell command in the working directory.
-
-        Args:
-            command: Shell command to execute
-            timeout: Maximum execution time in seconds (default: 60)
-
-        Returns:
-            Dictionary with stdout, stderr, return_code, and success status
-        """
+        """Execute a shell command at the repo root."""
         args = {"command": command, "timeout": timeout}
         try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=self.working_dir,
-                timeout=timeout,
-            )
+            output = self.backend.run(command, timeout)
+            output["success"] = output["return_code"] == 0
 
-            output = {
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "return_code": result.returncode,
-                "success": result.returncode == 0,
-            }
-
-            # Check for syntax errors in stderr
-            if "SyntaxError" in result.stderr or "syntax error" in result.stderr.lower():
+            if "SyntaxError" in output["stderr"] or "syntax error" in output["stderr"].lower():
                 self.tracker.record_syntax_error()
 
             self.tracker.record_call("run_command", args, output)
@@ -365,51 +489,20 @@ class AgentTools:
         except subprocess.TimeoutExpired:
             error = f"Command timed out after {timeout} seconds"
             self.tracker.record_call("run_command", args, None, error)
-            return {
-                "stdout": "",
-                "stderr": error,
-                "return_code": -1,
-                "success": False,
-            }
+            return {"stdout": "", "stderr": error, "return_code": -1, "success": False}
         except Exception as e:
             self.tracker.record_call("run_command", args, None, str(e))
             raise
 
     def run_tests(self, test_command: str, timeout: int = 300) -> dict[str, Any]:
-        """
-        Run test commands with extended timeout.
-
-        This is a specialized version of run_command for test execution,
-        with a longer default timeout and test-specific result parsing.
-
-        Args:
-            test_command: Test command to execute (e.g., "pytest tests/")
-            timeout: Maximum execution time in seconds (default: 300)
-
-        Returns:
-            Dictionary with test results including pass/fail status
-        """
+        """Run a test command (longer default timeout, tests_passed flag)."""
         args = {"test_command": test_command, "timeout": timeout}
         try:
-            result = subprocess.run(
-                test_command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=self.working_dir,
-                timeout=timeout,
-            )
+            output = self.backend.run(test_command, timeout)
+            output["success"] = output["return_code"] == 0
+            output["tests_passed"] = output["return_code"] == 0
 
-            output = {
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "return_code": result.returncode,
-                "success": result.returncode == 0,
-                "tests_passed": result.returncode == 0,
-            }
-
-            # Check for syntax errors in test output
-            if "SyntaxError" in result.stderr or "syntax error" in result.stderr.lower():
+            if "SyntaxError" in output["stderr"] or "syntax error" in output["stderr"].lower():
                 self.tracker.record_syntax_error()
 
             self.tracker.record_call("run_tests", args, output)
@@ -419,69 +512,24 @@ class AgentTools:
             error = f"Tests timed out after {timeout} seconds"
             self.tracker.record_call("run_tests", args, None, error)
             return {
-                "stdout": "",
-                "stderr": error,
-                "return_code": -1,
-                "success": False,
-                "tests_passed": False,
+                "stdout": "", "stderr": error, "return_code": -1,
+                "success": False, "tests_passed": False,
             }
         except Exception as e:
             self.tracker.record_call("run_tests", args, None, str(e))
             raise
 
     def get_patch(self) -> str:
-        """
-        Generate a git diff patch of all changes in the working directory.
-
-        Returns:
-            Git diff output as a string
-        """
+        """Generate a git diff patch of all changes (incl. untracked files)."""
         args: dict[str, Any] = {}
         try:
-            # Get git diff including untracked files
-            result = subprocess.run(
-                ["git", "diff", "HEAD"],
-                capture_output=True,
-                text=True,
-                cwd=self.working_dir,
-            )
-
-            patch = result.stdout
-
-            # Also include untracked files
-            untracked_result = subprocess.run(
-                ["git", "ls-files", "--others", "--exclude-standard"],
-                capture_output=True,
-                text=True,
-                cwd=self.working_dir,
-            )
-
-            if untracked_result.stdout:
-                # Add untracked files to patch
-                for file_path in untracked_result.stdout.strip().split("\n"):
-                    if file_path:
-                        try:
-                            with open(self.working_dir / file_path, encoding="utf-8") as f:
-                                content = f.read()
-                            patch += f"\n--- /dev/null\n+++ b/{file_path}\n"
-                            for line in content.split("\n"):
-                                patch += f"+{line}\n"
-                        except Exception:
-                            # Skip files that can't be read
-                            pass
-
+            patch = self.backend.git_diff()
             self.tracker.record_call("get_patch", args, len(patch))
             return patch
-
         except Exception as e:
             self.tracker.record_call("get_patch", args, None, str(e))
             raise
 
     def get_tracker_stats(self) -> dict[str, Any]:
-        """
-        Get tool call statistics for behavioral metrics.
-
-        Returns:
-            Dictionary with tool call counts and syntax error counts
-        """
+        """Get tool call statistics for behavioral metrics."""
         return self.tracker.get_stats()
