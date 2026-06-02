@@ -37,6 +37,7 @@ from src.logging.trajectory_logger import TrajectoryLogger
 from src.memory.policies.base import MemoryPolicy
 from src.memory.reflection import ReflectionError, reflect_and_write_memory
 from src.memory.store import MemoryStore
+from src.metrics.cost_tracker import CostTracker
 from src.metrics.retrieval_quality import (
     RetrievalQualityMetrics,
     compute_retrieval_quality,
@@ -166,6 +167,16 @@ class SequenceRunner:
         # Initialize retrieval quality metrics storage
         self.retrieval_quality_metrics: list[RetrievalQualityMetrics] = []
 
+        # Cost tracker — writes the 4th mandatory log stream cost_summary.json.
+        # Mode comes from config (D3: "tokens" for Ollama flat-rate; under any
+        # non-"usd" mode unknown model names do not raise — tokens stay
+        # authoritative). v5 §1570 Pareto cost axis = total tokens.
+        self.cost_tracker = CostTracker(
+            run_id=run_id,
+            run_dir=self.run_dir,
+            cost_metric_mode=config.get("evaluation", {}).get("cost_metric_mode", "usd"),
+        )
+
         logger.info(
             f"Initialized SequenceRunner: run_id={run_id}, "
             f"policy={policy.name}, run_dir={self.run_dir}, "
@@ -211,6 +222,16 @@ class SequenceRunner:
             f"Starting sequence: {sequence.sequence_name} "
             f"({sequence.task_count} tasks) with policy={self.policy.name}, seed={seed}"
         )
+
+        # Start cost tracking for this run (must precede any track_*_call).
+        try:
+            self.cost_tracker.start_run(
+                policy=self.policy.name,
+                sequence_name=sequence.sequence_name,
+                seed=seed,
+            )
+        except Exception as e:  # cost tracking is auxiliary, never fatal
+            logger.warning(f"cost_tracker.start_run failed: {e}")
 
         sequence_start_time = time.time()
         completed_tasks = 0
@@ -280,6 +301,14 @@ class SequenceRunner:
             if self.pilot_mode_enabled and self.log_retrieval_quality and self.retrieval_quality_metrics:
                 self._save_retrieval_quality_metrics()
 
+            # Write the 4th mandatory log stream (cost_summary.json). Never let
+            # a cost-bookkeeping failure mask the real sequence result.
+            try:
+                self.cost_tracker.complete_run()
+                self.cost_tracker.write_cost_summary()
+            except Exception as e:
+                logger.warning(f"cost_tracker write failed: {e}")
+
         # Calculate total wall time
         total_wall_time = time.time() - sequence_start_time
 
@@ -335,6 +364,12 @@ class SequenceRunner:
         """
         task_start_time = time.time()
 
+        # Begin per-task cost attribution (auxiliary; never fatal).
+        try:
+            self.cost_tracker.start_task(task.task_id)
+        except Exception as e:
+            logger.warning(f"cost_tracker.start_task failed for {task.task_id}: {e}")
+
         # Step 1: Generate "before_task" memory snapshot
         logger.debug(f"Generating before_task snapshot for {task.task_id}")
         memory_stats_before = self.memory_store.stats()
@@ -364,6 +399,22 @@ class SequenceRunner:
             # Persist the agent trajectory (v5 §11.3: actions + observations
             # only, NO chain-of-thought) — one of the 4 mandatory log streams.
             self._log_trajectory(task, seed, agent_result)
+
+            # Record the agent LLM call for cost_summary.json (v5 §1570 Pareto
+            # cost axis = total tokens). Reflection/classifier/consolidation/
+            # embedding tokens are not yet surfaced by their components to the
+            # runner (see follow-up note in cost_tracker call_type buckets);
+            # the agent call is the dominant token cost. Never fatal.
+            try:
+                self.cost_tracker.track_llm_call(
+                    call_type="agent",
+                    model=self.config.get("agent", {}).get("main_model", "unknown"),
+                    prompt_tokens=int(agent_result.get("prompt_tokens", 0) or 0),
+                    completion_tokens=int(agent_result.get("completion_tokens", 0) or 0),
+                    task_id=task.task_id,
+                )
+            except Exception as e:
+                logger.warning(f"cost_tracker.track_llm_call failed for {task.task_id}: {e}")
 
             # Step 5: Evaluate patch
             logger.debug(f"Evaluating patch for {task.task_id}")
@@ -429,6 +480,12 @@ class SequenceRunner:
             )
 
             self.task_logger.log_task_result(task_result)
+
+            # Finalize per-task cost attribution (auxiliary; never fatal).
+            try:
+                self.cost_tracker.complete_task(task.task_id)
+            except Exception as e:
+                logger.warning(f"cost_tracker.complete_task failed for {task.task_id}: {e}")
 
             return task_result
 
@@ -821,7 +878,7 @@ class SequenceRunner:
 
     def _save_retrieval_quality_metrics(self) -> None:
         """Save retrieval quality metrics to file for pilot analysis.
-        
+
         Saves individual task metrics and aggregated statistics to
         runs/{run_id}/retrieval_quality_metrics.json for calibration analysis.
         """

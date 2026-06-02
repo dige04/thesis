@@ -159,15 +159,18 @@ class TaskCostSummary:
     agent_llm_cost: float = 0.0
     classifier_cost: float = 0.0
     consolidation_cost: float = 0.0
+    reflection_cost: float = 0.0
     embedding_cost: float = 0.0
     total_cost: float = 0.0
     agent_llm_calls: int = 0
     classifier_calls: int = 0
     consolidation_calls: int = 0
+    reflection_calls: int = 0
     embedding_calls: int = 0
     agent_tokens: int = 0
     classifier_tokens: int = 0
     consolidation_tokens: int = 0
+    reflection_tokens: int = 0
     embedding_tokens: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -177,15 +180,18 @@ class TaskCostSummary:
             "agent_llm_cost": self.agent_llm_cost,
             "classifier_cost": self.classifier_cost,
             "consolidation_cost": self.consolidation_cost,
+            "reflection_cost": self.reflection_cost,
             "embedding_cost": self.embedding_cost,
             "total_cost": self.total_cost,
             "agent_llm_calls": self.agent_llm_calls,
             "classifier_calls": self.classifier_calls,
             "consolidation_calls": self.consolidation_calls,
+            "reflection_calls": self.reflection_calls,
             "embedding_calls": self.embedding_calls,
             "agent_tokens": self.agent_tokens,
             "classifier_tokens": self.classifier_tokens,
             "consolidation_tokens": self.consolidation_tokens,
+            "reflection_tokens": self.reflection_tokens,
             "embedding_tokens": self.embedding_tokens,
         }
 
@@ -221,6 +227,7 @@ class RunCostSummary:
     agent_llm_cost: float = 0.0
     classifier_cost: float = 0.0
     consolidation_cost: float = 0.0
+    reflection_cost: float = 0.0
     embedding_cost: float = 0.0
     total_llm_calls: int = 0
     total_embedding_calls: int = 0
@@ -241,6 +248,7 @@ class RunCostSummary:
             "agent_llm_cost": self.agent_llm_cost,
             "classifier_cost": self.classifier_cost,
             "consolidation_cost": self.consolidation_cost,
+            "reflection_cost": self.reflection_cost,
             "embedding_cost": self.embedding_cost,
             "total_llm_calls": self.total_llm_calls,
             "total_embedding_calls": self.total_embedding_calls,
@@ -372,10 +380,10 @@ class CostTracker:
             ValueError: If model pricing is not available
         """
         # Validate call type
-        if call_type not in ("agent", "classifier", "consolidation"):
+        if call_type not in ("agent", "classifier", "consolidation", "reflection"):
             logger.warning(
                 f"Unknown call_type '{call_type}', should be one of: "
-                f"agent, classifier, consolidation"
+                f"agent, classifier, consolidation, reflection"
             )
 
         # Get pricing for model. Under a non-USD cost metric (e.g. Ollama
@@ -431,6 +439,8 @@ class CostTracker:
                 self.run_summary.classifier_cost += total_cost
             elif call_type == "consolidation":
                 self.run_summary.consolidation_cost += total_cost
+            elif call_type == "reflection":
+                self.run_summary.reflection_cost += total_cost
 
             self.run_summary.total_cost += total_cost
 
@@ -549,6 +559,10 @@ class CostTracker:
                 task_cost.consolidation_cost += llm_call.estimated_cost_usd
                 task_cost.consolidation_calls += 1
                 task_cost.consolidation_tokens += llm_call.total_tokens
+            elif llm_call.call_type == "reflection":
+                task_cost.reflection_cost += llm_call.estimated_cost_usd
+                task_cost.reflection_calls += 1
+                task_cost.reflection_tokens += llm_call.total_tokens
 
             task_cost.total_cost += llm_call.estimated_cost_usd
 

@@ -26,10 +26,64 @@
       "status": "completed",
       "completed_at": "2026-06-02T07:25:49.476Z",
       "duration_ms": 132161
+    },
+    {
+      "agent_id": "a4b9c820f0bc0ebc4",
+      "agent_type": "workflow-subagent",
+      "started_at": "2026-06-02T08:02:25.548Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-02T08:03:15.681Z",
+      "duration_ms": 50133
+    },
+    {
+      "agent_id": "a53eb75b825d45dba",
+      "agent_type": "workflow-subagent",
+      "started_at": "2026-06-02T08:02:25.613Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-02T08:02:53.772Z",
+      "duration_ms": 28159
+    },
+    {
+      "agent_id": "abf97a4555f99ff9c",
+      "agent_type": "workflow-subagent",
+      "started_at": "2026-06-02T08:02:25.565Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-02T08:03:52.051Z",
+      "duration_ms": 86486
+    },
+    {
+      "agent_id": "ad027b8dec5fc15cb",
+      "agent_type": "workflow-subagent",
+      "started_at": "2026-06-02T08:02:25.665Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-02T08:03:17.893Z",
+      "duration_ms": 52228
+    },
+    {
+      "agent_id": "a07f7e58081de728a",
+      "agent_type": "general-purpose",
+      "started_at": "2026-06-02T08:03:52.243Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-02T08:05:23.928Z",
+      "duration_ms": 91685
+    },
+    {
+      "agent_id": "a361adce76ea40a45",
+      "agent_type": "general-purpose",
+      "started_at": "2026-06-02T08:03:52.296Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-02T08:07:10.245Z",
+      "duration_ms": 197949
     }
   ],
-  "total_spawned": 3,
-  "total_completed": 3,
+  "total_spawned": 6,
+  "total_completed": 9,
   "total_failed": 0,
-  "last_updated": "2026-06-02T07:37:58.997Z"
+  "last_updated": "2026-06-02T08:07:10.347Z"
 }

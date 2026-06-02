@@ -33,7 +33,7 @@
   },
   "build": {
     "buildCommand": "make build",
-    "testCommand": "cd /Users/leodinh/Documents/personal/thesis\n.venv/bin/python -m pytest -q -p no:cacheprovider --no-cov 2>&1 | tail -6",
+    "testCommand": "cd /Users/leodinh/Documents/personal/thesis\n.venv/bin/python -m ruff check --fix --unsafe-fixes --select W291,W293 src/metrics/cost_tracker.py src/benchmark/sequence_runner.py src/benchmark/smoke_test.py src/benchmark/experiment_runner.py tests/test_cost_summary.py tests/test_experiment_cli.py scripts/verify_env.py 2>&1 | tail -3\n.venv/bin/python -m ruff check src/metrics/cost_tracker.py src/benchmark/sequence_runner.py src/benchmark/smoke_test.py src/benchmark/experiment_runner.py tests/test_cost_summary.py tests/test_experiment_cli.py 2>&1 | tail -2\necho \"=== re-run touched tests after whitespace fix ===\"\n.venv/bin/python -m pytest tests/test_cost_summary.py tests/test_experiment_cli.py -q -p no:cacheprovider --no-cov 2>&1 | tail -3",
     "lintCommand": "ruff check",
     "devCommand": null,
     "scripts": {}
@@ -198,9 +198,21 @@
   },
   "hotPaths": [
     {
+      "path": "src/benchmark/sequence_runner.py",
+      "accessCount": 14,
+      "lastAccessed": 1780388214414,
+      "type": "file"
+    },
+    {
       "path": "THESIS_FINAL_v5.md",
       "accessCount": 11,
       "lastAccessed": 1780385608459,
+      "type": "file"
+    },
+    {
+      "path": "src/metrics/cost_tracker.py",
+      "accessCount": 8,
+      "lastAccessed": 1780388074704,
       "type": "file"
     },
     {
@@ -210,9 +222,27 @@
       "type": "file"
     },
     {
+      "path": "src/benchmark/experiment_runner.py",
+      "accessCount": 7,
+      "lastAccessed": 1780387508573,
+      "type": "file"
+    },
+    {
+      "path": "Makefile",
+      "accessCount": 7,
+      "lastAccessed": 1780387860541,
+      "type": "file"
+    },
+    {
       "path": "CLAUDE.md",
       "accessCount": 6,
       "lastAccessed": 1780385598370,
+      "type": "file"
+    },
+    {
+      "path": "src/benchmark/smoke_test.py",
+      "accessCount": 5,
+      "lastAccessed": 1780388254131,
       "type": "file"
     },
     {
@@ -234,9 +264,9 @@
       "type": "file"
     },
     {
-      "path": "src/benchmark/sequence_runner.py",
-      "accessCount": 2,
-      "lastAccessed": 1780385027029,
+      "path": "src/benchmark/swebenchcl_loader.py",
+      "accessCount": 3,
+      "lastAccessed": 1780387354686,
       "type": "file"
     },
     {
@@ -294,21 +324,15 @@
       "type": "file"
     },
     {
+      "path": "src/benchmark/models.py",
+      "accessCount": 2,
+      "lastAccessed": 1780387359946,
+      "type": "file"
+    },
+    {
       "path": ".env.example",
       "accessCount": 1,
       "lastAccessed": 1780384861379,
-      "type": "file"
-    },
-    {
-      "path": "src/benchmark/smoke_test.py",
-      "accessCount": 1,
-      "lastAccessed": 1780385025712,
-      "type": "file"
-    },
-    {
-      "path": "src/benchmark/experiment_runner.py",
-      "accessCount": 1,
-      "lastAccessed": 1780385026121,
       "type": "file"
     },
     {
@@ -327,18 +351,6 @@
       "path": "src/config/llm_factory.py",
       "accessCount": 1,
       "lastAccessed": 1780385036185,
-      "type": "file"
-    },
-    {
-      "path": "src/benchmark/swebenchcl_loader.py",
-      "accessCount": 1,
-      "lastAccessed": 1780385042799,
-      "type": "file"
-    },
-    {
-      "path": "src/metrics/cost_tracker.py",
-      "accessCount": 1,
-      "lastAccessed": 1780385043623,
       "type": "file"
     },
     {
@@ -459,6 +471,30 @@
       "path": "docs/DEEP_RESEARCH_HANDOFF.md",
       "accessCount": 1,
       "lastAccessed": 1780385849771,
+      "type": "file"
+    },
+    {
+      "path": "src/config/loader.py",
+      "accessCount": 1,
+      "lastAccessed": 1780387355152,
+      "type": "file"
+    },
+    {
+      "path": "src/memory/policies/no_memory.py",
+      "accessCount": 1,
+      "lastAccessed": 1780387372805,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_experiment_runner.py",
+      "accessCount": 1,
+      "lastAccessed": 1780387406281,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_experiment_cli.py",
+      "accessCount": 1,
+      "lastAccessed": 1780387562709,
       "type": "file"
     }
   ],
