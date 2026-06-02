@@ -33,6 +33,7 @@ from src.benchmark.task_env import RepositoryCheckoutError, TaskEnvironment
 from src.logging.memory_event_logger import MemoryEventLogger
 from src.logging.memory_snapshot_logger import MemorySnapshotLogger
 from src.logging.task_logger import TaskResult, TaskResultLogger
+from src.logging.trajectory_logger import TrajectoryLogger
 from src.memory.policies.base import MemoryPolicy
 from src.memory.reflection import ReflectionError, reflect_and_write_memory
 from src.memory.store import MemoryStore
@@ -360,6 +361,10 @@ class SequenceRunner:
             logger.debug(f"Executing agent for {task.task_id}")
             agent_result = self._execute_agent(task, task_env, retrieved_memories)
 
+            # Persist the agent trajectory (v5 §11.3: actions + observations
+            # only, NO chain-of-thought) — one of the 4 mandatory log streams.
+            self._log_trajectory(task, seed, agent_result)
+
             # Step 5: Evaluate patch
             logger.debug(f"Evaluating patch for {task.task_id}")
             eval_result = self._evaluate_patch(task, agent_result["patch"], task_env)
@@ -591,6 +596,32 @@ class SequenceRunner:
             "error": eval_result.error,
             "execution_time": eval_result.execution_time,
         }
+
+    def _log_trajectory(
+        self,
+        task: Task,
+        seed: int,
+        agent_result: dict[str, Any],
+    ) -> None:
+        """Write the per-task trajectory file (v5 §11.3).
+
+        Records action + action_input + observation_summary only — the agent's
+        free-text reasoning is never persisted (no chain-of-thought).
+        """
+        traj_logger = TrajectoryLogger(
+            run_id=self.run_id,
+            task_id=task.task_id,
+            policy=self.policy.name,
+            seed=seed,
+        )
+        for i, step in enumerate(agent_result.get("trajectory", []), start=1):
+            traj_logger.log_step(
+                step=i,
+                action=step.get("action", ""),
+                action_input=step.get("action_input", ""),
+                observation_summary=step.get("observation_summary", ""),
+            )
+        traj_logger.save()
 
     def _retrieved_memory_ids(
         self,

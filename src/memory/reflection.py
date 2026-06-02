@@ -18,12 +18,68 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from pydantic import BaseModel, ValidationError
+
+from src.config.llm_factory import get_chat_client
+from src.errors import ClassifierError, ReflectionError, handle_classifier_failure, handle_reflection_failure
+
 from .classifier import classify_memory_type
 from .record import MemoryRecord
 from .store import MemoryStore
-from src.errors import ClassifierError, ReflectionError, handle_classifier_failure, handle_reflection_failure
 
 logger = logging.getLogger(__name__)
+
+
+class ReflectionSummary(BaseModel):
+    """Structured reflection output produced by the reflection LLM call.
+
+    Mirrors the JSON schema in THESIS_FINAL_v5.md §9.2 — EXCEPT ``outcome`` and
+    ``files_touched``, which are computed deterministically by the caller and
+    are NOT requested from the model (outcome comes from evaluation_result;
+    files_touched from the trajectory). ``functions_touched`` is provided by the
+    LLM here but the caller falls back to the trajectory list when empty.
+
+    All summary fields are optional/nullable: a degraded (partial) summary is
+    still useful, and downstream the classifier is the only must-succeed step.
+    """
+
+    issue_summary: str
+    patch_summary: str
+    failure_summary: str | None = None
+    test_summary: str | None = None
+    functions_touched: list[str] = []
+
+
+# Appended to the reflection system prompt. Ollama's OpenAI-compatible endpoint
+# ignores the OpenAI json_schema response_format (ollama/ollama #10001), so we
+# use plain JSON mode + explicit schema instructions + Pydantic validation
+# instead of beta.chat.completions.parse (deviation D4, see CLAUDE.md). This
+# matches the established pattern in src/memory/classifier.py.
+_REFLECTION_JSON_INSTRUCTIONS = (
+    "\n\nRespond with ONLY a JSON object of exactly this shape "
+    "(no markdown fences, no commentary):\n"
+    '{"issue_summary": "<1-2 sentence summary of the issue/problem>", '
+    '"patch_summary": "<1-2 sentence summary of what the patch changed>", '
+    '"failure_summary": "<summary of the failure, or null if the task passed>", '
+    '"test_summary": "<summary of tests added/run and their result, or null>", '
+    '"functions_touched": ["<function or method name>", ...]}'
+)
+
+_REFLECTION_SYSTEM_PROMPT = (
+    "You are a reflection assistant for a research system studying memory "
+    "management in AI coding agents. Given the trace of a single coding task "
+    "(the issue, the patch diff, the files modified, the commands run, and the "
+    "test output), produce a compact STRUCTURED summary that another agent can "
+    "later retrieve and reuse.\n\n"
+    "Summarize faithfully and concisely:\n"
+    "- issue_summary: what problem the task was trying to solve.\n"
+    "- patch_summary: what the patch actually changed (key files / mechanism).\n"
+    "- failure_summary: the failure mode if the task did not pass; null otherwise.\n"
+    "- test_summary: which tests were added/run and their outcome; null if none.\n"
+    "- functions_touched: the functions/methods the patch modified.\n\n"
+    "Do NOT speculate about whether the task ultimately passed or failed — that "
+    "is recorded separately. Base everything strictly on the provided trace."
+) + _REFLECTION_JSON_INSTRUCTIONS
 
 
 def reflect_and_write_memory(
@@ -197,27 +253,32 @@ def _extract_reflection_data(
         - outcome: str (pass | fail | partial | unknown)
 
     Design: §9.2 Reflection output (Structured Output)
-    """
-    # TODO: Implement actual LLM call for structured reflection
-    # For now, extract basic information from trajectory
 
-    # Extract files touched
-    files_touched = []
+    Behaviour:
+        Files touched, commands run, and outcome are derived DETERMINISTICALLY
+        (files/commands from the trajectory; outcome from evaluation_result) and
+        are never delegated to the LLM. The free-text summaries and
+        functions_touched come from a real reflection LLM call
+        (:func:`_llm_reflection_summary`). On ANY LLM failure (transport error,
+        empty/invalid JSON) we fall back to a naive heuristic summary and log a
+        warning — a degraded summary is preferable to failing the task, since the
+        downstream classifier is the only must-succeed step.
+    """
+    # --- Deterministic fields (never from the LLM) ---------------------------
+    # Files touched: modified first, then any read-but-not-modified files.
+    files_touched: list[str] = []
     if "files_modified" in trajectory:
         files_touched.extend(trajectory["files_modified"])
     if "files_read" in trajectory:
-        # Add unique files that were read but not modified
         for f in trajectory["files_read"]:
             if f not in files_touched:
                 files_touched.append(f)
 
-    # Extract commands run
     commands_run = trajectory.get("commands_run", [])
+    trajectory_functions = trajectory.get("functions_touched", [])
 
-    # Extract functions touched (TODO: parse from patch or trajectory)
-    functions_touched = trajectory.get("functions_touched", [])
-
-    # Determine outcome
+    # Outcome is computed deterministically from evaluation_result — NOT asked
+    # of the LLM (Invariant #10: labels are associated, not causal).
     resolved = evaluation_result.get("resolved", False)
     if resolved:
         outcome = "pass"
@@ -226,15 +287,77 @@ def _extract_reflection_data(
     else:
         outcome = "unknown"  # No patch generated
 
-    # Generate summaries (simplified for now - TODO: use LLM)
-    issue_summary = task.issue_text[:200] + "..." if len(task.issue_text) > 200 else task.issue_text
+    # --- Naive heuristic summaries (used as the fallback) --------------------
+    naive = _naive_reflection_summary(
+        task=task,
+        patch=patch,
+        files_touched=files_touched,
+        evaluation_result=evaluation_result,
+        resolved=resolved,
+    )
+
+    # --- Real reflection LLM call (preferred) --------------------------------
+    summary = _llm_reflection_summary(
+        task=task,
+        trajectory=trajectory,
+        patch=patch,
+        files_touched=files_touched,
+        commands_run=commands_run,
+        evaluation_result=evaluation_result,
+        model=model,
+        temperature=temperature,
+    )
+
+    if summary is not None:
+        # functions_touched: prefer the LLM's list, else the trajectory's.
+        functions_touched = summary.functions_touched or trajectory_functions
+        return {
+            "issue_summary": summary.issue_summary,
+            "patch_summary": summary.patch_summary,
+            "failure_summary": summary.failure_summary,
+            "test_summary": summary.test_summary,
+            "files_touched": files_touched,
+            "functions_touched": functions_touched,
+            "commands_run": commands_run,
+            "outcome": outcome,
+        }
+
+    # Fallback: degraded naive extraction (warning already logged in helper).
+    return {
+        "issue_summary": naive["issue_summary"],
+        "patch_summary": naive["patch_summary"],
+        "failure_summary": naive["failure_summary"],
+        "test_summary": naive["test_summary"],
+        "files_touched": files_touched,
+        "functions_touched": trajectory_functions,
+        "commands_run": commands_run,
+        "outcome": outcome,
+    }
+
+
+def _naive_reflection_summary(
+    task: Any,
+    patch: str | None,
+    files_touched: list[str],
+    evaluation_result: dict[str, Any],
+    resolved: bool,
+) -> dict[str, Any]:
+    """Heuristic (non-LLM) reflection summaries used as the degraded fallback.
+
+    This is the original truncation-based extraction, preserved verbatim so the
+    task can still produce a (lower-quality) memory when the reflection LLM is
+    unavailable.
+    """
+    issue_summary = (
+        task.issue_text[:200] + "..."
+        if len(task.issue_text) > 200
+        else task.issue_text
+    )
 
     if patch:
-        patch_summary = f"Modified {len(files_touched)} files"
-        if patch:
-            # Extract first few lines of patch for summary
-            patch_lines = patch.split("\n")[:5]
-            patch_summary = "\n".join(patch_lines)
+        # Extract first few lines of patch for summary.
+        patch_lines = patch.split("\n")[:5]
+        patch_summary = "\n".join(patch_lines)
     else:
         patch_summary = "No patch generated"
 
@@ -243,9 +366,9 @@ def _extract_reflection_data(
         failure_summary = evaluation_result["error_message"]
 
     test_summary = None
-    if "test_output" in evaluation_result and evaluation_result["test_output"]:
+    if evaluation_result.get("test_output"):
         test_output = evaluation_result["test_output"]
-        # Extract last few lines of test output
+        # Extract last few lines of test output.
         test_lines = test_output.split("\n")[-10:]
         test_summary = "\n".join(test_lines)
 
@@ -254,11 +377,112 @@ def _extract_reflection_data(
         "patch_summary": patch_summary,
         "failure_summary": failure_summary,
         "test_summary": test_summary,
-        "files_touched": files_touched,
-        "functions_touched": functions_touched,
-        "commands_run": commands_run,
-        "outcome": outcome
     }
+
+
+def _llm_reflection_summary(
+    task: Any,
+    trajectory: dict[str, Any],
+    patch: str | None,
+    files_touched: list[str],
+    commands_run: list[str],
+    evaluation_result: dict[str, Any],
+    model: str,
+    temperature: float,
+) -> ReflectionSummary | None:
+    """Call the reflection LLM and validate its structured JSON output.
+
+    Returns a validated :class:`ReflectionSummary` on success, or ``None`` on
+    ANY failure (transport/API error, empty/invalid JSON). On failure a warning
+    is logged and the caller falls back to the naive heuristic — reflection must
+    NOT raise (the classifier is the only must-succeed step). See §9.2 and the
+    JSON-mode pattern in src/memory/classifier.py (deviation D4).
+    """
+    user_content = _build_reflection_input(
+        task=task,
+        trajectory=trajectory,
+        patch=patch,
+        files_touched=files_touched,
+        commands_run=commands_run,
+        evaluation_result=evaluation_result,
+    )
+
+    messages = [
+        {"role": "system", "content": _REFLECTION_SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+
+    try:
+        client = get_chat_client()
+        # JSON mode (NOT beta.parse) + Pydantic validation. temperature is passed
+        # through (frozen to 0 by the caller/config) per the classifier pattern.
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=temperature,
+        )
+
+        content = response.choices[0].message.content
+        if not content or not isinstance(content, str):
+            raise ValueError("reflection LLM returned empty/non-string content")
+
+        return ReflectionSummary.model_validate_json(content)
+
+    except (ValidationError, ValueError) as e:
+        logger.warning(
+            f"Reflection LLM produced invalid output for task "
+            f"{getattr(task, 'task_id', '?')}; falling back to naive "
+            f"extraction: {e}"
+        )
+        return None
+    except Exception as e:
+        logger.warning(
+            f"Reflection LLM call failed for task "
+            f"{getattr(task, 'task_id', '?')}; falling back to naive "
+            f"extraction: {e}"
+        )
+        return None
+
+
+def _build_reflection_input(
+    task: Any,
+    trajectory: dict[str, Any],
+    patch: str | None,
+    files_touched: list[str],
+    commands_run: list[str],
+    evaluation_result: dict[str, Any],
+) -> str:
+    """Assemble the user-message payload for the reflection LLM call.
+
+    Bundles the issue text, patch diff, files modified, commands run, and test
+    output from the trajectory / evaluation_result (§9.1 reflection input).
+    """
+    files_str = "\n".join(f"  - {f}" for f in files_touched) if files_touched else "  (none)"
+    commands_str = "\n".join(f"  - {c}" for c in commands_run) if commands_run else "  (none)"
+    patch_str = patch if patch else "(no patch generated)"
+    test_output = evaluation_result.get("test_output") or "(no test output)"
+    error_message = evaluation_result.get("error_message") or "(none)"
+
+    return f"""Issue:
+{task.issue_text}
+
+Patch diff:
+{patch_str}
+
+Files modified:
+{files_str}
+
+Commands run:
+{commands_str}
+
+Test output:
+{test_output}
+
+Error message:
+{error_message}
+
+Summarize the above into the required JSON object."""
 
 
 def _construct_memory_record(

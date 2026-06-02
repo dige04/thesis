@@ -21,7 +21,7 @@ from matplotlib.patches import Ellipse
 
 def compute_pareto_frontier(
     sequence_aggregates: dict[str, dict[str, dict[str, Any]]],
-    metric_x: str = "mean_total_cost",
+    metric_x: str = "mean_total_tokens",
     metric_y: str = "mean_cl_f1",
 ) -> dict[str, Any]:
     """

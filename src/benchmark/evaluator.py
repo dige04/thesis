@@ -10,15 +10,14 @@ Requirements:
 - Requirement 17: Evaluation Harness Integration
 """
 
+import json
 import logging
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from src.benchmark.models import Task
-from src.errors import DockerEvaluationError, handle_docker_failure
-
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +202,8 @@ class SWEBenchEvaluator:
                 "run",
                 "--rm",
                 "--network=none",  # Isolate container
-                f"--timeout={self.timeout_seconds}",
+                # NOTE: `docker run` has no --timeout flag; the wall-clock cap is
+                # enforced by subprocess.run(timeout=...) below.
             ]
 
             # Add volume mount if work_dir provided
@@ -234,12 +234,10 @@ class SWEBenchEvaluator:
                 check=False,  # Don't raise on non-zero exit
             )
 
-            # Parse result
-            # TODO: Finalize result parsing based on actual eval_v3 output format
-            # Expected format: JSON with {"passed": true/false, "details": {...}}
-            return self._parse_evaluation_output(result)
+            # Parse the JSON report emitted by the harness.
+            return self._parse_evaluation_output(result, task.task_id)
 
-        except subprocess.TimeoutExpired as e:
+        except subprocess.TimeoutExpired:
             # Handle Docker timeout using centralized error handling
             logger.error(f"Docker evaluation timeout for task {task.task_id}")
             return DockerEvalResult(
@@ -247,7 +245,7 @@ class SWEBenchEvaluator:
                 passed=False,
                 error=f"Evaluation timeout after {self.timeout_seconds}s",
             )
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             # Handle Docker not found
             logger.error(f"Docker command not found for task {task.task_id}")
             return DockerEvalResult(
@@ -264,46 +262,90 @@ class SWEBenchEvaluator:
                 error=f"Docker execution error: {type(e).__name__}: {e}",
             )
 
-    def _parse_evaluation_output(self, result: subprocess.CompletedProcess[str]) -> DockerEvalResult:
-        """Parse the output from eval_v3 Docker container.
+    def _parse_evaluation_output(
+        self,
+        result: subprocess.CompletedProcess[str],
+        task_id: str,
+    ) -> DockerEvalResult:
+        """Parse the JSON report emitted by the eval harness.
+
+        The SWE-Bench / eval_v3 harness emits a JSON report. We accept the
+        common shapes (see ``_resolved_from_report``) and read the boolean
+        ``resolved`` for ``task_id``. Substring matching is NOT used — it is
+        unreliable (an issue body containing "failed" would flip the verdict).
 
         Args:
-            result: The completed subprocess result from Docker
+            result: The completed subprocess result from Docker.
+            task_id: The instance/task id to look up in the report.
 
         Returns:
-            DockerEvalResult with 'success', 'passed', and 'error' keys
-
-        Note:
-            This parser will be finalized during Spike Week when the actual
-            eval_v3 output format is confirmed. The current implementation
-            handles common cases but may need adjustment.
+            DockerEvalResult with 'success', 'passed', and 'error' keys.
         """
-        # Check for Docker-level failures
-        if result.returncode != 0 and "passed" not in result.stdout.lower():
+        stdout = (result.stdout or "").strip()
+
+        report = self._extract_report_json(stdout)
+        if report is not None:
+            resolved = self._resolved_from_report(report, task_id)
+            if resolved is not None:
+                return DockerEvalResult(success=True, passed=resolved, error=None)
+
+        # No parseable report → distinguish a Docker/infra failure from an
+        # unparseable-but-successful exit.
+        if result.returncode != 0:
             return DockerEvalResult(
                 success=False,
                 passed=False,
-                error=f"Docker exit code {result.returncode}: {result.stderr}",
+                error=f"Docker exit code {result.returncode}: {(result.stderr or '')[:500]}",
             )
+        return DockerEvalResult(
+            success=False,
+            passed=False,
+            error=f"Could not parse evaluation report for {task_id}: {stdout[:200]}",
+        )
 
-        # Parse evaluation result
-        # TODO: Update this based on actual eval_v3 output format
-        # Expected: JSON output or structured text with pass/fail indicator
+    @staticmethod
+    def _extract_report_json(stdout: str) -> Any | None:
+        """Best-effort extraction of a JSON report from harness stdout.
 
-        stdout = result.stdout.strip()
+        Tries the whole stdout, then each line from the end (the report is
+        typically the last JSON object printed). Returns the parsed object or
+        None if no JSON is found.
+        """
+        candidates = [stdout, *reversed(stdout.splitlines())]
+        for candidate in candidates:
+            candidate = candidate.strip()
+            if not candidate or candidate[0] not in "{[":
+                continue
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+        return None
 
-        # Simple heuristic parsing (to be replaced with proper JSON parsing)
-        if "passed" in stdout.lower() or "success" in stdout.lower():
-            return DockerEvalResult(success=True, passed=True, error=None)
-        elif "failed" in stdout.lower() or "error" in stdout.lower():
-            return DockerEvalResult(success=True, passed=False, error=None)
-        else:
-            # Ambiguous output - treat as evaluation error
-            return DockerEvalResult(
-                success=False,
-                passed=False,
-                error=f"Could not parse evaluation output: {stdout[:200]}",
-            )
+    @staticmethod
+    def _resolved_from_report(report: Any, task_id: str) -> bool | None:
+        """Read the boolean ``resolved`` verdict for ``task_id`` from a report.
+
+        Accepts several shapes the harness may emit:
+        - ``{"resolved": bool}`` / ``{"passed": bool}``  (single-instance)
+        - ``{"<task_id>": {"resolved": bool}}``           (per-instance map)
+        - ``{"resolved_ids": [...]}`` / ``{"resolved_instances": [...]}``  (SWE-Bench summary)
+        Returns the boolean, or None if the report does not cover this task.
+        """
+        if not isinstance(report, dict):
+            return None
+        if isinstance(report.get("resolved"), bool):
+            return report["resolved"]
+        if isinstance(report.get("passed"), bool):
+            return report["passed"]
+        instance = report.get(task_id)
+        if isinstance(instance, dict) and isinstance(instance.get("resolved"), bool):
+            return instance["resolved"]
+        for key in ("resolved_ids", "resolved_instances"):
+            ids = report.get(key)
+            if isinstance(ids, list):
+                return task_id in ids
+        return None
 
     def verify_docker_available(self) -> tuple[bool, str | None]:
         """Verify that Docker is available and the eval_v3 image exists.

@@ -159,3 +159,29 @@ def test_build_task_result_records_pruned_memory_ids(tmp_path, monkeypatch):
 
     assert result.pruned_memory_ids == ["MEM-OLD"]
     assert result.consolidated_memory_ids == []
+
+
+def test_log_trajectory_writes_actions_only(tmp_path, monkeypatch):
+    """plan 5.4: per-task trajectory file (v5 §11.3) — actions + observations, no CoT."""
+    import json
+    from pathlib import Path
+
+    runner = make_runner(tmp_path, monkeypatch)
+    task = make_task(sequence_index=3)
+    agent_result = {
+        "trajectory": [
+            {"action": "read_file", "action_input": {"path": "a.py"}, "observation_summary": "120 lines"},
+            {"action": "write_file", "action_input": {"path": "a.py"}, "observation_summary": "Wrote a.py"},
+        ]
+    }
+
+    runner._log_trajectory(task=task, seed=2, agent_result=agent_result)
+
+    path = Path("runs") / "test-run" / "trajectories" / f"{task.task_id}.json"
+    assert path.exists()
+    data = json.loads(path.read_text())
+    assert data["task_id"] == task.task_id
+    assert data["seed"] == 2
+    assert [s["action"] for s in data["steps"]] == ["read_file", "write_file"]
+    assert data["steps"][0]["step"] == 1
+    assert all("reasoning" not in s and "thought" not in s for s in data["steps"])

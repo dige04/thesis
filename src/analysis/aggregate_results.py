@@ -16,6 +16,81 @@ from typing import Any
 
 import numpy as np
 
+from src.benchmark.cl_metrics import compute_anchor_probe_cl_metrics
+
+# Markers recorded on every aggregated sequence so CL-F1 is NEVER a silent
+# placeholder (plan 5.2). Either the real §14.2 anchor-probe CL-F1 was computed,
+# or the resolved-rate proxy was used as an explicit, traceable fallback.
+CL_F1_SOURCE_ANCHOR_PROBE = "anchor_probe"
+CL_F1_SOURCE_PROXY = "resolved_rate_proxy"
+
+
+def load_anchor_probe_data(
+    runs_dir: Path,
+) -> dict[tuple[str, str, int], dict[str, Any]]:
+    """Load per-run anchor-probe re-evaluation data, keyed by (policy, repo, seed).
+
+    Per THESIS_FINAL_v5.md §14.2, the PRIMARY CL-Stability/CL-F1 estimator is the
+    anchor-probe schedule (k=5 anchors re-evaluated at 4 probe points against the
+    memory snapshot after each probe task). That re-evaluation requires the real
+    eval harness + runner re-eval, which is a SEPARATE PHASE — it is NOT
+    implemented here. This loader only reads its output if/when it has been
+    produced, so the aggregation can use the real CL-F1 the moment that data
+    lands, and otherwise fall back to the resolved-rate proxy with an explicit
+    marker.
+
+    Expected per-run file: ``runs/{run_id}/anchor_probe.json`` with shape::
+
+        {
+          "policy": str, "repo": str, "seed": int, "n_tasks": int,
+          "anchor_indices": [int, ...],          # the anchor set A (§14.2)
+          "probe_points": [int, ...],            # 0-indexed probe columns p
+          "online_resolved": [0|1, ...],         # a_{i,i} for all T tasks
+          "probed_accuracy": [{"i": int, "p": int, "acc": float}, ...]
+        }
+
+    Runs lacking this file are simply absent from the returned mapping.
+
+    Args:
+        runs_dir: Path to runs/ directory containing all run folders.
+
+    Returns:
+        Mapping {(policy, repo, seed): anchor_probe_dict}.
+    """
+    anchor_probe: dict[tuple[str, str, int], dict[str, Any]] = {}
+
+    for run_dir in runs_dir.iterdir():
+        if not run_dir.is_dir():
+            continue
+
+        probe_path = run_dir / "anchor_probe.json"
+        if not probe_path.exists():
+            continue
+
+        with open(probe_path, encoding="utf-8") as f:
+            data = json.load(f)
+
+        key = (data["policy"], data["repo"], int(data["seed"]))
+        anchor_probe[key] = data
+
+    return anchor_probe
+
+
+def _anchor_probe_cl_f1(probe_data: dict[str, Any]) -> float:
+    """Compute the real §14.2 anchor-probe CL-F1 from a per-run probe payload."""
+    probed_accuracy = {
+        (int(cell["i"]), int(cell["p"])): float(cell["acc"])
+        for cell in probe_data["probed_accuracy"]
+    }
+    metrics = compute_anchor_probe_cl_metrics(
+        online_resolved=probe_data["online_resolved"],
+        anchor_indices=[int(i) for i in probe_data["anchor_indices"]],
+        probe_points=[int(p) for p in probe_data["probe_points"]],
+        probed_accuracy=probed_accuracy,
+        n_tasks=int(probe_data["n_tasks"]),
+    )
+    return metrics.cl_f1
+
 
 def aggregate_task_results(
     runs_dir: Path,
@@ -89,6 +164,10 @@ def aggregate_sequence_results(
     # Load all task results
     task_results = aggregate_task_results(runs_dir)
 
+    # Load anchor-probe re-evaluation data, if the (separate-phase) eval harness
+    # has produced it. Keyed by (policy, repo, seed). Empty until that phase runs.
+    anchor_probe_data = load_anchor_probe_data(runs_dir)
+
     # Aggregate by (policy, sequence, seed)
     seed_aggregates: dict[str, dict[str, dict[int, dict[str, Any]]]] = defaultdict(
         lambda: defaultdict(lambda: defaultdict(dict))
@@ -118,13 +197,24 @@ def aggregate_sequence_results(
                 mean_tool_calls = total_tool_calls / n_tasks if n_tasks > 0 else 0.0
                 mean_wall_time = total_wall_time / n_tasks if n_tasks > 0 else 0.0
 
-                # CL-F1 computation requires accuracy matrix
-                # For now, use resolved_rate as proxy (will be replaced by actual CL-F1)
-                # TODO: Integrate with cl_metrics.py to compute actual CL-F1
-                cl_f1 = resolved_rate  # Placeholder
+                # CL-F1: use the real §14.2 anchor-probe estimator when its
+                # re-evaluation data is available for this (policy, sequence,
+                # seed). The anchor-probe data COLLECTION is a separate phase
+                # (needs the real eval harness + runner re-eval); this code only
+                # consumes it. Until that data exists, fall back to resolved_rate
+                # as an EXPLICIT proxy and record cl_f1_source so it is never a
+                # silent placeholder.
+                probe_data = anchor_probe_data.get((policy, sequence, seed))
+                if probe_data is not None:
+                    cl_f1 = _anchor_probe_cl_f1(probe_data)
+                    cl_f1_source = CL_F1_SOURCE_ANCHOR_PROBE
+                else:
+                    cl_f1 = resolved_rate  # proxy fallback (NOT a silent placeholder)
+                    cl_f1_source = CL_F1_SOURCE_PROXY
 
                 seed_aggregates[policy][sequence][seed] = {
                     "cl_f1": cl_f1,
+                    "cl_f1_source": cl_f1_source,
                     "resolved_rate": resolved_rate,
                     "total_cost": total_cost,
                     "total_tokens": total_tokens,
@@ -148,6 +238,17 @@ def aggregate_sequence_results(
 
             # Extract arrays for each metric
             cl_f1_values = [s["cl_f1"] for s in seed_values]
+            # A sequence's CL-F1 is "anchor_probe" only if EVERY seed used the
+            # real §14.2 estimator; otherwise the proxy marker dominates so the
+            # provenance is never overstated.
+            cl_f1_source = (
+                CL_F1_SOURCE_ANCHOR_PROBE
+                if all(
+                    s["cl_f1_source"] == CL_F1_SOURCE_ANCHOR_PROBE
+                    for s in seed_values
+                )
+                else CL_F1_SOURCE_PROXY
+            )
             resolved_rate_values = [s["resolved_rate"] for s in seed_values]
             total_cost_values = [s["total_cost"] for s in seed_values]
             total_tokens_values = [s["total_tokens"] for s in seed_values]
@@ -157,6 +258,7 @@ def aggregate_sequence_results(
 
             sequence_aggregates[policy][sequence] = {
                 "mean_cl_f1": float(np.mean(cl_f1_values)),
+                "cl_f1_source": cl_f1_source,
                 "std_cl_f1": float(np.std(cl_f1_values, ddof=1))
                 if n_seeds > 1
                 else 0.0,

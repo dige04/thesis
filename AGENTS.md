@@ -86,11 +86,11 @@ PY
 | Area | Status | Notes |
 |---|---|---|
 | `src/agents/langgraph_agent.py` | **partial (2026-06-01)** | `solve_task` now runs the real v5 §4.4 ReAct tool-use loop (binds chat client, 8 tools via `AgentTools`, `LimitTracker`, `git diff` patch, no-CoT trajectory, token usage). Reflection/write/maintain left to the runner. Still TODO: real reflection LLM (`reflection.py`) + CLS summary LLM, and live-model validation (needs Ollama key). |
-| `src/benchmark/evaluator.py` (eval_v3) | **placeholder** | invalid `docker run --timeout=` flag; never applies patch / uses `test_patch`; substring result parsing. Rebuild around the public `swebench` package. |
-| `src/analysis/aggregate_results.py` CL-F1 | **placeholder** | `cl_f1 = resolved_rate`. Need real `a_{i,j}` matrix + **anchor-probe** (v5 FD#29 primary). |
+| `src/benchmark/evaluator.py` (eval_v3) | **partial (2026-06-02)** | `--timeout=` bug fixed; JSON-report parsing real + tested (no substring). Harness execution (apply patch, FAIL_TO_PASS/PASS_TO_PASS, images) pending live Docker env + `swebench` dep. |
+| `src/analysis/aggregate_results.py` CL-F1 | **partial (2026-06-02)** | anchor-probe §14.2 math (`compute_anchor_probe_cl_metrics`) + `cl_f1_source` provenance done; labeled `resolved_rate_proxy` fallback. Anchor-probe data collection (runner re-eval) pending real eval. |
 | Tuple/dict crash | **bug** | `policy.retrieve()` returns `list[tuple[float, MemoryRecord]]`; callers in `sequence_runner.py` (608, 683–691) and `langgraph_agent.py` (298, 326–336) call `.get()` → crashes all 5 memory conditions. Repair plan Task 1. |
 | CLS `memory_type="consolidated_summary"` | **bug** | rejected by `record.py` validator (5 types). Fix = assign cluster **majority** type. Crashes 24 CLS runs. |
-| `reflection.py` / CLS summary | **stub** | naive truncation / hardcoded f-string; no LLM. |
+| `reflection.py` / CLS summary | **done (2026-06-02)** | both call the LLM (JSON-mode + Pydantic + fallback). reflection §9.2 schema (deterministic outcome/files); CLS §P5 summary capped 350 tok (tiktoken), majority type kept. |
 | Run entry point | **missing** | `make pilot/run-all` are `echo` TODOs; `ExperimentRunner` has no CLI. |
 | Repair plan `docs/superpowers/plans/2026-05-27-memory-runner-integration-repair.md` | **unapplied** | Tasks 1–6 (tuple, same-repo FAISS, embedding construction, decay persistence, archive deltas, loader no-reorder). |
 | Trajectory + cost logging | **unwired** | `TrajectoryLogger` + `CostTracker` not called by `sequence_runner`. |

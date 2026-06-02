@@ -292,15 +292,20 @@ class CostTracker:
     Requirements: 27
     """
 
-    def __init__(self, run_id: str, run_dir: str | Path):
+    def __init__(self, run_id: str, run_dir: str | Path, cost_metric_mode: str = "usd"):
         """Initialize cost tracker for a run.
 
         Args:
             run_id: Unique identifier for this run
             run_dir: Directory for this run (e.g., runs/{run_id})
+            cost_metric_mode: One of "usd" | "tokens" | "walltime". Under a
+                non-USD mode (e.g. Ollama flat-rate, deviation D3) tokens are the
+                authoritative cost proxy and unknown model names do NOT raise
+                (per-token USD is meaningless); cost is recorded as 0.0.
         """
         self.run_id = run_id
         self.run_dir = Path(run_dir)
+        self.cost_metric_mode = cost_metric_mode
 
         # Ensure run directory exists
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -373,14 +378,18 @@ class CostTracker:
                 f"agent, classifier, consolidation"
             )
 
-        # Get pricing for model
-        if model not in PRICING:
+        # Get pricing for model. Under a non-USD cost metric (e.g. Ollama
+        # flat-rate, deviation D3) tokens are authoritative and per-token USD is
+        # meaningless, so unknown models do NOT raise — cost is recorded as 0.
+        if model in PRICING:
+            pricing = PRICING[model]
+        elif self.cost_metric_mode != "usd":
+            pricing = {"input": 0.0, "output": 0.0}
+        else:
             raise ValueError(
                 f"No pricing available for model '{model}'. "
                 f"Available models: {sorted(PRICING.keys())}"
             )
-
-        pricing = PRICING[model]
 
         # Compute cost
         input_cost = (prompt_tokens / 1_000_000) * pricing["input"]
@@ -455,14 +464,18 @@ class CostTracker:
         Raises:
             ValueError: If model pricing is not available
         """
-        # Get pricing for model
-        if model not in PRICING:
+        # Get pricing for model. Under a non-USD cost metric (e.g. Ollama
+        # flat-rate, deviation D3) tokens are authoritative and per-token USD is
+        # meaningless, so unknown models do NOT raise — cost is recorded as 0.
+        if model in PRICING:
+            pricing = PRICING[model]
+        elif self.cost_metric_mode != "usd":
+            pricing = {"input": 0.0, "output": 0.0}
+        else:
             raise ValueError(
                 f"No pricing available for model '{model}'. "
                 f"Available models: {sorted(PRICING.keys())}"
             )
-
-        pricing = PRICING[model]
 
         # Compute cost (embeddings only have input tokens)
         total_cost = (tokens / 1_000_000) * pricing["input"]

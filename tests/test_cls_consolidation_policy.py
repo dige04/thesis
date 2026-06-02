@@ -723,3 +723,223 @@ class TestCLSConsolidationPolicyFrozenInvariants:
     def test_old_memory_threshold_is_10(self):
         """Verify old memory threshold is 10 tasks (Invariant #9)."""
         assert CLSConsolidationPolicy.OLD_MEMORY_THRESHOLD == 10
+
+
+class _FakeChatCompletion:
+    """Minimal stand-in for an OpenAI chat completion response object."""
+
+    def __init__(self, content):
+        class _Msg:
+            def __init__(self, c):
+                self.content = c
+
+        class _Choice:
+            def __init__(self, c):
+                self.message = _Msg(c)
+
+        self.choices = [_Choice(content)]
+
+
+class _FakeChatClient:
+    """Mock chat client exposing .chat.completions.create(...)."""
+
+    def __init__(self, content=None, raise_exc=None):
+        self._content = content
+        self._raise_exc = raise_exc
+        self.calls = []
+
+        outer = self
+
+        class _Completions:
+            def create(self, **kwargs):
+                outer.calls.append(kwargs)
+                if outer._raise_exc is not None:
+                    raise outer._raise_exc
+                return _FakeChatCompletion(outer._content)
+
+        class _Chat:
+            def __init__(self):
+                self.completions = _Completions()
+
+        self.chat = _Chat()
+
+
+class TestCLSConsolidationPolicyLLMSummary:
+    """Test the REAL LLM consolidation summary (plan 4.6).
+
+    The consolidated record's content must be composed from the LLM JSON
+    output (summary + recurring_pattern + successful_strategy + failure_traps
+    + test_commands). The record's memory_type stays the cluster MAJORITY valid
+    type (Invariant #7), is_consolidated=True, token_length is a real tiktoken
+    count capped at MAX_SUMMARY_TOKENS, and any LLM failure falls back to the
+    placeholder summary without crashing.
+    """
+
+    def _llm_json(self):
+        import json
+        return json.dumps({
+            "memory_type": "consolidated_summary",  # must be IGNORED for record
+            "summary": "Repo X relies on Q-object short-circuiting in query.py.",
+            "common_files": ["django/db/models/query.py", "tests/queries.py"],
+            "recurring_pattern": "filter().exclude() mis-combines Q objects",
+            "successful_strategy": "short-circuit empty Q before AND-combine",
+            "failure_traps": "forgetting to reset the alias map between joins",
+            "test_commands": ["pytest tests/queries.py -k qobject"],
+        })
+
+    def test_consolidation_uses_llm_summary_content(self):
+        """Consolidated record content comes from the mocked LLM JSON, with a
+        valid majority memory_type, is_consolidated=True, and a real (>0,
+        bounded) tiktoken token_length."""
+        from unittest.mock import patch
+
+        from src.memory.record import VALID_MEMORY_TYPES
+
+        policy = CLSConsolidationPolicy(max_records=100)
+        store = MockMemoryStore()
+
+        # Cluster: 2 bug_fix, 1 config -> majority bug_fix
+        cluster = [
+            create_mock_record("mem-l0", 0, memory_type="bug_fix"),
+            create_mock_record("mem-l1", 1, memory_type="bug_fix"),
+            create_mock_record("mem-l2", 2, memory_type="config"),
+        ]
+        for record in cluster:
+            store.records.append(record)
+
+        fake_client = _FakeChatClient(content=self._llm_json())
+
+        with patch(
+            "src.memory.policies.cls_consolidation.get_chat_client",
+            return_value=fake_client,
+        ):
+            policy._consolidate_cluster(cluster, store, current_step=20)
+
+        # LLM was actually called with temperature=0 and json_object format
+        assert len(fake_client.calls) == 1
+        call = fake_client.calls[0]
+        assert call["temperature"] == 0
+        assert call["response_format"] == {"type": "json_object"}
+
+        consolidated = [r for r in store.records if r.is_consolidated]
+        assert len(consolidated) == 1
+        rec = consolidated[0]
+
+        # Content composed from the LLM JSON, not the placeholder f-string
+        composed = (rec.issue_summary or "") + (rec.test_summary or "")
+        assert "short-circuiting in query.py" in composed
+        assert "filter().exclude() mis-combines Q objects" in composed
+        assert "short-circuit empty Q before AND-combine" in composed
+        assert "Consolidated summary of" not in composed  # placeholder marker
+        assert "placeholder_pattern" not in composed
+
+        # Type must be the majority valid type (Invariant #7), NOT consolidated_summary
+        assert rec.memory_type in VALID_MEMORY_TYPES
+        assert rec.memory_type == "bug_fix"
+        assert rec.is_consolidated is True
+        assert set(rec.source_memory_ids) == {"mem-l0", "mem-l1", "mem-l2"}
+
+        # token_length is a real tiktoken count, > 0 and within a sane bound
+        assert rec.token_length > 0
+        assert rec.token_length <= CLSConsolidationPolicy.MAX_SUMMARY_TOKENS
+
+    def test_summary_text_capped_at_max_tokens(self):
+        """A huge LLM summary is truncated so token_length <= MAX_SUMMARY_TOKENS."""
+        import json
+        from unittest.mock import patch
+
+        from src.memory.embedding_utils import count_tokens
+
+        policy = CLSConsolidationPolicy(max_records=100)
+        store = MockMemoryStore()
+        cluster = [
+            create_mock_record("mem-b0", 0, memory_type="bug_fix"),
+            create_mock_record("mem-b1", 1, memory_type="bug_fix"),
+            create_mock_record("mem-b2", 2, memory_type="bug_fix"),
+        ]
+        for record in cluster:
+            store.records.append(record)
+
+        huge = json.dumps({
+            "summary": "word " * 2000,
+            "common_files": [],
+            "recurring_pattern": "pattern " * 500,
+            "successful_strategy": "strategy " * 500,
+            "failure_traps": "trap " * 500,
+            "test_commands": ["pytest"],
+        })
+        fake_client = _FakeChatClient(content=huge)
+
+        with patch(
+            "src.memory.policies.cls_consolidation.get_chat_client",
+            return_value=fake_client,
+        ):
+            policy._consolidate_cluster(cluster, store, current_step=20)
+
+        rec = [r for r in store.records if r.is_consolidated][0]
+        assert rec.token_length <= CLSConsolidationPolicy.MAX_SUMMARY_TOKENS
+        # token_length is a real tiktoken count of the stored embedding_text
+        assert rec.token_length == count_tokens(rec.embedding_text)
+
+    def test_falls_back_to_placeholder_on_llm_failure(self):
+        """Any LLM failure (API/JSON/empty) falls back to the placeholder
+        summary without crashing the run."""
+        from unittest.mock import patch
+
+        from src.memory.record import VALID_MEMORY_TYPES
+
+        policy = CLSConsolidationPolicy(max_records=100)
+        store = MockMemoryStore()
+        cluster = [
+            create_mock_record("mem-f0", 0, memory_type="bug_fix"),
+            create_mock_record("mem-f1", 1, memory_type="bug_fix"),
+            create_mock_record("mem-f2", 2, memory_type="config"),
+        ]
+        for record in cluster:
+            store.records.append(record)
+
+        fake_client = _FakeChatClient(raise_exc=RuntimeError("boom"))
+
+        with patch(
+            "src.memory.policies.cls_consolidation.get_chat_client",
+            return_value=fake_client,
+        ):
+            # Must NOT raise
+            policy._consolidate_cluster(cluster, store, current_step=20)
+
+        consolidated = [r for r in store.records if r.is_consolidated]
+        assert len(consolidated) == 1
+        rec = consolidated[0]
+        # Fell back to the placeholder text
+        assert "Consolidated summary of" in rec.issue_summary
+        # Invariants still hold on the fallback record
+        assert rec.memory_type in VALID_MEMORY_TYPES
+        assert rec.memory_type == "bug_fix"
+        assert rec.is_consolidated is True
+        assert rec.token_length > 0
+
+    def test_falls_back_to_placeholder_on_invalid_json(self):
+        """Malformed JSON content also triggers the placeholder fallback."""
+        from unittest.mock import patch
+
+        policy = CLSConsolidationPolicy(max_records=100)
+        store = MockMemoryStore()
+        cluster = [
+            create_mock_record("mem-j0", 0, memory_type="bug_fix"),
+            create_mock_record("mem-j1", 1, memory_type="bug_fix"),
+            create_mock_record("mem-j2", 2, memory_type="bug_fix"),
+        ]
+        for record in cluster:
+            store.records.append(record)
+
+        fake_client = _FakeChatClient(content="not valid json at all")
+
+        with patch(
+            "src.memory.policies.cls_consolidation.get_chat_client",
+            return_value=fake_client,
+        ):
+            policy._consolidate_cluster(cluster, store, current_step=20)
+
+        rec = [r for r in store.records if r.is_consolidated][0]
+        assert "Consolidated summary of" in rec.issue_summary
+        assert rec.token_length > 0

@@ -62,7 +62,9 @@ Apply each with its test (TDD). Files/lines are from the 2026-06-01 verified rev
 ## Phase 4 — Real coding agent (the gate)  🟡 IN PROGRESS (2026-06-01)
 > **Done:** the v5 §4.4 ReAct tool-use loop is implemented in `CodingAgent.solve_task` (`langgraph_agent.py`): binds the chat client (`get_chat_client`/`main_model`, temp 0), exposes the 8 §4.3 tools (+`finish`) as OpenAI tool schemas, wires the already-functional `AgentTools` against `task_env.working_dir`, iterates under `LimitTracker` (strict max-20 / 80 / 5), generates the patch via `git diff`, records the trajectory as action+observation only (no CoT, §11.3), and accumulates token usage. Reflection/write/maintain (nodes 10–12) are left to `SequenceRunner` — fixes the latent double-`maintain()`. The legacy 12-node graph is superseded (still built in `__init__`; harmless). Tested with a fake tool-calling client over a real temp git repo: edits a file → non-empty patch; never-finish → force-fail at step 21 (`tests/test_agent_react_loop.py`).
 > **Phase 3.2 (classifier)** done — JSON-mode + factory + retry (committed separately).
-> **Remaining in Phase 4:** 4.5 real reflection LLM (`reflection.py:_extract_reflection_data` still naive truncation) and 4.6 real CLS summary (`cls_consolidation` still placeholder f-string). Both route through `get_chat_client()`/`summary_model()`. End-to-end validation against a live model needs the Ollama key.
+> **4.5 reflection LLM** ✅ (2026-06-02): `_extract_reflection_data` calls the LLM (JSON-mode + `ReflectionSummary` Pydantic, §9.2 schema); `outcome`/`files_touched` stay deterministic; falls back to naive truncation on any LLM failure (never crashes the task). `embedding_text` still left to the store (#4).
+> **4.6 CLS summary LLM** ✅ (2026-06-02): `_generate_summary` calls the LLM (§P5 prompt, JSON-mode + `ConsolidationSummary` Pydantic), composes the consolidated content, caps at 350 tokens via tiktoken (real `count_tokens`), keeps majority `memory_type` (#7) + `is_consolidated`; falls back to placeholder on failure.
+> **Remaining in Phase 4:** end-to-end validation against a live model (needs the Ollama key).
 
 Original task list (4.1–4.4, 4.7 ✅ via the loop above):
 - [ ] **4.1** Bind a chat model in `langgraph_agent.py` via `get_chat_client()` + `main_model()`, temp 0, with tool-calling.
@@ -77,13 +79,13 @@ Original task list (4.1–4.4, 4.7 ✅ via the loop above):
 
 ---
 
-## Phase 5 — Real eval_v3 + CL-F1 + cost-as-tokens
-- [ ] **5.1** Rebuild `evaluator.py` around the public `swebench` harness: apply the candidate patch on top of `base_commit`, run `FAIL_TO_PASS`/`PASS_TO_PASS` from `test_patch`, parse the real JSON report → `resolved`. Remove the invalid `--timeout=` docker flag. Reconcile with `task_env` (the eval must see the agent's edits). Build/pull the eval image; implement `make setup`/`make verify-env`.
-- [ ] **5.2** Real CL-F1: `aggregate_results.py:124` calls `cl_metrics.compute_cl_metrics`; implement the **anchor-probe** re-evaluation (v5 FD#29 PRIMARY) for the off-diagonal `a_{i,j}`; full matrix is supplementary. Replace `cl_metrics.build_accuracy_matrix` "assumes no forgetting" forward-fill (L174–184).
-- [ ] **5.3** Cost-as-tokens (D3): `cost_tracker` honors `cost_metric_mode`; when `!= usd`, record `total_tokens`/`wall_time`, do **not** raise on unknown model names. Wire `CostTracker` into `sequence_runner` (+ `write_cost_summary`). `pareto.py` `metric_x` → `mean_total_tokens`.
-- [ ] **5.4** Wire `TrajectoryLogger` into `sequence_runner` (per task). 4 mandatory log streams now all produced.
+## Phase 5 — Real eval_v3 + CL-F1 + cost-as-tokens  🟡 PARTIAL (2026-06-02)
+- [~] **5.1** `evaluator.py`: ✅ fixed the invalid `--timeout=` docker flag; ✅ replaced substring parsing with real JSON-report parsing (`_resolved_from_report` accepts `{resolved}`, per-instance `{task_id:{resolved}}`, and `resolved_ids`/`resolved_instances` lists), tested in `tests/test_evaluator_parsing.py` (8 tests incl. "substring 'failed' must not flip the verdict"). **STILL PENDING (needs live Docker env + user's `swebench` dependency call):** the actual harness invocation — apply patch on `base_commit`, run `FAIL_TO_PASS`/`PASS_TO_PASS`, reconcile with `task_env`, build/pull images, `make setup`/`verify-env`. The current `docker run` command is a structural placeholder; parsing is real.
+- [~] **5.2** ✅ `cl_metrics.compute_anchor_probe_cl_metrics` implements §14.2 verbatim (Plasticity/Stability_anchor/CL_F1); ✅ `aggregate_results` uses it when anchor-probe data is present, else a clearly-marked `cl_f1_source="resolved_rate_proxy"` (never a silent placeholder). Data contract: `runs/{run_id}/anchor_probe.json`. **STILL PENDING:** the anchor-probe DATA COLLECTION (runner re-evaluates anchors against later snapshots) — depends on 5.1 real eval. Full-matrix path (§14.3) left as supplementary.
+- [x] **5.3** Cost-as-tokens (D3): `cost_tracker` takes `cost_metric_mode` (default "usd" preserves tests; non-USD → no raise on unknown model, USD recorded 0, tokens authoritative). `pareto.py` `metric_x` default → `mean_total_tokens` (aggregate already produces it). Full `CostTracker`-into-runner wiring deferred (token data already flows via `task_results`).
+- [x] **5.4** ✅ `TrajectoryLogger` wired into `sequence_runner._execute_task` (per task, action+observation only, no CoT). 3 of 4 mandatory log streams now produced by a run (cost_summary.json pending full CostTracker wiring).
 
-**Acceptance:** one task end-to-end yields a genuine `resolved` 0/1 from the real harness; all 4 log streams written; CL-F1 computed from a real matrix on a 2-task toy.
+**Acceptance (revised):** parsing + math + plumbing done and unit-tested; the two live-env pieces (real harness execution, anchor-probe re-eval) are explicitly pending the Ollama key + Docker images.
 
 ---
 
