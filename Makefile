@@ -1,4 +1,9 @@
-.PHONY: help setup verify-env smoke pilot run-condition run-all aggregate stats plots lint test typecheck cost-report clean
+.PHONY: help setup verify-env build-probe smoke pilot run-condition run-all aggregate stats plots lint test typecheck cost-report clean
+
+# Interpreter — defaults to the project venv so `make pilot` works after
+# `make setup`. Override with `make PYTHON=python3 ...` to use another interp.
+PYTHON ?= .venv/bin/python
+CURRICULUM ?= data/SWE-Bench-CL-Curriculum.json
 
 # Default target
 help:
@@ -37,59 +42,47 @@ help:
 # ─────────────────────────────────────────────────────────────────
 
 setup:
-	@echo "Setting up environment..."
-	@echo "TODO: Implement during Spike Week"
-	@echo "  - Create Python 3.11+ virtual environment"
-	@echo "  - Install dependencies from pyproject.toml"
-	@echo "  - Build Docker images for eval_v3"
-	@echo "  - Initialize FAISS indices"
-	@echo "  - Verify API keys in .env"
+	@echo "Setting up environment (idempotent)..."
+	@bash scripts/setup_env.sh
 
 verify-env:
-	@echo "Verifying environment..."
-	@echo "TODO: Implement during Spike Week"
-	@echo "  - Check Python version >= 3.11"
-	@echo "  - Check API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY)"
-	@echo "  - Check VPS resources (32GB RAM, 250GB disk, 8 cores)"
-	@echo "  - Check Docker daemon running"
-	@echo "  - Check FAISS installation"
-	@echo "  - Check wandb login"
+	@$(PYTHON) scripts/verify_env.py
+
+build-probe:
+	@echo "Probing arm64 buildability + SWE-bench_Verified coverage over all 273 tasks..."
+	@$(PYTHON) -m src.benchmark.build_probe --curriculum $(CURRICULUM)
 
 # ─────────────────────────────────────────────────────────────────
 # Spike Week (Calibration)
 # ─────────────────────────────────────────────────────────────────
 
 smoke:
-	@echo "Running smoke test (3 tasks)..."
-	@python -m src.benchmark.smoke_test
+	@echo "Running smoke test (real curriculum easy tasks, NoMemory)..."
+	@$(PYTHON) -m src.benchmark.smoke_test
 
 pilot:
-	@echo "Running pilot experiment (12 runs)..."
-	@echo "TODO: Implement during Spike Week"
-	@echo "  - 2 sequences × 6 policies × 1 seed = 12 runs"
-	@echo "  - Verify all policies execute without crashes"
-	@echo "  - Verify memory snapshots generated"
-	@echo "  - Verify cost tracking accurate"
-	@echo "  - Gate: Calibrate top_k and max_context_tokens"
+	@echo "Running pilot experiment: django + pytest x 6 policies x 1 seed = 12 runs (decision I)..."
+	@$(PYTHON) -m src.benchmark.experiment_runner --mode pilot \
+		--sequences django_django_sequence,pytest-dev_pytest_sequence \
+		--curriculum $(CURRICULUM)
 
 # ─────────────────────────────────────────────────────────────────
 # Full Experiment
 # ─────────────────────────────────────────────────────────────────
 
 run-condition:
-	@echo "Running single condition..."
-	@echo "TODO: Implement during Week 5"
-	@echo "  - Requires POLICY= and SEED= environment variables"
-	@echo "  - Example: make run-condition POLICY=type_aware_decay SEED=1"
-	@echo "  - Executes all 8 sequences for specified policy and seed"
+ifndef POLICY
+	$(error POLICY is required, e.g. make run-condition POLICY=type_aware_decay SEED=1)
+endif
+ifndef SEED
+	$(error SEED is required, e.g. make run-condition POLICY=type_aware_decay SEED=1)
+endif
+	@echo "Running condition: POLICY=$(POLICY) SEED=$(SEED) (all 8 sequences)..."
+	@$(PYTHON) -m src.benchmark.experiment_runner --mode condition --policy $(POLICY) --seed $(SEED) --curriculum $(CURRICULUM)
 
 run-all:
-	@echo "Running full experiment (144 runs)..."
-	@echo "TODO: Implement during Week 5"
-	@echo "  - 8 sequences × 6 policies × 3 seeds = 144 runs"
-	@echo "  - Long-running (estimated 7-10 days)"
-	@echo "  - Monitored via wandb + tmux"
-	@echo "  - Automatic cost tracking and alerts"
+	@echo "Running full experiment: 8 sequences x 6 policies x 3 seeds = 144 runs (sequential)..."
+	@$(PYTHON) -m src.benchmark.experiment_runner --mode full --curriculum $(CURRICULUM)
 
 # ─────────────────────────────────────────────────────────────────
 # Analysis
@@ -130,15 +123,15 @@ plots:
 
 lint:
 	@echo "Running ruff linter..."
-	ruff check src/ tests/
+	$(PYTHON) -m ruff check src/ tests/
 
 test:
 	@echo "Running pytest..."
-	pytest tests/ -v --cov=src --cov-report=term-missing
+	$(PYTHON) -m pytest tests/ -v --cov=src --cov-report=term-missing
 
 typecheck:
 	@echo "Running mypy type checker..."
-	mypy src/ --strict
+	$(PYTHON) -m mypy src/ --strict
 
 # ─────────────────────────────────────────────────────────────────
 # Monitoring
