@@ -235,6 +235,13 @@ class RunCostSummary:
     tasks_completed: int = 0
     start_time: str | None = None
     end_time: str | None = None
+    # Provenance: True only when ALL v5 §1582 cost-axis call types (agent +
+    # reflection + classifier + consolidation + embedding) are tracked. The
+    # runner currently records the agent call only (reflection/classifier/
+    # consolidation/embedding token surfacing is a pending follow-up), so this
+    # stays False — downstream Pareto/H1b/H3 analysis MUST NOT treat total_tokens
+    # as the complete cost axis while this is False. Mirrors cl_f1_source honesty.
+    pareto_cost_complete: bool = False
     task_costs: list[TaskCostSummary] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -256,6 +263,7 @@ class RunCostSummary:
             "tasks_completed": self.tasks_completed,
             "start_time": self.start_time,
             "end_time": self.end_time,
+            "pareto_cost_complete": self.pareto_cost_complete,
             "task_costs": [tc.to_dict() for tc in self.task_costs],
         }
 

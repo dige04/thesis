@@ -96,17 +96,22 @@ def test_search_code_parses_and_strips_dot_slash(fake):
     assert matches[1] == {"file": "b.py", "line": 7, "content": "x = 1"}
 
 
-def test_git_diff_includes_untracked(fake):
+def test_git_diff_stages_then_diffs_cached(fake):
+    # New files are captured via `git add -A` + `git diff --cached HEAD`, which
+    # yields a valid git-apply-able patch (proper diff --git/new file/@@ headers).
     fake.script = {
-        "git diff HEAD": (0, "diff --git a/x b/x\n", ""),
-        "git ls-files --others": (0, "new.py\n", ""),
-        "cat new.py": (0, "line1\nline2", ""),
+        "git diff --cached HEAD": (
+            0, "diff --git a/new.py b/new.py\nnew file mode 100644\n@@ -0,0 +1,2 @@\n+line1\n+line2\n", ""
+        ),
     }
     be = ContainerBackend("c1")
     patch = be.git_diff()
-    assert "diff --git a/x b/x" in patch
-    assert "+++ b/new.py" in patch
+    assert "diff --git a/new.py b/new.py" in patch
+    assert "new file mode" in patch
     assert "+line1" in patch and "+line2" in patch
+    cmds = [c["cmd"] for c in fake.calls]
+    assert any("git add -A" in c for c in cmds)
+    assert any("git diff --cached HEAD" in c for c in cmds)
 
 
 def test_list_files_maxdepth_and_relative(fake):

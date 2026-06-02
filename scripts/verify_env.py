@@ -95,7 +95,14 @@ try:
         f"dim {dim} != configured {expected} (rebuild FAISS or fix EMBEDDING_DIM)",
     )
 except Exception as e:
-    soft("embedder reachable", False, detail_bad=f"{type(e).__name__}: start `ollama serve` + pull the embedder")
+    soft(
+        "embedder reachable",
+        False,
+        detail_bad=(
+            f"{type(e).__name__}: REQUIRED for 5/6 policies (only NoMemory runs without it) "
+            "— start `ollama serve` + `ollama pull nomic-embed-text-v2-moe` before `make pilot`"
+        ),
+    )
 
 # --- report -----------------------------------------------------------------
 print("\nEnvironment verification:\n")

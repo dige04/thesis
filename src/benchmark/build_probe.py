@@ -24,8 +24,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -71,15 +73,20 @@ def _default_builder(
     arch-induced unresolvability — flagged in the methodology audit). Expensive;
     requires Docker + network.
     """
+    # Lazy import to avoid any import cycle and keep build_probe importable
+    # without the evaluator's transitive deps.
+    from src.benchmark.evaluator import SWEBenchEvaluator
+
     run_id = f"probe_{instance_id}"
     start = time.time()
+    cwd = Path(tempfile.mkdtemp(prefix="probe_"))
     try:
-        result = subprocess.run(
+        subprocess.run(
             [
                 sys.executable, "-m", "swebench.harness.run_evaluation",
                 "--dataset_name", dataset_name,
                 "--split", "test",
-                "--predictions_path", "gold",
+                "--predictions_path", "gold",   # harness synthesizes the gold patch
                 "--instance_ids", instance_id,
                 "--run_id", run_id,
                 "--max_workers", "1",
@@ -87,17 +94,22 @@ def _default_builder(
                 "--cache_level", "env",
                 "--namespace", namespace,
             ],
-            capture_output=True, text=True, timeout=timeout + 1800, check=False,
+            capture_output=True, text=True, timeout=timeout + 1800, check=False, cwd=cwd,
         )
         secs = time.time() - start
-        # gold resolving => image built and task resolvable on arm64.
-        ok = ("resolved_instances\": 1" in result.stdout) or (instance_id in result.stdout and "resolved_ids" in result.stdout)
-        err = None if ok else (result.stderr or result.stdout)[-500:]
+        # Read the run-report FILE (model_name_or_path == "gold"), NOT stdout —
+        # substring-matching the human-readable stdout is unreliable. gold
+        # resolving => the arm64 image built AND the task resolves on arm64.
+        verdict = SWEBenchEvaluator()._read_report(cwd, "gold", run_id, instance_id)
+        ok = verdict is True
+        err = None if ok else "gold patch did not resolve on arm64 (build failed or unresolvable)"
         return ok, secs, err
     except subprocess.TimeoutExpired:
         return False, time.time() - start, "build/eval timeout"
     except Exception as e:  # pragma: no cover - env dependent
         return False, time.time() - start, f"{type(e).__name__}: {e}"
+    finally:
+        shutil.rmtree(cwd, ignore_errors=True)
 
 
 def probe(

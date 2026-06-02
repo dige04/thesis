@@ -364,13 +364,17 @@ class ExperimentRunner:
     def _save_experiment_summary(
         self,
         summary: ExperimentSummary,
+        filename: str = "experiment_summary.json",
     ) -> None:
         """Save experiment summary to results directory.
 
         Args:
             summary: ExperimentSummary to save
+            filename: summary filename — namespaced per invocation so
+                run-condition / pilot / full do not clobber each other across
+                the 6×3 sweep (per-run *_result.json files are already unique).
         """
-        summary_file = self.results_dir / "experiment_summary.json"
+        summary_file = self.results_dir / filename
 
         with open(summary_file, "w", encoding="utf-8") as f:
             json.dump(asdict(summary), f, indent=2)
@@ -472,7 +476,7 @@ class ExperimentRunner:
         )
 
         # Save summary
-        self._save_experiment_summary(summary)
+        self._save_experiment_summary(summary, "experiment_summary_full.json")
 
         logger.info(
             f"Experiment complete: "
@@ -635,7 +639,7 @@ class ExperimentRunner:
         )
 
         # Save summary
-        self._save_experiment_summary(summary)
+        self._save_experiment_summary(summary, "experiment_summary_pilot.json")
 
         logger.info(
             f"Pilot experiment complete: "
@@ -721,7 +725,9 @@ class ExperimentRunner:
             end_time=end_timestamp,
             failed_run_ids=failed_run_ids,
         )
-        self._save_experiment_summary(summary)
+        self._save_experiment_summary(
+            summary, f"experiment_summary_condition_{policy_name}_seed{seed}.json"
+        )
         logger.info(
             f"Condition complete: {completed_runs}/{len(run_configs)} completed, "
             f"{failed_runs} failed, time={summary.total_wall_time:.1f}s"

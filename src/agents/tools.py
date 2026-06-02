@@ -199,28 +199,17 @@ class LocalBackend(ExecutionBackend):
         return matches
 
     def git_diff(self) -> str:
+        # Stage everything (incl. new files) then `git diff --cached HEAD` so the
+        # patch carries proper `diff --git`/`new file`/`@@` headers that
+        # swebench's `git apply` accepts. The previous hand-built untracked diff
+        # lacked hunk headers and was rejected, silently dropping new files from
+        # the evaluated patch. The checkout is throwaway, so staging is safe.
+        subprocess.run(["git", "add", "-A"], capture_output=True, text=True, cwd=self.working_dir)
         result = subprocess.run(
-            ["git", "diff", "HEAD"],
+            ["git", "diff", "--cached", "HEAD"],
             capture_output=True, text=True, cwd=self.working_dir,
         )
-        patch = result.stdout
-        untracked = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"],
-            capture_output=True, text=True, cwd=self.working_dir,
-        )
-        if untracked.stdout:
-            for file_path in untracked.stdout.strip().split("\n"):
-                if not file_path:
-                    continue
-                try:
-                    with open(self.working_dir / file_path, encoding="utf-8") as f:
-                        content = f.read()
-                    patch += f"\n--- /dev/null\n+++ b/{file_path}\n"
-                    for line in content.split("\n"):
-                        patch += f"+{line}\n"
-                except Exception:
-                    pass
-        return patch
+        return result.stdout
 
 
 class ContainerBackend(ExecutionBackend):
@@ -314,19 +303,10 @@ class ContainerBackend(ExecutionBackend):
         return matches
 
     def git_diff(self) -> str:
-        patch = self._exec("git diff HEAD").stdout
-        untracked = self._exec("git ls-files --others --exclude-standard").stdout
-        if untracked:
-            for file_path in untracked.strip().split("\n"):
-                if not file_path:
-                    continue
-                proc = self._exec(f"cat {shlex.quote(file_path)}")
-                if proc.returncode != 0:
-                    continue
-                patch += f"\n--- /dev/null\n+++ b/{file_path}\n"
-                for line in proc.stdout.split("\n"):
-                    patch += f"+{line}\n"
-        return patch
+        # Same approach as LocalBackend: stage all, then diff --cached for a
+        # valid, git-apply-able patch that includes new files with proper headers.
+        self._exec("git add -A")
+        return self._exec("git diff --cached HEAD").stdout
 
 
 class ContainerSession:
