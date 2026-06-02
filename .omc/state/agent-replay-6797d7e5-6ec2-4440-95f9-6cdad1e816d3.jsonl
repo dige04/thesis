@@ -1,0 +1,6 @@
+{"t":0,"agent":"a424ec6","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a5db3af","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a3910e1","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a5db3af","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":143264}
+{"t":0,"agent":"a3910e1","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":132161}
+{"t":0,"agent":"a424ec6","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":187233}

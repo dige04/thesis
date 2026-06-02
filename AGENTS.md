@@ -126,5 +126,27 @@ PY
 ## Communication
 The user is a master's researcher; communicates in Vietnamese; expects substantive synthesis and honest pushback. Technical content (code, schemas, paper terms) stays in English. Evaluate any scope expansion against v5 §24 first.
 
+## Repository map (per-directory AGENTS.md)
+
+This file is the **root** of a hierarchical AGENTS.md tree (generated 2026-06-02). Each directory has its own `AGENTS.md` with file-level detail, v5 cross-references, and per-area invariants. Navigate down for specifics:
+
+| Directory | What's documented |
+|---|---|
+| `src/AGENTS.md` | Source overview + cross-cutting rules |
+| `src/agents/AGENTS.md` | LangGraph ReAct agent, tools, prompts, hard limits (v5 §4) |
+| `src/memory/AGENTS.md` | Record, store (SQLite+FAISS), shared retriever, reflection, classifier (v5 §5–10) |
+| `src/memory/policies/AGENTS.md` | The 6 locked policies (v5 §8) |
+| `src/benchmark/AGENTS.md` | Loader, task env, eval_v3, runners, CL metrics (v5 §2,3,11,14) |
+| `src/metrics/AGENTS.md` | Cost (tokens/D3), retrieval quality, behavioral (v5 §14) |
+| `src/analysis/AGENTS.md` | Wilcoxon/BCa/r_rb, GLMM, PR-AUC, Pareto, plots (v5 §15–18) |
+| `src/config/AGENTS.md` | YAML loader, LLM factory, calibration (v5 §13; D1–D5) |
+| `src/logging/AGENTS.md` | The 4 mandatory log artifacts (v5 §11) |
+| `tests/AGENTS.md` | Invariant-asserting pytest suite |
+| `configs/AGENTS.md`, `configs/policies/AGENTS.md` | Locked YAML config (v5 §13) |
+| `data/AGENTS.md` | SWE-Bench-CL curriculum |
+| `examples/AGENTS.md`, `scripts/AGENTS.md`, `docs/AGENTS.md`, `.kiro/specs/.../AGENTS.md` | Usage scripts, dataset build, plans, Kiro specs |
+
+Regenerate with `/oh-my-claudecode:deepinit`. Manual notes under each file's `<!-- MANUAL -->` marker are preserved.
+
 ---
-> **In one line:** Implement v5 faithfully on Ollama Cloud; the four deviations (D1–D4 in CLAUDE.md) are declared and disclosed, nothing else changes.
+> **In one line:** Implement v5 faithfully on Ollama Cloud; the five deviations (D1–D5 in CLAUDE.md) are declared and disclosed, nothing else changes.

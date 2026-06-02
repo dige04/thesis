@@ -1,428 +1,163 @@
 """
 Unit tests for agent execution limits.
 
+Migrated 2026-06-02 from the deleted ``src/agents/coding_agent.py`` scaffold
+(plan decision M / Phase 2.10). The live agent is
+``src.agents.langgraph_agent.CodingAgent``, which enforces the frozen
+invariants via ``src.agents.limit_tracker.LimitTracker`` +
+``validate_temperature`` and a config-driven constructor gate.
+
 Tests frozen decisions from THESIS_FINAL_v5.md §0.1:
 - Frozen decision #3: Max 20 steps per task, hard force-fail
 - Frozen decision #26: Temperature=0 for all LLM calls
+
+The *agent-level* force-fail boundary (20 turns run, the 21st trips) is covered
+end-to-end in ``tests/test_agent_react_loop.py``. Here we unit-test the
+canonical limit mechanisms and the constructor's invariant gate.
 """
 
 import time
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
 import pytest
-from src.agents.coding_agent import (
-    CodingAgent,
-    AgentExecutionLimits,
-    AgentExecutionState,
-    AgentTimeoutError,
-    create_agent_from_config,
-)
+
+from src.agents.langgraph_agent import CodingAgent
+from src.agents.limit_tracker import LimitTracker, LimitType, validate_temperature
+from src.errors import AgentTimeoutError
 
 
-class TestAgentExecutionLimits:
-    """Test AgentExecutionLimits dataclass and validation."""
-    
+class TestLimitTrackerFrozenValues:
+    """LimitTracker carries the frozen default caps."""
+
     def test_default_limits_match_frozen_decisions(self):
-        """Test that default limits match frozen decisions from THESIS_FINAL_v5.md."""
-        limits = AgentExecutionLimits()
-        
-        # Frozen decision #3: max 20 steps
-        assert limits.max_steps == 20
-        
-        # Frozen decision #26: temperature=0
-        assert limits.temperature == 0.0
-        
-        # Other locked limits
-        assert limits.max_tool_calls == 80
-        assert limits.max_test_runs == 5
-        assert limits.max_wall_time_minutes == 20
-    
+        tracker = LimitTracker()
+        assert tracker.max_steps == 20  # Frozen decision #3
+        assert tracker.max_tool_calls == 80
+        assert tracker.max_test_runs == 5
+        assert tracker.max_wall_time_seconds == 1200  # 20 minutes
+
     def test_max_steps_must_be_20(self):
-        """Test that max_steps cannot be changed from frozen value of 20."""
+        """Frozen invariant #3: max_steps cannot be changed from 20."""
         with pytest.raises(ValueError, match="max_steps must be 20"):
-            AgentExecutionLimits(max_steps=15)
-        
+            LimitTracker(max_steps=15)
         with pytest.raises(ValueError, match="max_steps must be 20"):
-            AgentExecutionLimits(max_steps=25)
-    
+            LimitTracker(max_steps=25)
+
+
+class TestTemperatureInvariant:
+    """Frozen decision #26: temperature=0 for all LLM calls."""
+
+    def test_temperature_zero_ok(self):
+        validate_temperature(0)  # must not raise
+        validate_temperature(0.0)
+
     def test_temperature_must_be_zero(self):
-        """Test that temperature cannot be changed from frozen value of 0."""
         with pytest.raises(ValueError, match="temperature must be 0"):
-            AgentExecutionLimits(temperature=0.5)
-        
+            validate_temperature(0.5)
         with pytest.raises(ValueError, match="temperature must be 0"):
-            AgentExecutionLimits(temperature=1.0)
+            validate_temperature(1.0)
 
 
-class TestAgentExecutionState:
-    """Test AgentExecutionState tracking."""
-    
-    def test_initial_state(self):
-        """Test initial state values."""
-        state = AgentExecutionState()
-        
-        assert state.step_count == 0
-        assert state.tool_call_count == 0
-        assert state.test_run_count == 0
-        assert state.timeout is False
-        assert state.timeout_reason is None
-    
-    def test_reset_state(self):
-        """Test state reset between tasks."""
-        state = AgentExecutionState()
-        
-        # Modify state
-        state.step_count = 10
-        state.tool_call_count = 50
-        state.test_run_count = 3
-        state.timeout = True
-        state.timeout_reason = "max_steps_exceeded"
-        
-        # Reset
-        state.reset()
-        
-        # Verify reset
-        assert state.step_count == 0
-        assert state.tool_call_count == 0
-        assert state.test_run_count == 0
-        assert state.timeout is False
-        assert state.timeout_reason is None
-        assert state.start_time > 0
-    
-    def test_elapsed_time_tracking(self):
-        """Test elapsed time calculation."""
-        state = AgentExecutionState()
-        state.reset()
-        
-        # Wait a bit
-        time.sleep(0.1)
-        
-        elapsed = state.elapsed_minutes()
-        assert elapsed > 0
-        assert elapsed < 1  # Should be less than 1 minute
+class TestLimitTrackerBoundaries:
+    """Strict boundaries: the Nth use is allowed, the (N+1)th trips.
 
-
-class TestCodingAgent:
-    """Test CodingAgent initialization and configuration."""
-    
-    def test_agent_initialization_with_defaults(self):
-        """Test agent initialization with default limits."""
-        agent = CodingAgent()
-        
-        assert agent.limits.max_steps == 20
-        assert agent.limits.temperature == 0.0
-        assert agent.model == "gpt-5.4"
-        assert agent.summary_model == "gpt-4o-mini"
-    
-    def test_agent_initialization_with_custom_models(self):
-        """Test agent initialization with custom model names."""
-        agent = CodingAgent(
-            model="gpt-4o",
-            summary_model="gpt-3.5-turbo"
-        )
-        
-        assert agent.model == "gpt-4o"
-        assert agent.summary_model == "gpt-3.5-turbo"
-        assert agent.limits.temperature == 0.0  # Still enforced
-    
-    def test_agent_rejects_non_zero_temperature(self):
-        """Test that agent rejects non-zero temperature."""
-        limits = AgentExecutionLimits.__new__(AgentExecutionLimits)
-        limits.max_steps = 20
-        limits.max_tool_calls = 80
-        limits.max_test_runs = 5
-        limits.max_wall_time_minutes = 20
-        limits.temperature = 0.7  # Invalid
-        
-        with pytest.raises(ValueError, match="Temperature must be 0"):
-            CodingAgent(limits=limits)
-    
-    def test_llm_config_enforces_temperature_zero(self):
-        """Test that LLM config always has temperature=0."""
-        agent = CodingAgent()
-        
-        config = agent.get_llm_config()
-        assert config["temperature"] == 0.0
-        assert config["model"] == "gpt-5.4"
-        
-        summary_config = agent.get_summary_llm_config()
-        assert summary_config["temperature"] == 0.0
-        assert summary_config["model"] == "gpt-4o-mini"
-
-
-class TestAgentLimitEnforcement:
-    """Test hard limit enforcement during execution."""
-    
-    def test_max_steps_enforcement(self):
-        """Test that agent force-fails at step 21 (after 20 steps)."""
-        agent = CodingAgent()
-        
-        # Simulate 20 steps (should succeed)
-        for i in range(20):
-            agent._increment_step()
-        
-        assert agent.state.step_count == 20
-        assert agent.state.timeout is False
-        
-        # Step 21 should trigger timeout
-        with pytest.raises(AgentTimeoutError) as exc_info:
-            agent._increment_step()
-        
-        assert agent.state.timeout is True
-        assert agent.state.timeout_reason == "max_steps_exceeded"
-        assert exc_info.value.limit_type == "max_steps"
-        assert exc_info.value.limit_value == 20
-        assert exc_info.value.actual_value == 21
-    
-    def test_max_tool_calls_enforcement(self):
-        """Test that agent force-fails at 81st tool call."""
-        agent = CodingAgent()
-        
-        # Simulate 80 tool calls (should succeed)
-        for i in range(80):
-            agent._increment_tool_call()
-        
-        assert agent.state.tool_call_count == 80
-        assert agent.state.timeout is False
-        
-        # 81st tool call should trigger timeout
-        with pytest.raises(AgentTimeoutError) as exc_info:
-            agent._increment_tool_call()
-        
-        assert agent.state.timeout is True
-        assert agent.state.timeout_reason == "max_tool_calls_exceeded"
-        assert exc_info.value.limit_type == "max_tool_calls"
-    
-    def test_max_test_runs_enforcement(self):
-        """Test that agent force-fails at 6th test run."""
-        agent = CodingAgent()
-        
-        # Simulate 5 test runs (should succeed)
-        for i in range(5):
-            agent._increment_test_run()
-        
-        assert agent.state.test_run_count == 5
-        assert agent.state.timeout is False
-        
-        # 6th test run should trigger timeout
-        with pytest.raises(AgentTimeoutError) as exc_info:
-            agent._increment_test_run()
-        
-        assert agent.state.timeout is True
-        assert agent.state.timeout_reason == "max_test_runs_exceeded"
-        assert exc_info.value.limit_type == "max_test_runs"
-    
-    def test_max_wall_time_enforcement(self):
-        """Test that agent force-fails after 20 minutes."""
-        # Use shorter time limit for testing
-        limits = AgentExecutionLimits.__new__(AgentExecutionLimits)
-        limits.max_steps = 20
-        limits.max_tool_calls = 80
-        limits.max_test_runs = 5
-        limits.max_wall_time_minutes = 0.001  # ~60ms for testing
-        limits.temperature = 0.0
-        
-        agent = CodingAgent(limits=limits)
-        agent.state.reset()
-        
-        # Wait for timeout
-        time.sleep(0.1)  # 100ms > 60ms limit
-        
-        # Should trigger timeout
-        with pytest.raises(AgentTimeoutError) as exc_info:
-            agent._check_limits()
-        
-        assert agent.state.timeout is True
-        assert agent.state.timeout_reason == "max_wall_time_exceeded"
-        assert exc_info.value.limit_type == "max_wall_time_minutes"
-    
-    def test_timeout_logged_in_result(self):
-        """Test that timeout=true is logged when limits exceeded."""
-        agent = CodingAgent()
-        
-        # Initialize state and set step count to trigger timeout on first increment
-        agent.state.reset()
-        agent.state.step_count = 21  # Already exceeded limit
-        
-        # Check limits should trigger timeout
-        try:
-            agent._check_limits()
-            assert False, "Should have raised AgentTimeoutError"
-        except AgentTimeoutError:
-            pass
-        
-        # Verify timeout state is set
-        assert agent.state.timeout is True
-        assert agent.state.timeout_reason == "max_steps_exceeded"
-
-
-class TestAgentConfigurationLoading:
-    """Test agent creation from configuration."""
-    
-    def test_create_agent_from_config(self):
-        """Test creating agent from config dict."""
-        config = {
-            "agent": {
-                "main_model": "gpt-5.4",
-                "summary_model": "gpt-4o-mini",
-                "temperature": 0,
-                "max_steps_per_task": 20,
-                "max_tool_calls_per_task": 80,
-                "max_test_runs_per_task": 5,
-                "max_wall_time_minutes": 20,
-            }
-        }
-        
-        agent = create_agent_from_config(config)
-        
-        assert agent.model == "gpt-5.4"
-        assert agent.summary_model == "gpt-4o-mini"
-        assert agent.limits.max_steps == 20
-        assert agent.limits.temperature == 0.0
-    
-    def test_create_agent_rejects_invalid_config(self):
-        """Test that invalid config is rejected."""
-        config = {
-            "agent": {
-                "max_steps_per_task": 25,  # Invalid - must be 20
-                "temperature": 0,
-            }
-        }
-        
-        with pytest.raises(ValueError, match="max_steps must be 20"):
-            create_agent_from_config(config)
-    
-    def test_create_agent_with_defaults(self):
-        """Test creating agent with minimal config."""
-        config = {}
-        
-        agent = create_agent_from_config(config)
-        
-        # Should use defaults
-        assert agent.limits.max_steps == 20
-        assert agent.limits.temperature == 0.0
-        assert agent.model == "gpt-5.4"
-
-
-class TestFrozenDecisionCompliance:
-    """Test compliance with frozen decisions from THESIS_FINAL_v5.md."""
-    
-    def test_frozen_decision_3_max_20_steps(self):
-        """
-        Test frozen decision #3: Max 20 steps per task, hard force-fail.
-        
-        From THESIS_FINAL_v5.md §0.1 #3:
-        "Max 20 steps per task, hard force-fail if exceeded"
-        """
-        agent = CodingAgent()
-        
-        # Verify limit is exactly 20
-        assert agent.limits.max_steps == 20
-        
-        # Verify hard force-fail at step 21
-        agent.state.step_count = 20
-        with pytest.raises(AgentTimeoutError):
-            agent._increment_step()
-        
-        assert agent.state.timeout is True
-    
-    def test_frozen_decision_26_temperature_zero(self):
-        """
-        Test frozen decision #26: Temperature=0 for all LLM calls.
-        
-        From THESIS_FINAL_v5.md §0.1 #26:
-        "Temperature: 0 for all LLM calls (reproducibility)"
-        """
-        agent = CodingAgent()
-        
-        # Verify temperature is exactly 0
-        assert agent.limits.temperature == 0.0
-        
-        # Verify LLM configs enforce temperature=0
-        assert agent.get_llm_config()["temperature"] == 0.0
-        assert agent.get_summary_llm_config()["temperature"] == 0.0
-        
-        # Verify non-zero temperature is rejected
-        with pytest.raises(ValueError, match="temperature must be 0"):
-            AgentExecutionLimits(temperature=0.1)
-    
-    def test_all_limits_locked(self):
-        """Test that all execution limits are locked to frozen values."""
-        agent = CodingAgent()
-
-        # Verify all frozen limits
-        assert agent.limits.max_steps == 20              # Frozen #3
-        assert agent.limits.max_tool_calls == 80         # Locked
-        assert agent.limits.max_test_runs == 5           # Locked
-        assert agent.limits.max_wall_time_minutes == 20  # Locked
-        assert agent.limits.temperature == 0.0           # Frozen #26
-
-
-class TestStrictStepBoundary:
-    """
-    Plan 2.9 / Report Issue 7: strict 'Max 20 steps' boundary enforcement.
-
-    Frozen Invariant #3 is a STRICT 'max 20 steps'. The 20th step must be
-    allowed; the 21st step must force-fail with timeout=True. The error raised
-    must be the canonical src.errors.AgentTimeoutError carrying task_id,
-    limit_type, limit_value, and actual_value (the positional-arg mismatch in
-    coding_agent.py must be fixed so the canonical signature is honored).
+    increment_* is post-increment and returns True only when the count
+    EXCEEDS the cap, so 20 steps all pass and the 21st trips (strict
+    Invariant #3).
     """
 
-    def test_uses_canonical_error_class(self):
-        """coding_agent must raise the canonical errors.AgentTimeoutError."""
-        from src.errors import AgentTimeoutError as CanonicalTimeout
-
-        # The symbol exported by coding_agent must be the canonical one.
-        assert AgentTimeoutError is CanonicalTimeout
-
-    def test_20th_step_allowed_21st_force_fails(self):
-        """20 steps allowed; the 21st force-fails with timeout=True."""
-        agent = CodingAgent()
-        agent.state.reset()
-
-        # 20 steps must all be allowed (no exception).
+    def test_step_boundary_20_allowed_21_trips(self):
+        tracker = LimitTracker()
         for _ in range(20):
-            agent._increment_step()
-        assert agent.state.step_count == 20
-        assert agent.state.timeout is False
+            assert tracker.increment_step() is False
+        assert tracker.step_count == 20
+        assert tracker.limit_exceeded is False
 
-        # The 21st step must force-fail.
-        with pytest.raises(AgentTimeoutError) as exc_info:
-            agent._increment_step()
+        # The 21st step trips the hard limit.
+        assert tracker.increment_step() is True
+        assert tracker.step_count == 21
+        assert tracker.limit_exceeded is True
+        assert tracker.exceeded_limit_type == LimitType.STEPS
 
-        assert agent.state.timeout is True
-        assert agent.state.timeout_reason == "max_steps_exceeded"
+    def test_tool_call_boundary_80_allowed_81_trips(self):
+        tracker = LimitTracker()
+        for _ in range(80):
+            assert tracker.increment_tool_call() is False
+        assert tracker.increment_tool_call() is True
+        assert tracker.exceeded_limit_type == LimitType.TOOL_CALLS
 
-        err = exc_info.value
-        # Canonical signature attributes must be populated correctly.
+    def test_test_run_boundary_5_allowed_6_trips(self):
+        tracker = LimitTracker()
+        for _ in range(5):
+            assert tracker.increment_test_run() is False
+        assert tracker.increment_test_run() is True
+        assert tracker.exceeded_limit_type == LimitType.TEST_RUNS
+
+    def test_wall_time_exceeded(self):
+        tracker = LimitTracker(max_wall_time_seconds=0)
+        time.sleep(0.01)
+        assert tracker.check_wall_time() is True
+        assert tracker.exceeded_limit_type == LimitType.WALL_TIME
+
+    def test_reset_clears_counts(self):
+        tracker = LimitTracker()
+        tracker.increment_step()
+        tracker.increment_tool_call()
+        tracker.increment_test_run()
+        tracker.reset()
+        assert tracker.step_count == 0
+        assert tracker.tool_call_count == 0
+        assert tracker.test_run_count == 0
+        assert tracker.limit_exceeded is False
+        assert tracker.exceeded_limit_type is None
+
+
+def _agent_config(max_steps: int = 20, temperature: float = 0) -> dict:
+    return {
+        "agent": {"max_steps_per_task": max_steps, "temperature": temperature},
+        "memory": {"top_k": 5, "max_context_tokens": 2000},
+    }
+
+
+def _make_agent(config: dict) -> CodingAgent:
+    return CodingAgent(
+        memory_store=MagicMock(),
+        policy=SimpleNamespace(name="no_memory", retrieve=lambda **kw: []),
+        config=config,
+        task_env=SimpleNamespace(working_dir="/tmp"),
+    )
+
+
+class TestCodingAgentConstructorInvariants:
+    """The live agent rejects non-frozen limits at construction time."""
+
+    def test_constructor_accepts_frozen_defaults(self):
+        agent = _make_agent(_agent_config())
+        assert agent.max_steps == 20
+        assert agent.temperature == 0
+
+    def test_constructor_rejects_non_20_max_steps(self):
+        with pytest.raises(ValueError, match="max_steps must be 20"):
+            _make_agent(_agent_config(max_steps=25))
+
+    def test_constructor_rejects_non_zero_temperature(self):
+        with pytest.raises(ValueError, match="temperature must be 0"):
+            _make_agent(_agent_config(temperature=0.5))
+
+
+class TestCanonicalTimeoutError:
+    """errors.AgentTimeoutError carries the canonical limit-failure signature."""
+
+    def test_canonical_signature(self):
+        err = AgentTimeoutError(
+            "step limit exceeded",
+            task_id="repo__repo-1",
+            limit_type="max_steps",
+            limit_value=20,
+            actual_value=21,
+        )
+        assert err.task_id == "repo__repo-1"
         assert err.limit_type == "max_steps"
         assert err.limit_value == 20
         assert err.actual_value == 21
-        # task_id is part of the canonical signature and must be set, not
-        # swallowed into a positional slot.
-        assert hasattr(err, "task_id")
-
-    def test_tool_call_boundary_uses_canonical_signature(self):
-        """81st tool call force-fails with a well-formed canonical error."""
-        agent = CodingAgent()
-        agent.state.reset()
-        for _ in range(80):
-            agent._increment_tool_call()
-        with pytest.raises(AgentTimeoutError) as exc_info:
-            agent._increment_tool_call()
-        err = exc_info.value
-        assert err.limit_type == "max_tool_calls"
-        assert err.limit_value == 80
-        assert err.actual_value == 81
-
-    def test_test_run_boundary_uses_canonical_signature(self):
-        """6th test run force-fails with a well-formed canonical error."""
-        agent = CodingAgent()
-        agent.state.reset()
-        for _ in range(5):
-            agent._increment_test_run()
-        with pytest.raises(AgentTimeoutError) as exc_info:
-            agent._increment_test_run()
-        err = exc_info.value
-        assert err.limit_type == "max_test_runs"
-        assert err.limit_value == 5
-        assert err.actual_value == 6
