@@ -329,6 +329,59 @@ class ContainerBackend(ExecutionBackend):
         return patch
 
 
+class ContainerSession:
+    """Lifecycle for one per-task swebench instance container (decision A).
+
+    Starts a detached container from the arm64 instance image (repo checked out
+    at ``repo_dir`` with deps installed), keeps it alive (``sleep infinity``),
+    hands a ``ContainerBackend`` to AgentTools, and removes it on ``stop()``.
+
+    The local-build image name follows the swebench convention
+    ``sweb.eval.{arch}.{instance_id.lower()}:{tag}`` (built by the Phase 5.0
+    build-probe with ``--namespace ""``). Requires a Docker daemon + the image.
+    """
+
+    def __init__(self, image: str, repo_dir: str = "/testbed", docker_bin: str = "docker"):
+        self.image = image
+        self.repo_dir = repo_dir
+        self.docker_bin = docker_bin
+        self.container_id: str | None = None
+
+    @staticmethod
+    def image_for(instance_id: str, arch: str = "arm64", tag: str = "latest") -> str:
+        return f"sweb.eval.{arch}.{instance_id.lower()}:{tag}"
+
+    def start(self) -> str:
+        proc = subprocess.run(
+            [self.docker_bin, "run", "-d", "--rm", self.image, "sleep", "infinity"],
+            capture_output=True, text=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to start container from {self.image}: {proc.stderr.strip()}")
+        self.container_id = proc.stdout.strip()
+        return self.container_id
+
+    def backend(self) -> "ContainerBackend":
+        if self.container_id is None:
+            raise RuntimeError("ContainerSession not started")
+        return ContainerBackend(self.container_id, self.repo_dir, self.docker_bin)
+
+    def stop(self) -> None:
+        if self.container_id:
+            subprocess.run(
+                [self.docker_bin, "rm", "-f", self.container_id],
+                capture_output=True, text=True,
+            )
+            self.container_id = None
+
+    def __enter__(self) -> "ContainerSession":
+        self.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.stop()
+
+
 class AgentTools:
     """
     Collection of tools available to the coding agent.

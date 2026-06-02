@@ -8,11 +8,14 @@ swebench instance image.
 """
 
 import subprocess
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
 from src.agents import tools as tools_mod
-from src.agents.tools import AgentTools, ContainerBackend
+from src.agents.langgraph_agent import CodingAgent
+from src.agents.tools import AgentTools, ContainerBackend, ContainerSession, LocalBackend
 
 
 class FakeRun:
@@ -125,3 +128,53 @@ def test_agent_tools_routes_through_container_backend(fake):
     assert tools.read_file("a.py") == "CONTENT"
     stats = tools.get_tracker_stats()
     assert stats["tool_call_breakdown"]["read_file"] == 1
+
+
+# -- ContainerSession + agent backend selection ------------------------------
+
+def test_container_session_image_name():
+    assert ContainerSession.image_for("django__django-123") == "sweb.eval.arm64.django__django-123:latest"
+
+
+def test_container_session_start_backend_stop(fake):
+    fake.script = {"infinity": (0, "cid_abc\n", "")}
+    session = ContainerSession("sweb.eval.arm64.x:latest")
+    assert session.start() == "cid_abc"
+    backend = session.backend()
+    assert isinstance(backend, ContainerBackend) and backend.container_id == "cid_abc"
+    # start argv = docker run -d --rm <image> sleep infinity
+    start_argv = fake.calls[0]["argv"]
+    assert start_argv[:4] == ["docker", "run", "-d", "--rm"]
+    session.stop()
+    assert session.container_id is None
+    assert fake.calls[-1]["argv"][:3] == ["docker", "rm", "-f"]
+
+
+def _agent(cfg: dict, working_dir: str) -> CodingAgent:
+    return CodingAgent(
+        memory_store=MagicMock(),
+        policy=SimpleNamespace(name="no_memory", retrieve=lambda **k: []),
+        config=cfg,
+        task_env=SimpleNamespace(working_dir=working_dir),
+    )
+
+
+def test_make_tools_local_by_default(tmp_path):
+    agent = _agent({"agent": {"max_steps_per_task": 20, "temperature": 0}, "memory": {}}, str(tmp_path))
+    tools, session = agent._make_tools(SimpleNamespace(task_id="django__django-1"))
+    assert session is None
+    assert isinstance(tools.backend, LocalBackend)
+
+
+def test_make_tools_container_when_configured(fake, tmp_path):
+    fake.script = {"infinity": (0, "cid9\n", "")}
+    agent = _agent(
+        {"agent": {"max_steps_per_task": 20, "temperature": 0, "execution_backend": "container"}, "memory": {}},
+        str(tmp_path),
+    )
+    tools, session = agent._make_tools(SimpleNamespace(task_id="django__django-1"))
+    assert session is not None and session.container_id == "cid9"
+    assert isinstance(tools.backend, ContainerBackend)
+    # image derived from the instance id (local-build convention)
+    assert session.image == "sweb.eval.arm64.django__django-1:latest"
+    session.stop()

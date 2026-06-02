@@ -36,7 +36,7 @@ from src.config.llm_factory import get_chat_client, main_model
 
 from .limit_tracker import LimitTracker, validate_temperature
 from .prompts import build_prompt_context
-from .tools import AgentTools
+from .tools import AgentTools, ContainerSession
 
 logger = logging.getLogger(__name__)
 
@@ -743,19 +743,26 @@ class CodingAgent:
         )
 
         # §4.4 loop over the working tree, then node 9 (final patch via git diff).
-        tools = AgentTools(working_dir=str(self.task_env.working_dir))
-        self._run_react_loop(tools, context, state)
-
+        # Backend = local checkout by default; per-task swebench instance
+        # container when configured (decision A+G). The container (if any) must
+        # stay alive through get_patch (also a backend call), then be removed.
+        tools, container_session = self._make_tools(state)
         try:
-            state.patch = tools.get_patch()
-        except Exception as e:
-            state.patch = ""
-            state.error_message = state.error_message or f"get_patch failed: {e}"
-        state.patch_generated = bool(state.patch.strip())
-        state.syntax_error = tools.tracker.syntax_errors > 0
-        state.step_count = state.limit_tracker.step_count
-        state.tool_calls = state.limit_tracker.tool_call_count
-        state.test_runs = state.limit_tracker.test_run_count
+            self._run_react_loop(tools, context, state)
+
+            try:
+                state.patch = tools.get_patch()
+            except Exception as e:
+                state.patch = ""
+                state.error_message = state.error_message or f"get_patch failed: {e}"
+            state.patch_generated = bool(state.patch.strip())
+            state.syntax_error = tools.tracker.syntax_errors > 0
+            state.step_count = state.limit_tracker.step_count
+            state.tool_calls = state.limit_tracker.tool_call_count
+            state.test_runs = state.limit_tracker.test_run_count
+        finally:
+            if container_session is not None:
+                container_session.stop()
 
         return {
             "task_id": state.task_id,
@@ -778,6 +785,27 @@ class CodingAgent:
             "estimated_cost_usd": 0.0,  # flat-rate Ollama; cost tracked as tokens (D3)
             "limit_status": state.limit_tracker.get_status(),
         }
+
+    def _make_tools(self, state: AgentState) -> tuple[AgentTools, ContainerSession | None]:
+        """Select the execution backend for this task (decision A+G).
+
+        Default ``local`` runs the 8 tools against the checked-out working tree.
+        ``container`` (config ``agent.execution_backend``) starts a per-task
+        swebench instance container and runs tools inside it via ``docker exec``
+        — so run_command/run_tests act against installed deps. Returns the tools
+        plus the session to stop (or None for local).
+        """
+        agent_cfg = self.config.get("agent", {})
+        if agent_cfg.get("execution_backend", "local") == "container":
+            image = agent_cfg.get("instance_image") or ContainerSession.image_for(state.task_id)
+            session = ContainerSession(image, repo_dir=agent_cfg.get("repo_dir", "/testbed"))
+            session.start()
+            logger.info(
+                f"Started instance container {(session.container_id or '')[:12]} "
+                f"from {image} for {state.task_id}"
+            )
+            return AgentTools(backend=session.backend()), session
+        return AgentTools(working_dir=str(self.task_env.working_dir)), None
 
     def _run_react_loop(self, tools: AgentTools, context: str, state: AgentState) -> None:
         """Drive the tool-calling loop until the model finishes or a limit trips."""

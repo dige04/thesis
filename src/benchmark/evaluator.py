@@ -13,8 +13,12 @@ Requirements:
 import json
 import logging
 import subprocess
+import sys
+import tempfile
 import time
+import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TypedDict
 
 from src.benchmark.models import Task
@@ -69,18 +73,43 @@ class SWEBenchEvaluator:
         self,
         docker_image: str = "swebench/eval_v3:latest",
         timeout_seconds: int = 300,
+        dataset_name: str = "princeton-nlp/SWE-bench_Verified",
+        split: str = "test",
+        namespace: str = "",
+        model_name: str = "memory_pruning_agent",
+        harness_timeout_seconds: int = 3600,
     ) -> None:
         """Initialize the evaluator.
 
         Args:
-            docker_image: Docker image name for eval_v3 harness
-            timeout_seconds: Maximum evaluation time before timeout
+            docker_image: Legacy field (kept for back-compat). The real harness
+                builds swebench instance images on demand; it is not used for the
+                swebench invocation.
+            timeout_seconds: Per-instance test timeout passed to the harness
+                (``--timeout``).
+            dataset_name: HF dataset the harness loads FAIL_TO_PASS/PASS_TO_PASS
+                from, by instance_id (decision E: SWE-bench_Verified).
+            split: dataset split (``test``).
+            namespace: swebench image namespace. **Empty string builds arm64
+                instance images LOCALLY** (deviation D5 / Apple Silicon); the
+                default ``"swebench"`` would pull x86_64 images.
+            model_name: ``model_name_or_path`` written into the predictions and
+                used in the report filename.
+            harness_timeout_seconds: wall-clock cap for the whole subprocess
+                (image build can take minutes); distinct from the per-instance
+                ``timeout_seconds``.
         """
         self.docker_image = docker_image
         self.timeout_seconds = timeout_seconds
+        self.dataset_name = dataset_name
+        self.split = split
+        self.namespace = namespace
+        self.model_name = model_name
+        self.harness_timeout_seconds = harness_timeout_seconds
         logger.info(
-            f"Initialized SWEBenchEvaluator with image={docker_image}, "
-            f"timeout={timeout_seconds}s"
+            f"Initialized SWEBenchEvaluator: dataset={dataset_name}, "
+            f"namespace={namespace!r} (empty=arm64 local build), "
+            f"per-instance timeout={timeout_seconds}s, harness timeout={harness_timeout_seconds}s"
         )
 
     def evaluate_patch(
@@ -166,101 +195,143 @@ class SWEBenchEvaluator:
         patch: str,
         work_dir: str | None,
     ) -> DockerEvalResult:
-        """Run the actual Docker evaluation command.
+        """Evaluate ``patch`` via the public swebench harness (arm64, local build).
 
-        This is the core integration point with the eval_v3 harness.
-        It constructs and executes the Docker command, then parses the output.
+        Writes a one-line predictions JSONL
+        (``{instance_id, model_name_or_path, model_patch}``), invokes
+        ``python -m swebench.harness.run_evaluation`` scoped to this single
+        instance against ``SWE-bench_Verified`` (the harness loads
+        FAIL_TO_PASS/PASS_TO_PASS itself, decision E), and reads the run
+        report's ``resolved`` verdict.
+
+        ``--namespace ""`` makes the harness BUILD the arm64 instance image
+        locally rather than pull the x86_64 image (deviation D5 / Apple Silicon).
+        An empty patch is scored unresolved without invoking the harness.
 
         Args:
-            task: The task being evaluated
-            patch: The patch to evaluate
-            work_dir: Optional working directory
+            task: The task being evaluated.
+            patch: The agent's unified-diff patch (applied on base_commit).
+            work_dir: Optional dir for the predictions/report files; a temp dir
+                is created and removed when not provided.
 
         Returns:
-            DockerEvalResult with 'success', 'passed', and 'error' keys
-
-        Note:
-            This is a placeholder implementation. The actual eval_v3 Docker
-            command structure will be finalized during Spike Week when the
-            Docker images are built and tested.
-
-            Expected command format (to be confirmed):
-            docker run --rm -v {work_dir}:/workspace {image} \
-                --task-id {task_id} \
-                --repo {repo} \
-                --base-commit {base_commit} \
-                --patch /workspace/patch.diff \
-                --test-patch /workspace/test.patch
+            DockerEvalResult with 'success', 'passed', and 'error' keys.
         """
+        task_id = task.task_id
+
+        # An empty patch is a legitimate "unresolved" outcome (the harness would
+        # mark it empty_patch and never run) — not an infrastructure failure.
+        if not (patch and patch.strip()):
+            logger.info(f"Empty patch for {task_id}: scoring unresolved (harness not invoked)")
+            return DockerEvalResult(success=True, passed=False, error=None)
+
+        model_name_safe = self.model_name.replace("/", "__")
+        run_id = f"eval_{task_id}_{uuid.uuid4().hex[:8]}"
+
+        owns_tmp = work_dir is None
+        report_dir = Path(work_dir) if work_dir else Path(tempfile.mkdtemp(prefix="sweeval_"))
+        report_dir.mkdir(parents=True, exist_ok=True)
+        preds_path = report_dir / "predictions.jsonl"
+
         try:
-            # TODO: Finalize Docker command structure during Spike Week
-            # This is a placeholder that demonstrates the expected interface
-
-            # Construct Docker command
-            cmd = [
-                "docker",
-                "run",
-                "--rm",
-                "--network=none",  # Isolate container
-                # NOTE: `docker run` has no --timeout flag; the wall-clock cap is
-                # enforced by subprocess.run(timeout=...) below.
-            ]
-
-            # Add volume mount if work_dir provided
-            if work_dir:
-                cmd.extend(["-v", f"{work_dir}:/workspace"])
-
-            # Add image and eval_v3 arguments
-            cmd.extend(
-                [
-                    self.docker_image,
-                    "--task-id",
-                    task.task_id,
-                    "--repo",
-                    task.repo,
-                    "--base-commit",
-                    task.base_commit,
-                ]
+            preds_path.write_text(
+                json.dumps({
+                    "instance_id": task_id,
+                    "model_name_or_path": self.model_name,
+                    "model_patch": patch,
+                }) + "\n",
+                encoding="utf-8",
             )
 
-            logger.debug(f"Docker command: {' '.join(cmd)}")
-
-            # Execute Docker command
+            cmd = [
+                sys.executable, "-m", "swebench.harness.run_evaluation",
+                "--dataset_name", self.dataset_name,
+                "--split", self.split,
+                "--predictions_path", str(preds_path),
+                "--instance_ids", task_id,
+                "--run_id", run_id,
+                "--max_workers", "1",
+                "--timeout", str(self.timeout_seconds),
+                "--cache_level", "env",
+                "--namespace", self.namespace,  # "" => build arm64 image locally (D5)
+            ]
+            logger.info(f"Invoking swebench harness for {task_id} (run_id={run_id})")
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=self.timeout_seconds,
-                check=False,  # Don't raise on non-zero exit
+                timeout=self.harness_timeout_seconds,
+                cwd=report_dir,
+                check=False,
             )
 
-            # Parse the JSON report emitted by the harness.
-            return self._parse_evaluation_output(result, task.task_id)
+            # Primary path: the harness writes a report file.
+            verdict = self._read_report(report_dir, model_name_safe, run_id, task_id)
+            if verdict is not None:
+                return DockerEvalResult(success=True, passed=verdict, error=None)
+
+            # Fallback: some versions print the JSON report to stdout. Reuse the
+            # stdout parser, which also distinguishes infra failure from
+            # unparseable success (and never substring-matches).
+            return self._parse_evaluation_output(result, task_id)
 
         except subprocess.TimeoutExpired:
-            # Handle Docker timeout using centralized error handling
-            logger.error(f"Docker evaluation timeout for task {task.task_id}")
+            logger.error(f"swebench harness timeout for {task_id}")
             return DockerEvalResult(
                 success=False,
                 passed=False,
-                error=f"Evaluation timeout after {self.timeout_seconds}s",
+                error=f"Harness timeout after {self.harness_timeout_seconds}s",
             )
         except FileNotFoundError:
-            # Handle Docker not found
-            logger.error(f"Docker command not found for task {task.task_id}")
+            logger.error(f"swebench/python not found for {task_id}")
             return DockerEvalResult(
                 success=False,
                 passed=False,
-                error="Docker command not found - is Docker installed?",
+                error="python/swebench not found - is the swebench package installed?",
             )
         except Exception as e:
-            # Handle any other Docker errors using centralized error handling
-            logger.error(f"Docker execution error for task {task.task_id}: {e}", exc_info=True)
+            logger.error(f"swebench harness error for {task_id}: {e}", exc_info=True)
             return DockerEvalResult(
                 success=False,
                 passed=False,
-                error=f"Docker execution error: {type(e).__name__}: {e}",
+                error=f"Harness error: {type(e).__name__}: {e}",
             )
+        finally:
+            if owns_tmp:
+                import shutil
+
+                shutil.rmtree(report_dir, ignore_errors=True)
+
+    def _read_report(
+        self,
+        report_dir: Path,
+        model_name_safe: str,
+        run_id: str,
+        task_id: str,
+    ) -> bool | None:
+        """Read the ``resolved`` verdict from the swebench report files.
+
+        Primary: ``{report_dir}/{model_name}.{run_id}.json`` (run summary with
+        ``resolved_ids``). Fallback: the per-instance
+        ``logs/run_evaluation/{run_id}/{model}/{instance_id}/report.json``.
+        Returns the bool verdict, or None if no report covers this instance.
+        """
+        summary = report_dir / f"{model_name_safe}.{run_id}.json"
+        per_instance = (
+            report_dir / "logs" / "run_evaluation" / run_id
+            / model_name_safe / task_id / "report.json"
+        )
+        for path in (summary, per_instance):
+            if not path.exists():
+                continue
+            try:
+                report = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            verdict = self._resolved_from_report(report, task_id)
+            if verdict is not None:
+                return verdict
+        return None
 
     def _parse_evaluation_output(
         self,
@@ -370,22 +441,18 @@ class SWEBenchEvaluator:
             if result.returncode != 0:
                 return False, "Docker command failed - is Docker installed?"
 
-            # Check eval_v3 image exists
+            # The swebench harness builds arm64 instance images on demand
+            # (namespace=""), so there is no single image to pre-check; verify
+            # the daemon is reachable instead.
             result = subprocess.run(
-                ["docker", "images", "-q", self.docker_image],
+                ["docker", "info"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=10,
                 check=False,
             )
             if result.returncode != 0:
-                return False, f"Failed to check for image {self.docker_image}"
-
-            if not result.stdout.strip():
-                return (
-                    False,
-                    f"Docker image {self.docker_image} not found - run 'make setup' to build",
-                )
+                return False, "Docker daemon not reachable - is Docker running?"
 
             return True, None
 

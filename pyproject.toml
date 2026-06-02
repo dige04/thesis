@@ -60,6 +60,12 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "tqdm>=4.66.0",
     "tiktoken>=0.7.0",
+
+    # Evaluation harness (SWE-bench) + canonical dataset access.
+    # D5: arm64 instance images are built locally (namespace=""); the harness
+    # loads FAIL_TO_PASS/PASS_TO_PASS from SWE-bench_Verified by instance_id.
+    "swebench>=4.0.0",
+    "datasets>=2.19.0",
 ]
 
 [project.optional-dependencies]
