@@ -24,6 +24,40 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# Provider quota / usage-limit (FATAL — abort, do not continue)
+# ============================================================================
+
+
+class UsageLimitError(Exception):
+    """Non-retryable provider quota / usage-limit / billing error.
+
+    Examples: OpenCode ``GoUsageLimitError`` (HTTP 429, weekly cap), OpenAI
+    ``insufficient_quota``. Unlike a transient rate-limit, this will NOT clear
+    on retry within the run. It is FATAL: the sequence/experiment must ABORT
+    immediately rather than churn through tasks that can no longer call the
+    model — otherwise every remaining task records a silent, invalid
+    0-resolved result (this exact failure corrupted half a pilot).
+    """
+
+
+def is_usage_limit_error(exc: BaseException) -> bool:
+    """True if ``exc`` is a provider quota/usage-limit/billing error (fatal)."""
+    text = str(exc).lower()
+    name_markers = (
+        "gousagelimiterror",
+        "insufficient_quota",
+        "usage limit reached",
+        "weekly usage limit",
+    )
+    if any(m in text for m in name_markers):
+        return True
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status == 429 and ("usage limit" in text or "quota" in text)
+
+
+# ============================================================================
 # Repository and Environment Errors (Requirement 2)
 # ============================================================================
 

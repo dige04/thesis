@@ -138,7 +138,16 @@ def test_agent_tools_routes_through_container_backend(fake):
 # -- ContainerSession + agent backend selection ------------------------------
 
 def test_container_session_image_name():
-    assert ContainerSession.image_for("django__django-123") == "sweb.eval.arm64.django__django-123:latest"
+    # Default (no namespace) = local-build convention, x86_64, no __ encoding.
+    assert ContainerSession.image_for("django__django-123") == "sweb.eval.x86_64.django__django-123:latest"
+    # arch override
+    assert ContainerSession.image_for("django__django-123", arch="arm64") == "sweb.eval.arm64.django__django-123:latest"
+    # Pulled (namespace set) matches swebench's published tag: namespaced AND
+    # __ -> _1776_ (test_spec.py:107-110).
+    assert (
+        ContainerSession.image_for("django__django-123", namespace="swebench")
+        == "swebench/sweb.eval.x86_64.django_1776_django-123:latest"
+    )
 
 
 def test_container_session_start_backend_stop(fake):
@@ -153,6 +162,18 @@ def test_container_session_start_backend_stop(fake):
     session.stop()
     assert session.container_id is None
     assert fake.calls[-1]["argv"][:3] == ["docker", "rm", "-f"]
+
+
+def test_container_backend_abs_accepts_absolute_and_relative_paths():
+    # Regression: the agent passes BOTH repo-relative and absolute /testbed paths;
+    # blindly prefixing repo_dir double-prefixed absolute paths -> "File not found"
+    # -> empty patches. _abs must keep absolute paths as-is.
+    b = ContainerBackend("cid", repo_dir="/testbed")
+    assert b._abs("sympy/core/basic.py") == "/testbed/sympy/core/basic.py"
+    assert b._abs("/testbed/sympy/core/basic.py") == "/testbed/sympy/core/basic.py"
+    assert b._abs("/abs/elsewhere.py") == "/abs/elsewhere.py"
+    assert b._abs(".") == "/testbed"
+    assert b._abs("") == "/testbed"
 
 
 def _agent(cfg: dict, working_dir: str) -> CodingAgent:
@@ -180,6 +201,8 @@ def test_make_tools_container_when_configured(fake, tmp_path):
     tools, session = agent._make_tools(SimpleNamespace(task_id="django__django-1"))
     assert session is not None and session.container_id == "cid9"
     assert isinstance(tools.backend, ContainerBackend)
-    # image derived from the instance id (local-build convention)
-    assert session.image == "sweb.eval.arm64.django__django-1:latest"
+    # image derived from the instance id (local-build convention); default arch
+    # is x86_64 (swebench builds x86_64 on this host; arm64 prebuilt images are
+    # unpublished). Override via config agent.instance_arch.
+    assert session.image == "sweb.eval.x86_64.django__django-1:latest"
     session.stop()

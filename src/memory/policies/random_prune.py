@@ -193,6 +193,14 @@ class RandomPrunePolicy(MemoryPolicy):
 
         pruned_count = 0
 
+        # The step at which this pruning happens = the current task (the latest
+        # sequence_index among active records). Passing the VICTIM's own
+        # sequence_index instead breaks the runner's archive-event delta
+        # (archived_at_step must match the current step), so prunes go unlogged.
+        current_step = max(
+            (r.sequence_index for r in memory_store.active_records()), default=0
+        )
+
         while memory_store.count_active() > self.max_records:
             # Get current active records
             active_records = memory_store.active_records()
@@ -212,7 +220,7 @@ class RandomPrunePolicy(MemoryPolicy):
             memory_store.archive(
                 memory_id=victim.memory_id,
                 reason="random_prune",
-                current_step=victim.sequence_index
+                current_step=current_step
             )
 
             pruned_count += 1

@@ -231,7 +231,15 @@ class ContainerBackend(ExecutionBackend):
 
     # -- docker plumbing -----------------------------------------------------
     def _abs(self, rel_path: str) -> str:
-        return f"{self.repo_dir}/{rel_path}".rstrip("/") if rel_path not in (".", "") else self.repo_dir
+        # Accept BOTH repo-relative paths and absolute container paths. The agent
+        # frequently references absolute paths (e.g. "/testbed/sympy/core/basic.py")
+        # because run_command output shows them; blindly prefixing repo_dir would
+        # produce "/testbed//testbed/..." and break edit/read (empty-patch bug).
+        if rel_path in (".", ""):
+            return self.repo_dir
+        if rel_path.startswith("/"):
+            return rel_path.rstrip("/")
+        return f"{self.repo_dir}/{rel_path}".rstrip("/")
 
     def _exec(self, shell_cmd: str, timeout: int | None = None, stdin: str | None = None) -> subprocess.CompletedProcess:
         """Run ``sh -c shell_cmd`` inside the container at repo_dir."""
@@ -328,8 +336,24 @@ class ContainerSession:
         self.container_id: str | None = None
 
     @staticmethod
-    def image_for(instance_id: str, arch: str = "arm64", tag: str = "latest") -> str:
-        return f"sweb.eval.{arch}.{instance_id.lower()}:{tag}"
+    def image_for(
+        instance_id: str,
+        arch: str = "x86_64",
+        tag: str = "latest",
+        namespace: str | None = None,
+    ) -> str:
+        """Instance-image name matching swebench's ``TestSpec.instance_image_key``.
+
+        Local build (``namespace`` falsy): ``sweb.eval.{arch}.{id.lower()}:{tag}``.
+        Pulled (``namespace`` set, e.g. ``"swebench"``): the name is namespaced
+        AND ``__`` is rewritten to ``_1776_`` — exactly as swebench encodes the
+        published Docker Hub tag (test_spec.py:107-110). Must match so the agent
+        runs the same image the eval harness pulls.
+        """
+        key = f"sweb.eval.{arch}.{instance_id.lower()}:{tag}"
+        if namespace:
+            key = f"{namespace}/{key}".replace("__", "_1776_")
+        return key
 
     def start(self) -> str:
         proc = subprocess.run(

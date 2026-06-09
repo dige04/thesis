@@ -36,6 +36,8 @@ from src.config.llm_factory import get_chat_client, main_model
 
 from .limit_tracker import LimitTracker, validate_temperature
 from .prompts import build_prompt_context
+from src.errors import UsageLimitError, is_usage_limit_error
+
 from .tools import AgentTools, ContainerSession
 
 logger = logging.getLogger(__name__)
@@ -797,7 +799,11 @@ class CodingAgent:
         """
         agent_cfg = self.config.get("agent", {})
         if agent_cfg.get("execution_backend", "local") == "container":
-            image = agent_cfg.get("instance_image") or ContainerSession.image_for(state.task_id)
+            arch = agent_cfg.get("instance_arch", "x86_64")
+            namespace = agent_cfg.get("instance_namespace") or None
+            image = agent_cfg.get("instance_image") or ContainerSession.image_for(
+                state.task_id, arch=arch, namespace=namespace
+            )
             session = ContainerSession(image, repo_dir=agent_cfg.get("repo_dir", "/testbed"))
             session.start()
             logger.info(
@@ -834,6 +840,13 @@ class CodingAgent:
                     temperature=self.temperature,  # FROZEN: 0
                 )
             except Exception as e:
+                # Provider quota/usage-limit is fatal — abort the run instead of
+                # silently producing empty patches for every remaining task.
+                if is_usage_limit_error(e):
+                    raise UsageLimitError(
+                        f"Provider usage limit hit during agent loop "
+                        f"({state.task_id}): {e}"
+                    ) from e
                 state.error_message = f"LLM call failed: {e}"
                 break
 

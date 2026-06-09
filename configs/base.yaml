@@ -19,22 +19,31 @@ agent:
   # Model names are documented defaults. At RUNTIME the provider endpoint
   # (base_url) + API key come from .env via src/config/llm_factory.py, and env
   # vars (LLM_MAIN_MODEL, LLM_SUMMARY_MODEL, LLM_CLASSIFIER_MODEL) override
-  # these. See AGENTS.md "Running on Ollama Cloud".
-  # DEVIATION from v5 §0.1 (model frozen to GPT-5.4): switched to Ollama Cloud
-  # for all generative roles, held constant across all 6 conditions × 3 seeds.
-  main_model: "qwen3-coder:480b-cloud"
-  summary_model: "gpt-oss:20b-cloud"   # reflection + CLS consolidation
-  classifier_model: "gpt-oss:20b-cloud"  # 5-type classification
+  # these. See AGENTS.md "Running on OpenCode Zen".
+  # DEVIATION D1 from v5 §0.1 (model frozen to GPT-5.4): switched to OpenCode Zen
+  # "go" tier (OpenAI-compatible), held constant across all 6 conditions × 3 seeds.
+  main_model: "kimi-k2.6"              # main coding agent (oa-compat, large ctx)
+  summary_model: "kimi-k2.5"           # reflection + CLS consolidation
+  classifier_model: "kimi-k2.5"        # 5-type classification (JSON-mode verified)
   temperature: 0
   max_steps_per_task: 20              # LOCKED
   max_tool_calls_per_task: 80
   max_test_runs_per_task: 5
   max_wall_time_minutes: 20
+  # Execution backend (decision A+G). "container" runs the 8 tools INSIDE the
+  # per-task swebench instance container via `docker exec`, so run_tests acts
+  # against the repo's installed deps. Required for real SWE-bench solving — the
+  # host LocalBackend cannot run a per-commit test env (smoke 0/3 root cause).
+  # instance_namespace="swebench" + x86_64 => agent runs the SAME prebuilt image
+  # the eval harness pulls. Set execution_backend="local" for host unit tests.
+  execution_backend: "container"
+  instance_arch: "x86_64"
+  instance_namespace: "swebench"
 
 reflection:
   # Summary model for memory reflection (read at sequence_runner.py:622).
-  # DEVIATION from v5: Ollama Cloud instead of gpt-4o-mini.
-  model: "gpt-oss:20b-cloud"
+  # DEVIATION D1 from v5: OpenCode Zen go instead of gpt-4o-mini.
+  model: "kimi-k2.5"
   temperature: 0
 
 memory:
@@ -122,6 +131,13 @@ logging:
 
 evaluation:
   harness: "eval_v3"
+  # Image source for the swebench harness. "swebench" PULLS prebuilt x86_64
+  # instance images from Docker Hub (native x86_64 host — fast, no local build);
+  # "" builds the instance image locally (arm64/D5 path). Native x86_64 host =>
+  # no arm64-unbuildable exclusions; absolute rates comparable to the literature.
+  namespace: "swebench"
+  dataset_name: "princeton-nlp/SWE-bench_Verified"
+  timeout_seconds: 1800               # per-instance test timeout (seconds)
   cl_metric_wrapper: "custom"         # ~100 LOC computing a_{i,j} matrix
   primary_metric: "CL_F1"
   bootstrap_iterations: 5000

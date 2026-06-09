@@ -1,7 +1,7 @@
 # AGENTS.md — Contract & Runbook for Agentic Tools
 
 > For any coding agent (Claude Code, Codex, Cursor, aider, Gemini, …) working in this repo.
-> **`CLAUDE.md` is the primary contract and `THESIS_FINAL_v5.md` is the design source of truth.** This file mirrors the rules and adds the operational runbook for running on Ollama Cloud. When this file and CLAUDE.md disagree, CLAUDE.md wins.
+> **`CLAUDE.md` is the primary contract and `THESIS_FINAL_v5.md` is the design source of truth.** This file mirrors the rules and adds the operational runbook for running on OpenCode Zen go. When this file and CLAUDE.md disagree, CLAUDE.md wins.
 
 ## What this repository is
 
@@ -16,15 +16,15 @@ Research code for a master's thesis: **Memory Pruning and Forgetting Policies fo
 5. **Log everything from Day 1** (v5 §11): `task_results.jsonl`, `memory_events.jsonl`, per-task trajectory files, before/after memory snapshots. Missing fields cannot be recovered.
 6. **TDD.** New file → read the relevant v5 section → write the file → write a pytest (at minimum assert frozen invariants hold) → `make lint` + `make test`.
 
-## Runtime deviations from pre-registration (Ollama Cloud)
+## Runtime deviations from pre-registration (OpenCode Zen go)
 
-The experiment runs on **Ollama Cloud**, not GPT-5.4 (user-authorized 2026-06-01). See the deviation table **D1–D4 in CLAUDE.md** (model, embedder, cost metric, classifier structured-output). All four must be disclosed in the thesis Methods. The model is held constant across all conditions/seeds, so between-policy comparisons remain valid; absolute numbers are not comparable to GPT-5.4 baselines.
+The experiment runs on **OpenCode Zen "go"** (OpenAI-compatible), not GPT-5.4 (user-authorized; provider switched from Ollama Cloud → OpenCode Zen go on 2026-06-08 — both OpenAI-compatible, config-only switch). See the deviation table **D1–D5 in CLAUDE.md** (model, embedder, cost metric, classifier structured-output, host/architecture). All must be disclosed in the thesis Methods. The model is held constant across all conditions/seeds, so between-policy comparisons remain valid; absolute numbers are not comparable to GPT-5.4 baselines.
 
-## Running on Ollama Cloud
+## Running on OpenCode Zen go
 
 ### Provider architecture
-- **Chat / agent / summary / classifier** → Ollama **Cloud**, OpenAI-compatible at `https://ollama.com/v1` (needs an API key). Path is `/v1`, **not** `/api/v1`.
-- **Embeddings** → local Ollama daemon at `http://localhost:11434/v1` (Ollama Cloud serves **no** embedding model).
+- **Chat / agent / summary / classifier** → **OpenCode Zen go**, OpenAI-compatible at `https://opencode.ai/zen/go/v1` (needs an API key). List models: `curl -H "Authorization: Bearer $KEY" https://opencode.ai/zen/go/v1/models`. **Qwen models on this tier are Anthropic-endpoint-only (not oa-compat)** — use the `kimi`/`glm`/`deepseek`/`minimax`/`mimo` families.
+- **Embeddings** → local Ollama daemon at `http://localhost:11434/v1` (OpenCode Zen serves **no** embedding model).
 - Both clients are built by **`src/config/llm_factory.py`** from `.env`. **Never set a global `OPENAI_BASE_URL`** — it would redirect embeddings to a cloud endpoint that has no embedder and break retrieval.
 
 ### One-time setup
@@ -36,9 +36,9 @@ python -m venv .venv && .venv/bin/python -m pip install -e ".[dev]"
 #    Re-fetch/rebuild if needed:
 .venv/bin/python scripts/build_curriculum.py        # downloads from thomasjoshi/agents-never-forget
 
-# 3. Ollama Cloud auth (generative models)
-ollama signin                                       # authenticate against ollama.com
-#    create an API key at https://ollama.com/settings/keys
+# 3. OpenCode Zen auth (generative models)
+#    create an API key in the OpenCode Zen console at https://opencode.ai
+#    then put it in .env as LLM_CHAT_API_KEY (no CLI signin needed)
 
 # 4. Local Ollama embedder (embeddings)
 ollama serve &                                      # if not already running
@@ -51,11 +51,11 @@ cp .env.example .env                                # then fill LLM_CHAT_API_KEY
 ### `.env` (template in `.env.example`)
 | Var | Default | Purpose |
 |---|---|---|
-| `LLM_CHAT_BASE_URL` | `https://ollama.com/v1` | chat endpoint |
-| `LLM_CHAT_API_KEY` | *(required)* | ollama.com key |
-| `LLM_MAIN_MODEL` | `qwen3-coder:480b-cloud` | coding agent |
-| `LLM_SUMMARY_MODEL` | `gpt-oss:20b-cloud` | reflection + CLS summary |
-| `LLM_CLASSIFIER_MODEL` | `gpt-oss:20b-cloud` | 5-type classifier |
+| `LLM_CHAT_BASE_URL` | `https://opencode.ai/zen/go/v1` | chat endpoint (OpenAI-compat) |
+| `LLM_CHAT_API_KEY` | *(required)* | OpenCode Zen key |
+| `LLM_MAIN_MODEL` | `kimi-k2.6` | coding agent (oa-compat, non-reasoning) |
+| `LLM_SUMMARY_MODEL` | `kimi-k2.5` | reflection + CLS summary |
+| `LLM_CLASSIFIER_MODEL` | `kimi-k2.5` | 5-type classifier (JSON-mode verified) |
 | `EMBEDDING_BASE_URL` | `http://localhost:11434/v1` | local embedder |
 | `EMBEDDING_API_KEY` | `ollama` | ignored locally but required |
 | `EMBEDDING_MODEL` | `nomic-embed-text-v2-moe` | embedder |
@@ -64,8 +64,8 @@ cp .env.example .env                                # then fill LLM_CHAT_API_KEY
 
 Env vars override `configs/base.yaml`. The repo stays runnable on OpenAI/GPT-5.4 by editing `.env` only.
 
-### Quotas (verify live at ollama.com/settings)
-Ollama Cloud is subscription/GPU-time based. **Concurrency caps: Free=1, Pro=3, Max=10.** Quotas reset every **5h** (session) and **7d** (weekly). A 480B model over 144 runs × up to 20 steps/task is heavy — run sequentially (≤ tier cap), checkpoint/resume, and spread across reset windows.
+### Quotas / rate limits (verify live in the OpenCode Zen console)
+OpenCode Zen is credit/subscription-based; confirm the current rate limits and balance in the console. 144 runs × up to 20 steps/task is heavy — run sequentially, checkpoint/resume, and watch the balance. The token-count proxy (D3, `COST_METRIC_MODE=tokens`) is the Pareto cost axis regardless of provider billing.
 
 ### Verify wiring before any run
 ```bash
@@ -82,7 +82,7 @@ PY
 ## Execution model (arm64 unified container — locked 2026-06-02, deviation D5)
 
 - **Host:** local **arm64 macOS** (Docker `linux/arm64`). NOT the v5 §0.1 #4/#5 x86_64 VPS. Keep ≥ ~60 GB free; build-on-demand + prune images between tasks.
-- **Per task:** one live container started from the swebench **arm64 instance image** (repo @ `base_commit` + deps installed). The ReAct agent's tools act *inside* it via `docker exec` (writes via `docker cp`/stdin); `get_patch` = in-container `git diff`. The ReAct loop + LLM stay on the host → Ollama Cloud; only tool *effects* relocate.
+- **Per task:** one live container started from the swebench **arm64 instance image** (repo @ `base_commit` + deps installed). The ReAct agent's tools act *inside* it via `docker exec` (writes via `docker cp`/stdin); `get_patch` = in-container `git diff`. The ReAct loop + LLM stay on the host → OpenCode Zen go; only tool *effects* relocate.
 - **Eval ground-truth:** loaded from canonical **`princeton-nlp/SWE-bench_Verified`** by `instance_id` (`FAIL_TO_PASS`/`PASS_TO_PASS`/`version`/`environment_setup_commit`; the curriculum JSON dropped these). Curriculum = ordering + `issue_text` only. Eval applies `test_patch` + runs F2P/P2P in the same/fresh instance container.
 - **Build-probe (Phase 5.0, GATE):** before any run, probe all 273 ids for Verified coverage + arm64 buildability → deterministic exclusion list (applied identically across all 6×3). Escalate to x86_64 if >15%/sequence unbuildable.
 - **Throughput:** sequential-first (1 run at a time); task-boundary checkpoint/resume via `after_task` snapshots survives the Ollama 5h/7d resets. Parallelism ≤3 (Pro cap) only after the pilot is stable.
@@ -149,4 +149,4 @@ This file is the **root** of a hierarchical AGENTS.md tree (generated 2026-06-02
 Regenerate with `/oh-my-claudecode:deepinit`. Manual notes under each file's `<!-- MANUAL -->` marker are preserved.
 
 ---
-> **In one line:** Implement v5 faithfully on Ollama Cloud; the five deviations (D1–D5 in CLAUDE.md) are declared and disclosed, nothing else changes.
+> **In one line:** Implement v5 faithfully on OpenCode Zen go; the five deviations (D1–D5 in CLAUDE.md) are declared and disclosed, nothing else changes.

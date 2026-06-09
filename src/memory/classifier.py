@@ -22,7 +22,7 @@ from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from src.config.llm_factory import chat_base_url, classifier_model, get_chat_client
-from src.errors import ClassifierError
+from src.errors import ClassifierError, UsageLimitError, is_usage_limit_error
 
 from .record import VALID_MEMORY_TYPES
 
@@ -244,7 +244,14 @@ Classify the change into ONE of the 5 types above."""
                     }
                 )
             except Exception as e:
-                # Transport/API errors — do not silently swallow, fail fast.
+                # A provider quota/usage-limit error is FATAL and will not clear
+                # on retry — abort the whole run rather than emit invalid tasks.
+                if is_usage_limit_error(e):
+                    raise UsageLimitError(
+                        f"Provider usage limit hit during classification "
+                        f"(task_id={task_id}): {e}"
+                    ) from e
+                # Other transport/API errors — do not silently swallow, fail fast.
                 last_error = e
                 logger.error(
                     f"Classifier API call failed "

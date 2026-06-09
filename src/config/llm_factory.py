@@ -12,14 +12,17 @@ qwen3-coder, gpt-oss, deepseek-v3.1). Chat and embedding calls must therefore
 point at different endpoints. **Never** set a global ``OPENAI_BASE_URL`` — it
 would silently redirect the embedding client too and break retrieval.
 
-Deviation from THESIS_FINAL_v5.md §0.1 (model is frozen to GPT-5.4)
--------------------------------------------------------------------
-This factory defaults to Ollama Cloud (``qwen3-coder:480b-cloud``) for the
-generative roles and a **local** Ollama embedder
-(``nomic-embed-text-v2-moe``) for embeddings. See CLAUDE.md / AGENTS.md
-"Deviations from pre-registration". The model is held **constant across all 6
-conditions and 3 seeds**, so between-policy comparisons remain valid; absolute
-resolution rates are not comparable to a GPT-5.4 design.
+Deviation D1 from THESIS_FINAL_v5.md §0.1 (model is frozen to GPT-5.4)
+---------------------------------------------------------------------
+This factory defaults to OpenCode Zen "go" tier (OpenAI-compatible) using
+``kimi-k2.6`` for the main coding agent and ``kimi-k2.5`` for the
+reflection/summary/classifier roles, with a **local** Ollama embedder
+(``nomic-embed-text-v2-moe``) for embeddings (OpenCode Zen serves no embedder).
+See CLAUDE.md / AGENTS.md "Deviations from pre-registration". The model is held
+**constant across all 6 conditions and 3 seeds**, so between-policy comparisons
+remain valid; absolute resolution rates are not comparable to a GPT-5.4 design.
+NOTE: on this tier the Qwen models are Anthropic-endpoint only (not oa-compat);
+the kimi / glm / deepseek / minimax / mimo families ARE OpenAI-compatible.
 
 Config precedence
 -----------------
@@ -47,17 +50,17 @@ except Exception:  # pragma: no cover
 
 
 # Built-in defaults — the lowest-precedence layer. Tuned for the chosen setup:
-#   * generative roles  -> Ollama Cloud (needs LLM_CHAT_API_KEY from ollama.com)
-#   * embeddings         -> local Ollama daemon at :11434 (after `ollama signin`)
+#   * generative roles  -> OpenCode Zen go (needs LLM_CHAT_API_KEY from opencode.ai)
+#   * embeddings         -> local Ollama daemon at :11434 (after `ollama pull`)
 # Override any of these via the matching env var in .env.
 _DEFAULTS: dict[str, str] = {
-    # --- chat / agent / summary / classifier (Ollama Cloud, OpenAI-compatible) ---
-    # NOTE the path is /v1 (NOT /api/v1 — /api is reserved for Ollama native).
-    "LLM_CHAT_BASE_URL": "https://ollama.com/v1",
-    "LLM_CHAT_API_KEY": "",  # create at https://ollama.com/settings/keys
-    "LLM_MAIN_MODEL": "qwen3-coder:480b-cloud",
-    "LLM_SUMMARY_MODEL": "gpt-oss:20b-cloud",
-    "LLM_CLASSIFIER_MODEL": "gpt-oss:20b-cloud",
+    # --- chat / agent / summary / classifier (OpenCode Zen go, OpenAI-compatible) ---
+    # Catalog: GET https://opencode.ai/zen/go/v1/models (Bearer key).
+    "LLM_CHAT_BASE_URL": "https://opencode.ai/zen/go/v1",
+    "LLM_CHAT_API_KEY": "",  # create at https://opencode.ai (OpenCode Zen console)
+    "LLM_MAIN_MODEL": "kimi-k2.6",
+    "LLM_SUMMARY_MODEL": "kimi-k2.5",
+    "LLM_CLASSIFIER_MODEL": "kimi-k2.5",
     # --- embeddings (local Ollama; Ollama Cloud has no embedding model) ---
     "EMBEDDING_BASE_URL": "http://localhost:11434/v1",
     "EMBEDDING_API_KEY": "ollama",  # local daemon ignores the value but requires one

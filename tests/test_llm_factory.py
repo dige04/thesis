@@ -28,7 +28,7 @@ def _clean_clients():
 
 def test_main_model_default(monkeypatch):
     monkeypatch.delenv("LLM_MAIN_MODEL", raising=False)
-    assert llm_factory.main_model() == "qwen3-coder:480b-cloud"
+    assert llm_factory.main_model() == "kimi-k2.6"
 
 
 def test_main_model_env_overrides_default(monkeypatch):

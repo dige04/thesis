@@ -202,20 +202,25 @@ def verify_logging_schemas(run_dir: Path) -> tuple[bool, list[str]]:
                     with open(snapshot_file, encoding="utf-8") as f:
                         snapshot = json.load(f)
 
-                        # Check required fields
-                        required_fields = [
+                        # Check required fields. Per v5 §11.4 the snapshot
+                        # schema (MemorySnapshotLogger) keeps run-level identity
+                        # (run_id, policy_name) under "metadata", not at top level.
+                        required_top = [
                             "step",
                             "boundary",
                             "active_records",
-                            "run_id",
-                            "policy_name",
                             "timestamp",
+                            "metadata",
                         ]
+                        required_meta = ["run_id", "policy_name"]
 
+                        meta = snapshot.get("metadata", {})
                         missing_fields = [
-                            field
-                            for field in required_fields
-                            if field not in snapshot
+                            field for field in required_top if field not in snapshot
+                        ] + [
+                            f"metadata.{field}"
+                            for field in required_meta
+                            if field not in meta
                         ]
                         if missing_fields:
                             errors.append(

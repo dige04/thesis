@@ -30,6 +30,7 @@ from src.agents.langgraph_agent import CodingAgent
 from src.benchmark.evaluator import SWEBenchEvaluator
 from src.benchmark.models import Sequence, Task
 from src.benchmark.task_env import RepositoryCheckoutError, TaskEnvironment
+from src.errors import UsageLimitError
 from src.logging.memory_event_logger import MemoryEventLogger
 from src.logging.memory_snapshot_logger import MemorySnapshotLogger
 from src.logging.task_logger import TaskResult, TaskResultLogger
@@ -140,12 +141,15 @@ class SequenceRunner:
             ),
         )
 
-        # Initialize evaluator
+        # Initialize evaluator. ``namespace`` controls image source: "" builds
+        # the instance image locally (arm64/D5); "swebench" PULLS the prebuilt
+        # x86_64 image from Docker Hub (native x86_64 host — fast, no local build).
+        eval_cfg = config.get("evaluation", {})
         self.evaluator = SWEBenchEvaluator(
-            docker_image=config.get("evaluation", {}).get(
-                "docker_image", "swebench/eval_v3:latest"
-            ),
-            timeout_seconds=config.get("evaluation", {}).get("timeout_seconds", 300),
+            docker_image=eval_cfg.get("docker_image", "swebench/eval_v3:latest"),
+            timeout_seconds=eval_cfg.get("timeout_seconds", 300),
+            dataset_name=eval_cfg.get("dataset_name", "princeton-nlp/SWE-bench_Verified"),
+            namespace=eval_cfg.get("namespace", ""),
         )
 
         # Initialize loggers
@@ -277,6 +281,14 @@ class SequenceRunner:
                     logger.error(error_message)
                     raise
 
+                except UsageLimitError as e:
+                    # Provider quota exhausted — FATAL. Abort the whole run; the
+                    # model can no longer be called, so every remaining task would
+                    # be a silent invalid 0-resolved. Resume after quota/billing.
+                    error_message = f"ABORTING run — provider usage limit: {e}"
+                    logger.error(error_message)
+                    raise
+
                 except Exception as e:
                     # Other errors are logged but don't fail the sequence
                     error_message = f"Task {task.task_id} failed with error: {e}"
@@ -286,6 +298,10 @@ class SequenceRunner:
 
         except RepositoryCheckoutError:
             # Re-raise repository errors to fail the sequence
+            raise
+
+        except UsageLimitError:
+            # Re-raise provider quota errors to abort the run (and the experiment).
             raise
 
         except Exception as e:
@@ -399,6 +415,18 @@ class SequenceRunner:
             # Persist the agent trajectory (v5 §11.3: actions + observations
             # only, NO chain-of-thought) — one of the 4 mandatory log streams.
             self._log_trajectory(task, seed, agent_result)
+
+            # Persist the generated patch for failure analysis (v5 §18) and
+            # patch-quality inspection. Otherwise it is lost — eval runs the
+            # harness in a temp dir that is removed afterwards.
+            try:
+                patches_dir = self.run_dir / "patches"
+                patches_dir.mkdir(parents=True, exist_ok=True)
+                (patches_dir / f"{task.task_id}.patch").write_text(
+                    agent_result.get("patch", "") or "", encoding="utf-8"
+                )
+            except Exception as e:
+                logger.warning(f"failed to persist patch for {task.task_id}: {e}")
 
             # Record the agent LLM call for cost_summary.json (v5 §1570 Pareto
             # cost axis = total tokens). Reflection/classifier/consolidation/

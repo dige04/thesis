@@ -72,6 +72,21 @@ def create_mock_record(memory_id, sequence_index, memory_type="bug_fix"):
     )
 
 
+def test_recency_prune_archives_at_current_step_not_victim_step():
+    # Regression: prunes must record archived_at_step = the CURRENT step (max
+    # active sequence_index), NOT each victim's own creation step. Using the
+    # victim's step broke the runner's archive-event delta -> forgetting unlogged.
+    store = MockMemoryStore()
+    for i in range(5):
+        store.add(create_mock_record(f"MEM-{i}", sequence_index=i))
+    RecencyPrunePolicy(max_records=2).maintain(store)
+    assert len(store.archived_records) == 3
+    for r in store.archived_records:
+        assert r.archived_at_step == 4, (
+            f"archived_at_step={r.archived_at_step}, expected current step 4"
+        )
+
+
 class TestRecencyPrunePolicyInstantiation:
     """Test Recency Prune policy instantiation and attributes."""
 

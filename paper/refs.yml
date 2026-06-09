@@ -1,0 +1,151 @@
+anderson1991:
+  type: article
+  title: "Reflections of the environment in memory"
+  author: ["Anderson, John R.", "Schooler, Lael J."]
+  date: 1991
+  parent:
+    type: periodical
+    title: "Psychological Science"
+
+richards2017:
+  type: article
+  title: "The persistence and transience of memory"
+  author: ["Richards, Blake A.", "Frankland, Paul W."]
+  date: 2017
+  parent:
+    type: periodical
+    title: "Neuron"
+
+mcclelland1995:
+  type: article
+  title: "Why there are complementary learning systems in the hippocampus and neocortex"
+  author: ["McClelland, James L.", "McNaughton, Bruce L.", "O'Reilly, Randall C."]
+  date: 1995
+  parent:
+    type: periodical
+    title: "Psychological Review"
+
+xiong2025:
+  type: article
+  title: "Add-all memory can be worse than no memory for LLM agents"
+  author: ["Xiong, et al."]
+  date: 2025
+  serial-number:
+    arxiv: "2505.16067"
+
+liu2024:
+  type: article
+  title: "Lost in the Middle: How Language Models Use Long Contexts"
+  author: ["Liu, Nelson F.", "et al."]
+  date: 2024
+  parent:
+    type: periodical
+    title: "Transactions of the Association for Computational Linguistics"
+
+du2025:
+  type: article
+  title: "Context length hurts: performance degradation with longer context"
+  author: ["Du, et al."]
+  date: 2025
+  serial-number:
+    arxiv: "2510.05381"
+
+cuconasu2024:
+  type: article
+  title: "The Power of Noise: Redefining Retrieval for RAG Systems"
+  author: ["Cuconasu, Florin", "et al."]
+  date: 2024
+  serial-number:
+    arxiv: "2401.14887"
+
+fastpaca2025:
+  type: web
+  title: "Memory cost explosion in production agent systems"
+  author: ["Fastpaca"]
+  date: 2025
+
+membench2025:
+  type: article
+  title: "MemBench: Benchmarking the cost of agent memory"
+  author: ["MemBench"]
+  date: 2025
+  serial-number:
+    arxiv: "2506.21605"
+
+joshi2025:
+  type: article
+  title: "SWE-Bench-CL: Continual Learning for Software Engineering Agents"
+  author: ["Joshi, Thomas", "et al."]
+  date: 2025
+  serial-number:
+    arxiv: "2507.00014"
+
+packer2024:
+  type: article
+  title: "MemGPT: Towards LLMs as Operating Systems"
+  author: ["Packer, Charles", "et al."]
+  date: 2024
+  parent:
+    type: proceedings
+    title: "International Conference on Learning Representations (ICLR)"
+
+park2023:
+  type: article
+  title: "Generative Agents: Interactive Simulacra of Human Behavior"
+  author: ["Park, Joon Sung", "et al."]
+  date: 2023
+  parent:
+    type: proceedings
+    title: "UIST"
+
+zhong2024:
+  type: article
+  title: "MemoryBank: Enhancing Large Language Models with Long-Term Memory"
+  author: ["Zhong, Wanjun", "Guo, Lianghong", "Gao, Qiqi", "Ye, He", "Wang, Yanlin"]
+  date: 2024
+  parent:
+    type: proceedings
+    title: "AAAI Conference on Artificial Intelligence"
+
+xu2025:
+  type: article
+  title: "A-MEM: Agentic Memory for LLM Agents"
+  author: ["Xu, Wujiang", "Liang, Zujie", "Yan, Kai", "Li, Ming", "Liu, Wenfang", "Yan, Hongcheng", "Jin, Wei", "Wen, Hongzhi"]
+  date: 2025
+  serial-number:
+    arxiv: "2502.12110"
+
+shinn2023:
+  type: article
+  title: "Reflexion: Language Agents with Verbal Reinforcement Learning"
+  author: ["Shinn, Noah", "Cassano, Federico", "Berman, Edward", "Gopinath, Ashwin", "Narasimhan, Karthik", "Yao, Shunyu"]
+  date: 2023
+  parent:
+    type: proceedings
+    title: "Advances in Neural Information Processing Systems (NeurIPS)"
+
+alqithami2025:
+  type: article
+  title: "Forgetful but Faithful: A Cognitive Memory Architecture and Benchmark for Privacy-Aware Generative Agents"
+  author: ["Alqithami, Saad"]
+  date: 2025
+  serial-number:
+    arxiv: "2512.12856"
+
+cumming2014:
+  type: article
+  title: "The New Statistics: Why and How"
+  author: ["Cumming, Geoff"]
+  date: 2014
+  parent:
+    type: periodical
+    title: "Psychological Science"
+
+wasserstein2019:
+  type: article
+  title: "Moving to a World Beyond p < 0.05"
+  author: ["Wasserstein, Ronald L.", "Schirm, Allen L.", "Lazar, Nicole A."]
+  date: 2019
+  parent:
+    type: periodical
+    title: "The American Statistician"
