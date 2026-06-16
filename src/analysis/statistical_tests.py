@@ -37,29 +37,28 @@ def compute_rank_biserial(
     Returns:
         Rank-biserial correlation r_rb in [-1, 1]
     """
-    differences = x - y
-    n = len(differences)
+    differences = np.asarray(x, dtype=float) - np.asarray(y, dtype=float)
 
-    if n == 0:
+    # Wilcoxon convention: DROP zero differences before ranking, and exclude
+    # them from the normalising denominator (THESIS_REVIEW.md #13). The old code
+    # ranked the full vector, folded zeros onto the negative side via
+    # ``~positive_mask``, and divided by n(n+1)/2 using the full n — all three
+    # bias r_rb toward the baseline and return -1.0 for tied/identical policies.
+    nonzero = differences[differences != 0.0]
+    m = nonzero.size
+    if m == 0:
         return 0.0
 
-    # Rank absolute differences
-    abs_diffs = np.abs(differences)
-    ranks = stats.rankdata(abs_diffs)
+    ranks = stats.rankdata(np.abs(nonzero))
+    r_plus = float(np.sum(ranks[nonzero > 0]))
+    r_minus = float(np.sum(ranks[nonzero < 0]))
 
-    # Sum of ranks for positive differences
-    positive_mask = differences > 0
-    r_plus = np.sum(ranks[positive_mask])
-
-    # Sum of ranks for negative differences
-    r_minus = np.sum(ranks[~positive_mask])
-
-    # Rank-biserial correlation
-    # r_rb = (R+ - R-) / (n(n+1)/2)
-    max_rank_sum = n * (n + 1) / 2
-    r_rb = (r_plus - r_minus) / max_rank_sum
-
-    return float(r_rb)
+    # r_rb = (R+ - R-) / (R+ + R-); the denominator equals m(m+1)/2 over the
+    # m non-zero differences.
+    denom = r_plus + r_minus
+    if denom == 0:
+        return 0.0
+    return float((r_plus - r_minus) / denom)
 
 
 def run_wilcoxon_with_holm(
@@ -198,29 +197,28 @@ def holm_correction(p_values: list[float], alpha: float = 0.05) -> list[float]:
     Returns:
         List of Holm-corrected p-values
     """
-    n = len(p_values)
+    # ``alpha`` is retained for API compatibility; Holm-adjusted p-values do not
+    # depend on it (it only governs the reject decision, made by the caller).
+    _ = alpha
+
+    p = np.asarray(p_values, dtype=float)
+    n = p.size
     if n == 0:
         return []
 
-    # Sort p-values with original indices
-    indexed_p = [(p, i) for i, p in enumerate(p_values)]
-    indexed_p.sort()
+    # Correct Holm step-down (the version statsmodels implements):
+    #   1. sort raw p ascending; 2. scale the k-th smallest (0-indexed) by (n-k);
+    #   3. take the cumulative maximum IN RAW-P-SORTED ORDER; 4. clip to 1.0.
+    # The old code re-sorted the already-multiplied values and ran the
+    # monotonicity pass over that wrong ordering (THESIS_REVIEW.md #12), which is
+    # anti-conservative when the raw p-values are not pre-sorted.
+    order = np.argsort(p, kind="stable")
+    multipliers = n - np.arange(n)
+    adjusted_sorted = np.clip(np.maximum.accumulate(p[order] * multipliers), 0.0, 1.0)
 
-    # Apply Holm correction
-    corrected = [0.0] * n
-    for rank, (p, original_idx) in enumerate(indexed_p):
-        # Holm correction: multiply by (n - rank)
-        corrected_p = min(p * (n - rank), 1.0)
-        corrected[original_idx] = corrected_p
-
-    # Enforce monotonicity (corrected p-values should not decrease)
-    sorted_corrected = sorted(enumerate(corrected), key=lambda x: x[1])
-    for i in range(1, n):
-        idx_curr = sorted_corrected[i][0]
-        idx_prev = sorted_corrected[i - 1][0]
-        corrected[idx_curr] = max(corrected[idx_curr], corrected[idx_prev])
-
-    return corrected
+    adjusted = np.empty(n, dtype=float)
+    adjusted[order] = adjusted_sorted
+    return [float(v) for v in adjusted]
 
 
 def run_bootstrap_bca(
@@ -380,3 +378,164 @@ def compute_all_contrasts_with_bootstrap(
         contrast["bootstrap_ci"] = bca_result
 
     return wilcoxon_results
+
+
+# ---------------------------------------------------------------------------
+# TOST equivalence test + H1a outcome labels (A/B/C/D) — review blocker #11
+# ---------------------------------------------------------------------------
+
+# Pre-registered H1a outcome labels (THESIS_FINAL_v5.md §15.2): pruning vs
+# full_memory on CL-F1, with paired difference defined as policy - baseline.
+H1A_EQUIVALENT = "A_equivalent"
+H1A_SUPERIOR = "B_superior"
+H1A_DEGRADED = "C_degraded"
+H1A_INCONCLUSIVE = "D_inconclusive"
+
+
+def _one_sided_wilcoxon(shifted: np.ndarray, alternative: str) -> float:
+    """One-sided Wilcoxon signed-rank p-value on a shifted difference vector.
+
+    Returns 1.0 (cannot reject) when every value is zero — the conservative,
+    non-crashing behaviour needed on degenerate (all-tied) fixtures.
+    """
+    shifted = np.asarray(shifted, dtype=float)
+    if np.all(shifted == 0.0):
+        return 1.0
+    try:
+        _, p = stats.wilcoxon(shifted, alternative=alternative, zero_method="wilcox")
+        return float(p)
+    except ValueError:
+        return 1.0
+
+
+def bootstrap_bca_ci(
+    differences: np.ndarray,
+    n_iterations: int = 5000,
+    alpha: float = 0.05,
+    random_seed: int | None = 12345,
+) -> dict[str, float]:
+    """BCa 95% CI for the median of a paired-difference vector.
+
+    Difference-based companion to :func:`run_bootstrap_bca` (which takes ``x, y``),
+    used by :func:`tost`. Same BCa construction: percentile bootstrap with
+    bias-correction ``z0`` and jackknife acceleration ``a`` (Invariant #15:
+    5000 iterations, BCa method).
+    """
+    d = np.asarray(differences, dtype=float)
+    n = d.size
+    observed = float(np.median(d))
+
+    if n < 2:
+        # No spread to bootstrap; degenerate CI at the point estimate.
+        return {
+            "median_diff": observed,
+            "ci_lower": observed,
+            "ci_upper": observed,
+            "bias_correction": 0.0,
+            "acceleration": 0.0,
+        }
+
+    rng = np.random.default_rng(random_seed)
+    idx = rng.integers(0, n, size=(n_iterations, n))
+    boot = np.median(d[idx], axis=1)
+
+    # Bias-correction z0.
+    p_less = float(np.mean(boot < observed))
+    if p_less <= 0.0:
+        z0 = -8.0
+    elif p_less >= 1.0:
+        z0 = 8.0
+    else:
+        z0 = float(stats.norm.ppf(p_less))
+
+    # Acceleration via jackknife.
+    jack = np.array([np.median(np.delete(d, i)) for i in range(n)])
+    jack_mean = jack.mean()
+    num = np.sum((jack_mean - jack) ** 3)
+    den = 6.0 * (np.sum((jack_mean - jack) ** 2) ** 1.5)
+    a = 0.0 if den == 0 else float(num / den)
+
+    z_lo = stats.norm.ppf(alpha / 2)
+    z_hi = stats.norm.ppf(1 - alpha / 2)
+
+    def _adjust(z: float) -> float:
+        denom = 1 - a * (z0 + z)
+        if denom == 0:
+            denom = 1e-12
+        return float(stats.norm.cdf(z0 + (z0 + z) / denom))
+
+    p_lo = float(np.clip(_adjust(z_lo), 0.0, 1.0))
+    p_hi = float(np.clip(_adjust(z_hi), 0.0, 1.0))
+
+    return {
+        "median_diff": observed,
+        "ci_lower": float(np.percentile(boot, p_lo * 100)),
+        "ci_upper": float(np.percentile(boot, p_hi * 100)),
+        "bias_correction": z0,
+        "acceleration": a,
+    }
+
+
+def tost(
+    differences: list[float] | np.ndarray,
+    sesoi: float = 0.03,
+    n_iterations: int = 5000,
+    alpha: float = 0.05,
+    random_seed: int | None = 12345,
+) -> dict[str, Any]:
+    """Two one-sided tests (TOST) for equivalence on the median paired diff.
+
+    The paired difference is ``policy - baseline`` (a positive median means the
+    policy beats full_memory). Equivalence is assessed against the symmetric
+    SESOI band ``(-sesoi, +sesoi)`` using the BCa 95% CI of the median plus the
+    one-sided Wilcoxon tail for the superiority call. Returns the pre-registered
+    H1a label:
+
+      A_equivalent  : CI strictly inside (-sesoi, +sesoi).
+      C_degraded    : median < -sesoi AND ci_upper < -sesoi (a real regression).
+      B_superior    : one-sided Wilcoxon rejects median <= 0 AND median > 0.
+      D_inconclusive: anything else (the CI straddles a SESOI bound).
+
+    Labels are checked in the order A, C, B, D so a clean equivalence or
+    degradation is reported even when the superiority tail is also nominally
+    significant in the same direction.
+    """
+    d = np.asarray(differences, dtype=float)
+    median_diff = float(np.median(d))
+
+    bca = bootstrap_bca_ci(
+        d, n_iterations=n_iterations, alpha=alpha, random_seed=random_seed
+    )
+    ci_lower = bca["ci_lower"]
+    ci_upper = bca["ci_upper"]
+
+    # One-sided Wilcoxon p-values for the two TOST nulls and the superiority test.
+    p_lower = _one_sided_wilcoxon(d + sesoi, alternative="greater")
+    p_upper = _one_sided_wilcoxon(d - sesoi, alternative="less")
+    p_tost = max(p_lower, p_upper)
+    p_superiority = _one_sided_wilcoxon(d, alternative="greater")
+
+    ci_inside_band = (ci_lower > -sesoi) and (ci_upper < sesoi)
+    ci_below_lower_bound = ci_upper < -sesoi
+
+    if ci_inside_band:
+        outcome = H1A_EQUIVALENT
+    elif (median_diff < -sesoi) and ci_below_lower_bound:
+        outcome = H1A_DEGRADED
+    elif (p_superiority < alpha) and (median_diff > 0):
+        outcome = H1A_SUPERIOR
+    else:
+        outcome = H1A_INCONCLUSIVE
+
+    return {
+        "median_diff": median_diff,
+        "ci_lower": ci_lower,
+        "ci_upper": ci_upper,
+        "sesoi": sesoi,
+        "p_lower": p_lower,
+        "p_upper": p_upper,
+        "p_tost": p_tost,
+        "p_superiority": p_superiority,
+        "outcome": outcome,
+        "n": int(d.size),
+    }

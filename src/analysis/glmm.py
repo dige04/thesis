@@ -8,16 +8,26 @@ Per THESIS_FINAL_v5.md §15.3:
 - Formula: task_success ~ condition + difficulty + position + (1|seq/seed) + (1|task_id)
 - Crossed random effects for sequence/seed and task_id
 - Exploratory analysis (sequence-level is primary)
+
+Backend (advisor decision, 2026-06-16): the canonical crossed-effects fit is R
+``lme4::glmer`` via :func:`fit_glmm_with_r` (Invariant #14). :func:`fit_glmm` is
+a no-R ``statsmodels`` ``BinomialBayesMixedGLM`` fallback — APPROXIMATE
+(variational inference), to be labelled as such in any report.
 """
 
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 try:
-    import statsmodels.api as sm
-    from statsmodels.formula.api import glmer
+    # BinomialBayesMixedGLM is the only mixed binomial GLM statsmodels ships.
+    # The original code imported ``statsmodels.formula.api.glmer``, which does
+    # NOT exist — so STATSMODELS_AVAILABLE was always False and fit_glmm was dead.
+    from statsmodels.genmod.bayes_mixed_glm import (  # noqa: F401
+        BinomialBayesMixedGLM,
+    )
 
     STATSMODELS_AVAILABLE = True
 except ImportError:
@@ -97,91 +107,157 @@ def fit_glmm(
     include_task_random_effect: bool = True,
 ) -> dict[str, Any]:
     """
-    Fit binomial GLMM with logit link.
+    Fit a binomial/logit task-level mixed model — statsmodels FALLBACK path.
 
-    Per THESIS_FINAL_v5.md §15.3:
-    - Default formula: resolved ~ policy + difficulty + position + (1|seq_seed) + (1|task_id)
-    - Binomial family with logit link
-    - Crossed random effects
+    The canonical Invariant #14 model (crossed random effects on seq_seed AND
+    task_id) is fit with R ``lme4::glmer`` via :func:`fit_glmm_with_r`. This
+    function is the no-R fallback: ``statsmodels`` ``BinomialBayesMixedGLM``
+    (variational inference), which is APPROXIMATE and must be labelled as such in
+    any report. It includes both variance components (seq_seed + task_id) to stay
+    as close to Invariant #14 as statsmodels permits.
+
+    Model: ``resolved ~ C(policy) + difficulty_numeric + position_normalized``
+    with variance components ``(1|seq_seed)`` and — when
+    ``include_task_random_effect`` — ``(1|task_id)``.
 
     Args:
-        data: DataFrame from prepare_task_level_data()
-        formula: Optional custom formula (default uses spec formula)
-        include_task_random_effect: Whether to include (1|task_id) random effect
-                                     Set to False if convergence issues
+        data: DataFrame from prepare_task_level_data().
+        formula: Optional fixed-effects formula (Patsy syntax, NOT lme4 ``(1|x)``
+            syntax). Defaults to the spec fixed-effects formula.
+        include_task_random_effect: Include the ``(1|task_id)`` variance
+            component (set False for the sensitivity check).
 
     Returns:
-        Dict with:
-        - formula: Formula used
-        - converged: Whether model converged
-        - fixed_effects: DataFrame with coefficient, std_err, z_value, p_value
-        - random_effects: Dict with variance components
-        - aic: Akaike Information Criterion
-        - bic: Bayesian Information Criterion
-        - n_obs: Number of observations
-        - model: Fitted model object (if statsmodels available)
+        Dict with: method, converged, formula, n_obs, n_groups, fixed_effects
+        (term -> {coef, std_err}), random_effects (vc name -> posterior SD), and
+        optionally note/error. Never raises.
     """
     if not STATSMODELS_AVAILABLE:
         return {
+            "method": "none",
             "error": "statsmodels not available. Install with: pip install statsmodels",
             "formula": formula or "N/A",
             "converged": False,
+            "fixed_effects": {},
+            "random_effects": {},
         }
 
-    # Default formula per THESIS_FINAL_v5.md §15.3
-    if formula is None:
-        if include_task_random_effect:
-            formula = "resolved ~ C(policy) + difficulty_numeric + position_normalized + (1|seq_seed) + (1|task_id)"
-        else:
-            formula = "resolved ~ C(policy) + difficulty_numeric + position_normalized + (1|seq_seed)"
-
-    try:
-        # Fit GLMM using statsmodels
-        # Note: statsmodels GLMM support is limited; for production use R's lme4::glmer
-        model = glmer(
-            formula=formula,
-            data=data,
-            family=sm.families.Binomial(),
-        )
-
-        result = model.fit()
-
-        # Extract fixed effects
-        fixed_effects = pd.DataFrame(
-            {
-                "coefficient": result.params,
-                "std_err": result.bse,
-                "z_value": result.tvalues,
-                "p_value": result.pvalues,
-            }
-        )
-
-        # Extract random effects variance components
-        random_effects = {}
-        if hasattr(result, "cov_re"):
-            random_effects = {
-                "seq_seed_variance": float(result.cov_re.iloc[0, 0])
-                if result.cov_re.shape[0] > 0
-                else 0.0,
-            }
-
+    data = data.copy()
+    if "resolved" not in data.columns:
         return {
-            "formula": formula,
-            "converged": result.converged if hasattr(result, "converged") else True,
-            "fixed_effects": fixed_effects.to_dict(orient="index"),
-            "random_effects": random_effects,
-            "aic": float(result.aic) if hasattr(result, "aic") else None,
-            "bic": float(result.bic) if hasattr(result, "bic") else None,
-            "n_obs": int(result.nobs),
-            "model": result,
-        }
-
-    except Exception as e:
-        return {
-            "error": str(e),
-            "formula": formula,
+            "method": "none",
+            "error": "no 'resolved' column in task-level data",
             "converged": False,
+            "fixed_effects": {},
+            "random_effects": {},
         }
+    data["resolved"] = data["resolved"].astype(int)
+
+    # Fixed-effects formula (Patsy). Random effects go through vc_formulas below.
+    base_formula = (
+        formula or "resolved ~ C(policy) + difficulty_numeric + position_normalized"
+    )
+    n_obs = int(len(data))
+    n_groups = int(data["seq_seed"].nunique()) if "seq_seed" in data.columns else 0
+
+    # A binomial model needs both outcome classes present.
+    if data["resolved"].nunique() < 2:
+        return {
+            "method": "degenerate",
+            "converged": False,
+            "formula": base_formula,
+            "n_obs": n_obs,
+            "n_groups": n_groups,
+            "note": "outcome has no variation (all resolved or all failed); no model fit",
+            "fixed_effects": {},
+            "random_effects": {},
+        }
+
+    # Variance components — seq_seed always; task_id when requested (Invariant #14).
+    vc: dict[str, str] = {"seq_seed": "0 + C(seq_seed)"}
+    if include_task_random_effect and "task_id" in data.columns:
+        vc["task_id"] = "0 + C(task_id)"
+
+    # --- primary fallback: statsmodels BinomialBayesMixedGLM (variational) -----
+    try:
+        from statsmodels.genmod.bayes_mixed_glm import BinomialBayesMixedGLM
+
+        model = BinomialBayesMixedGLM.from_formula(
+            base_formula, vc_formulas=vc, data=data
+        )
+        result = model.fit_vb()
+
+        fixed_effects = {
+            name: {
+                "coef": float(result.fe_mean[i]),
+                "std_err": float(result.fe_sd[i]),
+            }
+            for i, name in enumerate(result.model.exog_names)
+        }
+        random_effects: dict[str, float | None] = {}
+        for i, name in enumerate(vc):
+            try:
+                random_effects[name] = float(np.exp(result.vcp_mean[i]))
+            except Exception:
+                random_effects[name] = None
+
+        re_terms = " + ".join(f"(1 | {k})" for k in vc)
+        return {
+            "method": "BinomialBayesMixedGLM (variational; APPROXIMATE fallback — R lme4 is canonical)",
+            "converged": True,
+            "formula": f"{base_formula} + {re_terms}",
+            "n_obs": n_obs,
+            "n_groups": n_groups,
+            "fixed_effects": fixed_effects,
+            "random_effects": random_effects,
+        }
+    except Exception as primary_err:  # noqa: BLE001 — fall back, never crash
+        # --- secondary fallback: cluster-robust logit (NOT a mixed model) -----
+        try:
+            import statsmodels.formula.api as smf
+
+            res = smf.logit(base_formula, data=data).fit(
+                disp=False,
+                cov_type="cluster",
+                cov_kwds={"groups": data["seq_seed"]},
+            )
+            fixed_effects = {
+                name: {
+                    "coef": float(res.params[name]),
+                    "std_err": float(res.bse[name]),
+                    "z": float(res.tvalues[name]),
+                    "p_value": float(res.pvalues[name]),
+                }
+                for name in res.params.index
+            }
+            return {
+                "method": "logit_cluster_robust (FALLBACK — not a mixed model)",
+                "converged": True,
+                "formula": f"{base_formula}  [cluster-robust SE on seq_seed]",
+                "n_obs": n_obs,
+                "n_groups": n_groups,
+                "fixed_effects": fixed_effects,
+                "random_effects": {},
+                "note": (
+                    "BinomialBayesMixedGLM failed "
+                    f"({type(primary_err).__name__}: {primary_err}); fell back to "
+                    "cluster-robust logit (exploratory only)."
+                ),
+            }
+        except Exception as fallback_err:  # noqa: BLE001
+            return {
+                "method": "none",
+                "converged": False,
+                "formula": base_formula,
+                "n_obs": n_obs,
+                "n_groups": n_groups,
+                "fixed_effects": {},
+                "random_effects": {},
+                "error": (
+                    f"mixed GLM failed ({primary_err}); "
+                    f"fallback logit failed ({fallback_err})"
+                ),
+            }
 
 
 def fit_glmm_with_r(
