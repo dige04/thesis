@@ -27,8 +27,9 @@ def test_frozen_decisions_in_base_config():
     """Test that frozen decisions from THESIS_FINAL_v5.md §0.1 are correctly configured."""
     config = load_config()
 
-    # Frozen decision: temperature = 0 for reproducibility
-    assert config["agent"]["temperature"] == 0
+    # Frozen decision, amended 2026-06-14: temperature held constant; value=1
+    # (Kimi reasoning models reject 0). Was 0.
+    assert config["agent"]["temperature"] == 1
 
     # Frozen decision: max_steps_per_task = 20 (hard limit)
     assert config["agent"]["max_steps_per_task"] == 20
@@ -124,8 +125,8 @@ def test_cls_consolidation_parameters():
     # Maximum summary tokens
     assert cls_config["max_summary_tokens"] == 350
 
-    # Old memory threshold
-    assert cls_config["old_memory_threshold"] == 10
+    # Old memory threshold — A3 (2026-06-17): 10 -> 5 (= cap/2), see AMENDMENTS.md
+    assert cls_config["old_memory_threshold"] == 5
 
     # Fallback to Type-Aware Decay
     assert cls_config["fallback_prune"] == "type_aware_decay"
@@ -201,8 +202,11 @@ def test_config_loader_with_actual_files():
     assert loader.get("memory", "top_k") == 5
     assert loader.get("agent", "max_steps_per_task") == 20
 
-    # Test nested get
-    assert loader.get("policies", "type_aware_decay", "max_records") == 100
+    # Test nested get (value reflects the 2026-06-14 C1 amendment: cap lowered to 10)
+    assert loader.get("policies", "type_aware_decay", "max_records") == 10
+    # The authoritative cap (read by experiment_runner) must bind below the
+    # shortest sequence (19 tasks) so pruning fires — THESIS_REVIEW blocker C1.
+    assert loader.get("memory", "max_records") == 10
 
     # Test default value
     assert loader.get("nonexistent", "key", default=42) == 42

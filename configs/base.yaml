@@ -4,7 +4,10 @@ experiment:
   sequence_mode: "chronological_by_repo"
   same_repo_retrieval_only: true
   master_seed: 42
-  seeds: [1, 2, 3]  # 3 seeds for ALL 6 conditions (Frozen Invariant #2)
+  seeds: [1, 2, 3]  # PRE-REGISTERED design (Frozen Invariant #2). EXECUTED at 1 seed
+                    # under the submission deadline (AMENDMENTS.md A6); the thesis matrix
+                    # is the 1-seed/48-run set. This array is the pre-registration record,
+                    # deliberately NOT rewritten.
   
   # Pilot mode configuration (Requirement 30)
   pilot_mode:
@@ -25,7 +28,7 @@ agent:
   main_model: "kimi-k2.6"              # main coding agent (oa-compat, large ctx)
   summary_model: "kimi-k2.5"           # reflection + CLS consolidation
   classifier_model: "kimi-k2.5"        # 5-type classification (JSON-mode verified)
-  temperature: 0
+  temperature: 1                      # AMENDMENT 2026-06-14 (advisor-approved): Kimi For Coding reasoning models only accept temp=1 (was 0). Held constant across all conditions; disclose in Methods.
   max_steps_per_task: 20              # LOCKED
   max_tool_calls_per_task: 80
   max_test_runs_per_task: 5
@@ -44,13 +47,20 @@ reflection:
   # Summary model for memory reflection (read at sequence_runner.py:622).
   # DEVIATION D1 from v5: OpenCode Zen go instead of gpt-4o-mini.
   model: "kimi-k2.5"
-  temperature: 0
+  temperature: 1                      # AMENDMENT 2026-06-14: temp=1 (Kimi reasoning models); was 0
 
 memory:
   backend: "sqlite_faiss"
   top_k: 5                            # confirm in spike
   max_context_tokens: 2000            # confirm in spike
-  max_records: 100
+  # AMENDMENT 2026-06-14 (THESIS_REVIEW C1, pre-registration amendment — DISCLOSE
+  # in Methods, advisor-approved): was 100. Sequences are 19–50 tasks at 1
+  # record/task, so a cap of 100 never bound → Random/Recency/Type-Aware/CLS were
+  # operationally identical to Full Memory and H2 was untestable. Lowered below the
+  # shortest sequence (19) so pruning actually fires across all 8 sequences.
+  # This is the EFFECTIVE cap: experiment_runner._initialize_policy reads
+  # memory.max_records (the per-policy policies.*.max_records below are NOT read).
+  max_records: 10
   max_storage_tokens: 30000
   retrieve_same_repo_only: true
   embedding_max_tokens: 7500          # hard cap before truncation
@@ -78,16 +88,16 @@ policies:
 
   random_prune:
     enabled: true
-    max_records: 100
+    max_records: 10                 # mirrors memory.max_records (amendment 2026-06-14); NOTE: not read by the runner, memory.max_records is authoritative
     seeds: [1, 2, 3]
 
   recency_prune:
     enabled: true
-    max_records: 100
+    max_records: 10                 # mirrors memory.max_records (amendment 2026-06-14); NOTE: not read by the runner, memory.max_records is authoritative
 
   type_aware_decay:
     enabled: true
-    max_records: 100
+    max_records: 10                 # mirrors memory.max_records (amendment 2026-06-14); NOTE: not read by the runner, memory.max_records is authoritative
     frequency_exponent: 0.5
     type_params:
       architectural: { base: 1.0, decay: 0.05 }
@@ -98,11 +108,11 @@ policies:
 
   cls_consolidation:
     enabled: true
-    max_records: 100
+    max_records: 10                 # mirrors memory.max_records (amendment 2026-06-14); NOTE: not read by the runner, memory.max_records is authoritative
     interval_tasks: 5                 # fixed schedule
     min_cluster_size: 3
     max_summary_tokens: 350
-    old_memory_threshold: 10
+    old_memory_threshold: 5         # A3 (2026-06-17): 10→5 (= cap/2) so CLS can consolidate at cap=10. Mirrors the code constant (this YAML value is NOT read; the policy uses OLD_MEMORY_THRESHOLD). See AMENDMENTS.md.
     similarity_threshold: 0.70
     fallback_prune: "type_aware_decay"
 
