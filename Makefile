@@ -88,34 +88,21 @@ run-all:
 # Analysis
 # ─────────────────────────────────────────────────────────────────
 
+RUNS ?= runs
+RESULTS ?= results
+
 aggregate:
-	@echo "Aggregating results..."
-	@echo "TODO: Implement during Week 6"
-	@echo "  - Read all task_results.jsonl files"
-	@echo "  - Compute sequence-level means"
-	@echo "  - Generate accuracy matrices"
-	@echo "  - Compute CL-F1, Plasticity, Stability"
-	@echo "  - Output to results/aggregated/"
+	.venv/bin/python -m scripts.run_analysis --stage aggregate --runs-dir $(RUNS) --out $(RESULTS)
 
 stats:
-	@echo "Running statistical tests..."
-	@echo "TODO: Implement during Week 6"
-	@echo "  - Wilcoxon signed-rank on 5 pre-registered contrasts"
-	@echo "  - Holm correction for multiple comparisons"
-	@echo "  - Bootstrap BCa confidence intervals (5000 iterations)"
-	@echo "  - Task-level GLMM with crossed random effects"
-	@echo "  - Feature importance (PR-AUC + VIF check)"
-	@echo "  - Output to results/aggregated/stats.json"
+	.venv/bin/python -m scripts.run_analysis --stage stats --runs-dir $(RUNS) --out $(RESULTS)
 
 plots:
-	@echo "Generating plots..."
-	@echo "TODO: Implement during Week 6"
-	@echo "  - Pareto frontier (CL-F1 vs cost)"
-	@echo "  - Sequence-level performance by policy"
-	@echo "  - Memory growth over time"
-	@echo "  - Retrieval quality metrics"
-	@echo "  - Behavioral metrics (tool calls, syntax errors)"
-	@echo "  - Output to results/plots/"
+	.venv/bin/python -m scripts.run_analysis --stage plots --runs-dir $(RUNS) --out $(RESULTS)
+
+# Full pipeline: aggregate -> stats (+TOST) -> plots -> E7 interdependence.
+results:
+	.venv/bin/python -m scripts.run_analysis --stage all --runs-dir $(RUNS) --out $(RESULTS)
 
 # ─────────────────────────────────────────────────────────────────
 # Development
