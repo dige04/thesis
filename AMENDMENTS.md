@@ -53,10 +53,21 @@ is collected; (c) held **constant across all conditions × seeds**; (d) disclose
   fire. This restores the consistency the A1 cap amendment broke; it is **not** a
   result-chasing tweak (decided before the corrected CLS data is collected).
 - **Validity:** identical across all CLS runs; `MIN_CLUSTER_SIZE=3`, k=5 interval,
-  architectural-exclusion all unchanged. **Validation pending:** re-run the CLS
-  gate-3 conditions to confirm consolidation actually fires before the matrix; if
-  5 still rarely fires (clustering of 5 candidates needs ≥3 similar), drop to 3.
-- **Touches:** v5 Invariant #23 (locked CLS params). Disclose.
+  architectural-exclusion all unchanged.
+- **VALIDATION (2026-06-17), on real gate-3 CLS records:** A3 makes candidates
+  available (5–10 per probe vs 0 before) — but **CLS still consolidates 0× at
+  every probe on both django and pytest.** The binding constraint is the
+  *clustering* (#23: DBSCAN needs ≥3 memories at ≥0.70 cosine), not the age.
+  Diverse same-repo coding memories (each a different issue) do not form
+  ≥3-clusters at 0.70. **Conclusion:** CLS is structurally inert on SWE-Bench-CL
+  for a reason A3 cannot fix. **We will NOT lower `SIMILARITY_THRESHOLD`** to
+  force it — that is frozen #23, would merge dissimilar memories into garbage
+  summaries, and would be result-chasing. **H3 (compressive forgetting) is
+  therefore reported as a negative / not-applicable result on this benchmark:
+  CLS degenerates to its Type-Aware-Decay fallback.** CLS stays in the matrix
+  (preserve the locked 6 conditions, Invariant #2) and is expected to ≡
+  Type-Aware empirically; the negative H3 is itself a finding.
+- **Touches:** v5 Invariants #23 (CLS params) and #30/H3. Disclose.
 
 ## A4 — H1b construct: token-savings → storage footprint / retrieval latency
 - **Date:** 2026-06-17
