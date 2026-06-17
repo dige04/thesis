@@ -16,8 +16,24 @@ from src.config import llm_factory
 
 
 @pytest.fixture(autouse=True)
-def _clean_clients():
-    """Ensure no cached client leaks across tests (monkeypatch handles env)."""
+def _clean_clients(monkeypatch):
+    """Isolate from cached clients AND the real .env FREE_LLM_* layer.
+
+    ``load_dotenv()`` loads ``.env`` at import time, so a developer/CI ``.env``
+    that sets the FREE_LLM_* free-provider override would otherwise sit ABOVE the
+    LLM_* layer these tests monkeypatch — making them assert against, e.g.,
+    minimax-m3 instead of the LLM_/default values under test. The FREE_ layer has
+    its own dedicated tests in test_llm_factory_free.py; here we neutralize it so
+    these precedence/default tests are hermetic regardless of .env contents.
+    """
+    for _k in (
+        "FREE_LLM_CHAT_BASE_URL",
+        "FREE_LLM_CHAT_API_KEY",
+        "FREE_LLM_MAIN_MODEL",
+        "FREE_LLM_SUMMARY_MODEL",
+        "FREE_LLM_CLASSIFIER_MODEL",
+    ):
+        monkeypatch.delenv(_k, raising=False)
     llm_factory.reset_clients()
     yield
     llm_factory.reset_clients()
