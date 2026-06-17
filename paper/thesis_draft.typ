@@ -94,7 +94,7 @@ on sequential software-engineering tasks while materially reducing cost, and
 
 We evaluate six memory policies — No Memory, Full Memory, Random Prune, Recency
 Prune, Type-Aware Decay, and Cognitively-inspired (CLS) Consolidation — on all
-eight official SWE-Bench-CL sequences across three seeds (144 controlled runs),
+eight official SWE-Bench-CL sequences (48 controlled runs at a single seed; pre-registered at 144 across three seeds, amended under a submission deadline, @sec:deviations),
 holding the retrieval mechanism *identical* across every condition so that the
 experimental contrast is cleanly attributable to the *storage* policy rather
 than the retrieval policy. Performance is measured with the continual-learning
@@ -110,7 +110,7 @@ $plus.minus 0.03$ CL-F1.
   Empirical results are not yet available. This draft presents the complete
   experimental design, hypotheses, metrics, and analysis plan. The Results,
   Discussion, and Conclusion are scaffolded against the pre-registered
-  interpretation rules and will be populated once the 144 runs execute.
+  interpretation rules and will be populated once the 48 runs execute.
 ]
 
 *Keywords:* AI coding agents, agentic memory, catastrophic forgetting,
@@ -129,7 +129,7 @@ hợp nhất kinh nghiệm đã lưu một cách có chọn lọc — có thể 
 vượt trội so với việc tích lũy toàn bộ bộ nhớ trên chuỗi tác vụ kỹ thuật phần
 mềm, đồng thời giảm đáng kể chi phí, và *cấu trúc quên* nào là quan trọng nhất.
 Chúng tôi đánh giá sáu chính sách bộ nhớ trên toàn bộ tám chuỗi SWE-Bench-CL với
-ba seed (144 lần chạy có kiểm soát), giữ cơ chế truy hồi *giống hệt nhau* giữa
+một seed (48 lần chạy có kiểm soát; tiền-đăng-ký 144 lần/ba seed, điều chỉnh còn một seed do hạn nộp — @sec:deviations), giữ cơ chế truy hồi *giống hệt nhau* giữa
 các điều kiện. #todo("dịch hoàn chỉnh phần phương pháp & kết quả sau khi có dữ liệu").
 
 // =============================================================================
@@ -210,7 +210,7 @@ The contribution claim is *methodological*, not policy-set novelty (the six
 policies overlap in name with prior work; see @sec:related). Concretely, this
 thesis delivers:
 
-+ The first *Pareto map* of forgetting policies for coding agents on a standard continual-learning benchmark (SWE-Bench-CL), bracketed by both No-Memory and Full-Memory boundary baselines.
++ A *pre-registered, controlled Pareto characterization* of forgetting policies for coding agents on a standard continual-learning benchmark (SWE-Bench-CL), bracketed by both No-Memory and Full-Memory boundary baselines — claiming *controlled measurement*, not first-of-kind novelty (recent work already studies agent memory addition/deletion; see @sec:related).
 + A clean *retrieval-as-control* design: retrieval scoring is held identical (pure cosine) across all six conditions (#frozen[invariant \#5]), isolating the *storage* policy from the *retrieval* policy — a confound that prior work conflates.
 + A *pre-committed, effect-size-gated* interpretation protocol: seven triggered framings fixed before data collection (§19), so conclusions cannot be retrofitted to whichever policy happens to win.
 + A reusable, fully-logged experimental harness for memory-policy research, with per-task, per-memory-event, and trajectory logging sufficient for post-hoc helpful/harmful memory analysis.
@@ -254,7 +254,34 @@ longer context degrades performance, and Liu et al. @liu2024 establish the
 retrieved passages act as noise. On the cost side, industry analyses of
 production memory systems @fastpaca2025 document runaway cost growth in
 accumulate-everything designs, and MemBench @membench2025 benchmarks the
-cost dimension explicitly.
+cost dimension explicitly; Evo-Memory @wei2025evomemory benchmarks self-evolving
+agent memory at test time.
+
+== Three layers of memory management <sec:layers>
+
+Work that "manages agent memory" operates at three distinct layers, and
+conflating them obscures what is actually being studied:
+
++ *Persistent application-level memory* — durable records of past tasks, stored
+  outside the model and retrieved into the prompt: MemGPT @packer2024, A-MEM
+  @xu2025, MemoryBank @zhong2024, HippoRAG @gutierrez2024hipporag, the skill
+  library of Voyager @wang2023voyager, and Generative Agents @park2023. *This is
+  the layer this thesis studies*: the six policies are storage decisions over
+  these records, with retrieval held constant (#frozen[invariant \#5]).
++ *Prompt / context compaction* — summarizing or truncating the in-context
+  conversation to fit the window, as in production context-compaction
+  @anthropic2026compaction. This reshapes the *current* context, not a
+  persistent store.
++ *KV-cache eviction* — dropping key/value entries during decoding to bound
+  inference-time memory: H2O @zhang2023h2o and StreamingLLM @xiao2024streamingllm.
+  This operates on attention state at the token level, below the application
+  layer.
+
+Our contribution is confined to layer 1: we never modify the context-window
+manager or the attention cache, so "forgetting" here always means evicting or
+consolidating *stored application-level records* — never compacting the prompt
+or the KV-cache. Keeping the layers separate is what makes the
+retrieval-as-control design coherent.
 
 == Continual learning and forgetting as adaptation
 
@@ -344,7 +371,7 @@ embedding payload. The content taxonomy is a locked five-type, *content-based*
   caption: [The locked 5-type content taxonomy (v5 §5.1). Type is orthogonal to outcome.],
 ) <tbl:taxonomy>
 
-A type *classifier* (a separate temperature-0 structured-output LLM call) assigns
+A type *classifier* (a separate structured-output LLM call (temperature per amendment A2)) assigns
 the type; the "outcome" axis (resolved/failed) is kept strictly orthogonal and
 is never collapsed into the type.
 
@@ -449,7 +476,7 @@ operate on uniform records.
 == Benchmark and sequences
 
 The primary (and only main-experiment) benchmark is *SWE-Bench-CL* @joshi2025:
-eight MIT-licensed repository sequences of 15–80+ chronologically-ordered tasks
+eight MIT-licensed repository sequences of 19–50 chronologically-ordered tasks
 each, evaluated by the standard SWE-Bench `eval_v3` Docker harness. All eight
 official sequences are used with *no re-ordering, no subsetting, and no
 self-generated sequences* (#frozen[invariant \#1]), except where compute
@@ -457,11 +484,16 @@ constraints force a documented exclusion (see @sec:deviations).
 
 == Experiment matrix
 
-The main experiment is locked at *6 policies × 8 sequences × 3 seeds = 144
-controlled runs* (#frozen[invariants \#1, \#2]). Three seeds apply to *all six*
-conditions, not only the stochastic ones, so that within-condition variance is
-estimable everywhere. A 12-run cross-model exploratory probe is planned
-separately (Week 7) and is not part of the primary analysis.
+The experiment was *pre-registered* at *6 policies × 8 sequences × 3 seeds = 144
+controlled runs* (#frozen[invariants \#1, \#2]). Under a hard submission
+deadline the *executed* design is *6 policies × 8 sequences × 1 seed = 48 runs*
+— a documented, deadline-constrained amendment (*A6*, @sec:deviations). The
+single seed is held identical across all conditions, so between-policy
+comparisons remain valid and the $N=8$ sequence-level primary test
+(#frozen[invariants \#1, \#11]) is preserved; the cost is the within-condition
+seed-variance estimate, and the seed dimension is reported as exploratory rather
+than as a three-fold replication. The originally-planned 12-run cross-model probe
+is deferred to future work.
 
 == Metrics
 
@@ -499,7 +531,7 @@ The philosophy is *estimation over testing* @cumming2014 @wasserstein2019: with
 $N=8$ independent sequences, NHST has very limited power, so effect sizes and
 confidence intervals are the primary evidence and p-values supplement.
 
-- *Unit:* sequence-level means (averaged across 3 seeds), $N=8$ paired observations per condition pair.
+- *Unit:* sequence-level values (a single seed, amendment A6; the pre-registered design averaged 3 seeds), $N=8$ paired observations per condition pair.
 - *Effect size (primary):* rank-biserial $r_("rb")$ (#frozen[invariant \#12] — not Cohen's $d$, not Cliff's $delta$) and median paired difference with a 95% BCa bootstrap CI (#frozen[5000 iterations], invariant \#15).
 - *Planned contrasts (5, pre-registered):* each pruning policy and No Memory vs. Full Memory, by paired Wilcoxon signed-rank (#frozen[invariant \#11]) under Holm correction. The remaining 10 pairwise comparisons are exploratory with uncorrected p-values.
 - *Non-inferiority (H1a):* TOST against $"SESOI" = plus.minus 0.03$ CL-F1.
@@ -521,28 +553,54 @@ costs multiples more, it fails the Pareto test (H3).
 
 == Deviations from pre-registration <sec:deviations>
 
-The experiment executes on *Ollama Cloud* rather than the originally
-pre-registered GPT-5.4, an explicitly user-authorized, *declared* deviation
-(resource/access constraint) — not a silent design change. Five deviations are
-disclosed (@tbl:deviations). Each holds a factor *constant across all six
-conditions and three seeds*, so it is a fixed factor: between-policy comparisons
-(H1–H5) remain valid, but absolute resolution rates are *not* comparable to
-GPT-5.4 or public SWE-Bench leaderboards.
+The *executed* study differs from the frozen pre-registration
+(`THESIS_FINAL_v5.md`) along two axes: *runtime deviations* (D1–D5), forced by
+the compute and provider environment, and *pre-registration amendments* (A1–A6),
+design changes adopted during execution. Every change is *declared* — none is a
+silent redesign — and the complete dated record with rationale is maintained in
+`AMENDMENTS.md`. Each holds its factor *constant across all conditions*, so it is
+a fixed factor: between-policy comparisons (H1–H5) remain valid, while absolute
+resolution rates are *not* comparable to GPT-5.4 or public SWE-Bench
+leaderboards.
 
 #figure(
   table(
     columns: (auto, 1fr, 1fr),
     align: (left, left, left),
     stroke: 0.4pt, inset: 5pt,
-    table.header([*\#*], [*Change*], [*Why it stays valid*]),
-    [D1], [Model → `qwen3-coder:480b` (agent), `gpt-oss:20b` (summary/classifier)], [held constant across conditions; absolute rates not leaderboard-comparable],
-    [D2], [Embedder → local `nomic-embed-text-v2-moe` (768-d)], [bounds the payload, not embedder identity; same embedder across all conditions],
-    [D3], [Cost metric → token-count proxy (not USD)], [Ollama is flat-rate; tokens are a provider-independent compute proxy],
-    [D4], [Classifier structured output → JSON-mode + Pydantic validation], [same 5-type, temp-0 task; classifier failure rate logged + handled identically],
-    [D5], [Host → arm64 macOS, Docker `linux/arm64`; arm64-unbuildable tasks excluded by a deterministic build-probe], [exclusion applied identically across conditions; per-sequence counts disclosed; escalate to x86_64 if >15% of any sequence unbuildable],
+    table.header([*\#*], [*Runtime deviation*], [*Why it stays valid*]),
+    [D1], [Model → *Kimi "for coding"* (`kimi-k2.6`), all roles (was GPT-5.4)], [held constant across conditions; absolute rates not leaderboard-comparable],
+    [D2], [Embedder → local `nomic-embed-text-v2-moe` (768-d)], [bounds the under-7500-token payload, not embedder identity; same embedder across all conditions],
+    [D3], [Cost metric → token-count proxy (not USD)], [flat-rate subscription; tokens are a provider-independent compute proxy],
+    [D4], [Classifier structured output → JSON-mode + Pydantic validation], [same 5-type taxonomy (#frozen[invariant \#7]); failure rate logged + handled identically (temperature: see A2)],
+    [D5], [Host → *x86_64 DigitalOcean droplet* with prebuilt SWE-Bench images (was arm64 macOS)], [native x86_64; no architecture-based task exclusions required],
   ),
-  caption: [The five declared runtime deviations from the pre-registered design.],
+  caption: [Runtime deviations (D1–D5) forced by the execution environment.],
 ) <tbl:deviations>
+
+#figure(
+  table(
+    columns: (auto, 1fr, 1fr),
+    align: (left, left, left),
+    stroke: 0.4pt, inset: 5pt,
+    table.header([*\#*], [*Pre-registration amendment*], [*Rationale*]),
+    [A1], [Memory budget: cap 100 → *10* records], [at one record per task on 19–50-task sequences a cap of 100 never binds, so the four pruning policies never evict; 10 is below the shortest sequence, making the budget bind on all eight (and H2 testable)],
+    [A2], [Temperature 0 → *1* (agent, reflection, classifier, summary)], [the Kimi reasoning endpoint rejects temperature 0; held constant across conditions; classification is now non-deterministic, so its failure rate is reported],
+    [A3], [CLS consolidation candidate age 10 → *5* tasks (half the cap)], [derived from A1: at cap 10 no active record ever reaches age 10, so CLS could otherwise never consolidate],
+    [A4], [H1b efficiency construct: "at least 20% fewer tokens" → *storage footprint + retrieval latency*], [under fixed top-$k$ retrieval, storage pruning cannot reduce the prompt budget; footprint/latency is the mechanism-aligned axis],
+    [A5], [Anchor-probe scope (under review)], [pilot stability saturated and full-matrix anchor-probe is several days of compute; may be reduced (#frozen[invariant \#29])],
+    [A6], [Replication: 3 seeds → *1 seed* (48 runs)], [hard submission deadline; preserves the $N=8$ primary test (#frozen[invariants \#1, \#11]) and CL-F1 (#frozen[invariant \#9]); seed dimension reported as exploratory],
+  ),
+  caption: [Pre-registration amendments (A1–A6); full dated record in `AMENDMENTS.md`.],
+) <tbl:amendments>
+
+The empirical consequence of A3 is itself a finding (reported in @sec:results):
+even with the amended age threshold, abstractive consolidation rarely triggers,
+because the clustering criterion (#frozen[invariant \#23]: at least three
+memories at 0.70 cosine similarity or above) is seldom met among the
+semantically diverse same-repository tasks. CLS therefore behaves largely as its
+Type-Aware-Decay fallback, and H3 is reported as a negative result on this
+benchmark.
 
 // =============================================================================
 = Results <sec:results>
@@ -554,7 +612,7 @@ GPT-5.4 or public SWE-Bench leaderboards.
   executed a single valid run; all files currently in `results/raw/` are stub
   fixtures (identical hardcoded values, `run_id = "test_run_id"`). This section
   is scaffolded with the exact tables and figures the analysis plan will
-  populate. *Do not cite any number below until the 144 runs complete.*
+  populate. *Do not cite any number below until the 48 runs complete.*
 ]
 
 == Headline result table (scaffold)
@@ -572,7 +630,7 @@ GPT-5.4 or public SWE-Bench leaderboards.
     [Type-Aware Decay], [—], [—], [—], [—],
     [CLS Consolidation], [—], [—], [—], [—],
   ),
-  caption: [#todo("Mean ± SEM across 8 sequences × 3 seeds, once runs complete.")],
+  caption: [#todo("Mean ± SEM across 8 sequences (one seed, amendment A6), once runs complete.")],
 )
 
 == Planned contrasts (scaffold)
@@ -638,14 +696,14 @@ The pre-committed framings, keyed to outcomes, are:
 
 The design anticipates twelve threats (v5 §20); the load-bearing ones:
 
-/ Model stochasticity: temperature-0 is approximately but not perfectly deterministic; mitigated by 3-seed pooling and by treating re-evaluation variance as within-sequence noise.
+/ Model stochasticity: under amendment A2 the model runs at temperature 1 (non-deterministic), and under amendment A6 at a single seed, so 3-seed pooling no longer applies; re-evaluation variance is treated as within-sequence noise and the seed dimension is reported as exploratory — a threat strengthened by the deadline-constrained design.
 / Retrieval confound: addressed by construction — identical pure-cosine retrieval across conditions (#frozen[invariant \#5]) — and *detected* by a retrieval-overlap (Jaccard) probe; if storage policies produce indistinguishable retrieved sets, all storage claims are qualified.
 / Full-Memory definition: "store all, retrieve top-$k$" rather than "append all," to avoid confounding memory policy with context length.
 / Embedding truncation: the \<7500-token payload cap (#frozen[invariant \#4]) prevents silent truncation; raw trajectories are never embedded.
 / Classifier accuracy: the type classifier is audited and its failure rate logged and handled identically across conditions; a classifier-as-policy confound is explicitly tracked.
 / Type-Aware parameter calibration: per-type decay $d$ is *theoretical and frozen*, never tuned from pilot data, to preserve pre-registration.
 / Stability estimation: anchor-probe stability lower-bounds the full matrix; a 4-cell full-matrix sensitivity check qualifies stability claims if estimates diverge by >0.05.
-/ Single benchmark + single base model: external validity is bounded; the cross-model probe and any cross-repo ablation are exploratory only.
+/ Single benchmark + single base model: external validity is bounded; the originally-planned cross-model probe is deferred to future work, and any cross-repo ablation would be exploratory only.
 / Causal interpretation: memory-item helpful/harmful labels are *associated, not causal* (#frozen[invariant \#10]); the helpful/harmful model is predictive, not explanatory.
 / Deviations D1–D5: absolute resolution rates are not comparable to GPT-5.4 / leaderboards; only *between-policy* contrasts are claimed (@sec:deviations).
 

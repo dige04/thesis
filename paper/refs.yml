@@ -18,7 +18,7 @@ richards2017:
 
 mcclelland1995:
   type: article
-  title: "Why there are complementary learning systems in the hippocampus and neocortex"
+  title: "Why there are complementary learning systems in the hippocampus and neocortex: Insights from the successes and failures of connectionist models of learning and memory"
   author: ["McClelland, James L.", "McNaughton, Bruce L.", "O'Reilly, Randall C."]
   date: 1995
   parent:
@@ -27,8 +27,8 @@ mcclelland1995:
 
 xiong2025:
   type: article
-  title: "Add-all memory can be worse than no memory for LLM agents"
-  author: ["Xiong, et al."]
+  title: "How Memory Management Impacts LLM Agents: An Empirical Study of Experience-Following Behavior"
+  author: ["Xiong, Zidi", "Lin, Yuping", "Xie, Wenya", "He, Pengfei", "Liu, Zirui", "Tang, Jiliang", "Lakkaraju, Himabindu", "Xiang, Zhen"]
   date: 2025
   serial-number:
     arxiv: "2505.16067"
@@ -36,7 +36,7 @@ xiong2025:
 liu2024:
   type: article
   title: "Lost in the Middle: How Language Models Use Long Contexts"
-  author: ["Liu, Nelson F.", "et al."]
+  author: ["Liu, Nelson F.", "Lin, Kevin", "Hewitt, John", "Paranjape, Ashwin", "Bevilacqua, Michele", "Petroni, Fabio", "Liang, Percy"]
   date: 2024
   parent:
     type: periodical
@@ -44,8 +44,8 @@ liu2024:
 
 du2025:
   type: article
-  title: "Context length hurts: performance degradation with longer context"
-  author: ["Du, et al."]
+  title: "Context Length Alone Hurts LLM Performance Despite Perfect Retrieval"
+  author: ["Du, Yufeng", "Tian, Minyang", "Ronanki, Srikanth", "Rongali, Subendhu", "Bodapati, Sravan", "Galstyan, Aram", "Wells, Azton", "Schwartz, Roy", "Huerta, Eliu A.", "Peng, Hao"]
   date: 2025
   serial-number:
     arxiv: "2510.05381"
@@ -60,22 +60,23 @@ cuconasu2024:
 
 fastpaca2025:
   type: web
-  title: "Memory cost explosion in production agent systems"
-  author: ["Fastpaca"]
+  title: "Universal LLM Memory Does Not Exist"
+  author: ["Lund, Sebastian"]
   date: 2025
+  url: "https://fastpaca.com/blog/memory-isnt-one-thing"
 
 membench2025:
   type: article
-  title: "MemBench: Benchmarking the cost of agent memory"
-  author: ["MemBench"]
+  title: "MemBench: Towards More Comprehensive Evaluation on the Memory of LLM-based Agents"
+  author: ["Tan, Haoran", "Zhang, Zeyu", "Ma, Chen", "Chen, Xu", "Dai, Quanyu", "Dong, Zhenhua"]
   date: 2025
   serial-number:
     arxiv: "2506.21605"
 
 joshi2025:
   type: article
-  title: "SWE-Bench-CL: Continual Learning for Software Engineering Agents"
-  author: ["Joshi, Thomas", "et al."]
+  title: "SWE-Bench-CL: Continual Learning for Coding Agents"
+  author: ["Joshi, Thomas", "Chowdhury, Shayan", "Uysal, Fatih"]
   date: 2025
   serial-number:
     arxiv: "2507.00014"
@@ -83,11 +84,10 @@ joshi2025:
 packer2024:
   type: article
   title: "MemGPT: Towards LLMs as Operating Systems"
-  author: ["Packer, Charles", "et al."]
-  date: 2024
-  parent:
-    type: proceedings
-    title: "International Conference on Learning Representations (ICLR)"
+  author: ["Packer, Charles", "Wooders, Sarah", "Lin, Kevin", "Fang, Vivian", "Patil, Shishir G.", "Stoica, Ion", "Gonzalez, Joseph E."]
+  date: 2023
+  serial-number:
+    arxiv: "2310.08560"
 
 park2023:
   type: article
@@ -110,7 +110,7 @@ zhong2024:
 xu2025:
   type: article
   title: "A-MEM: Agentic Memory for LLM Agents"
-  author: ["Xu, Wujiang", "Liang, Zujie", "Yan, Kai", "Li, Ming", "Liu, Wenfang", "Yan, Hongcheng", "Jin, Wei", "Wen, Hongzhi"]
+  author: ["Xu, Wujiang", "Liang, Zujie", "Mei, Kai", "Gao, Hang", "Tan, Juntao", "Zhang, Yongfeng"]
   date: 2025
   serial-number:
     arxiv: "2502.12110"
@@ -149,3 +149,59 @@ wasserstein2019:
   parent:
     type: periodical
     title: "The American Statistician"
+
+zhang2023h2o:
+  type: article
+  title: "H2O: Heavy-Hitter Oracle for Efficient Generative Inference of Large Language Models"
+  author: ["Zhang, Zhenyu", "Sheng, Ying", "Zhou, Tianyi", "Chen, Tianlong", "Zheng, Lianmin", "Cai, Ruisi", "Song, Zhao", "Tian, Yuandong", "Ré, Christopher", "Barrett, Clark", "Wang, Zhangyang", "Chen, Beidi"]
+  date: 2023
+  serial-number:
+    arxiv: "2306.14048"
+  parent:
+    type: proceedings
+    title: "Advances in Neural Information Processing Systems (NeurIPS)"
+
+xiao2024streamingllm:
+  type: article
+  title: "Efficient Streaming Language Models with Attention Sinks"
+  author: ["Xiao, Guangxuan", "Tian, Yuandong", "Chen, Beidi", "Han, Song", "Lewis, Mike"]
+  date: 2024
+  serial-number:
+    arxiv: "2309.17453"
+  parent:
+    type: proceedings
+    title: "International Conference on Learning Representations (ICLR)"
+
+wang2023voyager:
+  type: article
+  title: "Voyager: An Open-Ended Embodied Agent with Large Language Models"
+  author: ["Wang, Guanzhi", "Xie, Yuqi", "Jiang, Yunfan", "Mandlekar, Ajay", "Xiao, Chaowei", "Zhu, Yuke", "Fan, Linxi", "Anandkumar, Anima"]
+  date: 2023
+  serial-number:
+    arxiv: "2305.16291"
+
+gutierrez2024hipporag:
+  type: article
+  title: "HippoRAG: Neurobiologically Inspired Long-Term Memory for Large Language Models"
+  author: ["Jiménez Gutiérrez, Bernal", "Shu, Yiheng", "Gu, Yu", "Yasunaga, Michihiro", "Su, Yu"]
+  date: 2024
+  serial-number:
+    arxiv: "2405.14831"
+  parent:
+    type: proceedings
+    title: "Advances in Neural Information Processing Systems (NeurIPS)"
+
+wei2025evomemory:
+  type: article
+  title: "Evo-Memory: Benchmarking LLM Agent Test-time Learning with Self-Evolving Memory"
+  author: ["Wei, Tianxin", "Sachdeva, Noveen", "Coleman, Benjamin", "He, Zhankui", "Bei, Yuanchen", "Ning, Xuying", "Ai, Mengting", "Li, Yunzhe", "He, Jingrui", "Chi, Ed H.", "Wang, Chi", "Chen, Shuo", "Pereira, Fernando", "Kang, Wang-Cheng", "Cheng, Derek Zhiyuan"]
+  date: 2025
+  serial-number:
+    arxiv: "2511.20857"
+
+anthropic2026compaction:
+  type: web
+  title: "Compaction"
+  author: ["Anthropic"]
+  date: 2026
+  url: "https://platform.claude.com/docs/en/build-with-claude/compaction"
