@@ -28,6 +28,8 @@ def _write_runs(runs_dir, repos, policies, seed=1):
                         "sequence_index": i,
                         "resolved": 1 if i < base_hits else 0,
                         "total_tokens": 1000 + 100 * i + {"full_memory": 500, "no_memory": 0, "random_prune": 200}[policy],
+                        # footprint: Full grows unboundedly; pruned stays flat; no-memory = 0
+                        "memory_tokens_after": {"full_memory": 300 * (i + 1), "no_memory": 0, "random_prune": 800}[policy],
                         "estimated_cost_usd": 0.0,
                         "tool_calls": 5, "wall_time_seconds": 10.0,
                     }) + "\n")
@@ -51,6 +53,11 @@ def test_pipeline_produces_results(tmp_path):
     assert agg_path.exists()
     agg = json.loads(agg_path.read_text())
     assert "full_memory" in agg and len(agg["full_memory"]) == 3
+
+    # footprint axis (A4/H1b): Full's memory footprint exceeds No-Memory's (= 0)
+    fm = agg["full_memory"]["repo_a"]
+    assert "mean_footprint_tokens" in fm
+    assert fm["mean_footprint_tokens"] > agg["no_memory"]["repo_a"]["mean_footprint_tokens"]
 
     # stats tables
     stats_csv = out / "tables" / "stats.csv"

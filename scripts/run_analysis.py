@@ -85,19 +85,23 @@ def stage_stats(agg: dict[str, Any], out: Path, n_boot: int, seed: int) -> dict 
 def stage_plots(agg: dict[str, Any], out: Path) -> None:
     pdir = out / "plots"
     pdir.mkdir(parents=True, exist_ok=True)
-    try:
-        plot_pareto_frontier(
-            agg,
-            pdir / "pareto_compute.png",
-            metric_x="mean_total_tokens",
-            metric_y="mean_cl_f1",
-            title="CL-F1 vs compute (total tokens)",
-        )
-        print(f"[plots] compute-axis Pareto -> {pdir / 'pareto_compute.png'}")
-    except Exception as e:  # noqa: BLE001 — never crash the pipeline on a plot
-        print(f"[plots] Pareto skipped: {type(e).__name__}: {e}")
-    # NOTE: the footprint-axis Pareto (the H1b/A4 contribution) needs a
-    # memory-footprint metric added to the aggregates — follow-up before results.
+    # The two-axis Pareto IS the headline contribution: forgetting wins on the
+    # footprint axis even where it ties on compute (A4/H1b).
+    for axis, metric_x, fname in [
+        ("compute (total tokens)", "mean_total_tokens", "pareto_compute.png"),
+        ("memory footprint (tokens)", "mean_footprint_tokens", "pareto_footprint.png"),
+    ]:
+        try:
+            plot_pareto_frontier(
+                agg,
+                pdir / fname,
+                metric_x=metric_x,
+                metric_y="mean_cl_f1",
+                title=f"CL-F1 vs {axis}",
+            )
+            print(f"[plots] Pareto ({axis}) -> {pdir / fname}")
+        except Exception as e:  # noqa: BLE001 — never crash the pipeline on a plot
+            print(f"[plots] Pareto ({axis}) skipped: {type(e).__name__}: {e}")
 
 
 def _resolved_by_index(runs_dir: Path) -> dict[tuple[str, str], dict[int, int]]:

@@ -196,6 +196,13 @@ def aggregate_sequence_results(
 
                 mean_tool_calls = total_tool_calls / n_tasks if n_tasks > 0 else 0.0
                 mean_wall_time = total_wall_time / n_tasks if n_tasks > 0 else 0.0
+                # Memory footprint (A4/H1b axis): mean active store size in tokens
+                # over the sequence. Forgetting policies keep this small; Full grows.
+                mean_footprint_tokens = (
+                    sum(t.get("memory_tokens_after", 0) for t in seed_tasks) / n_tasks
+                    if n_tasks > 0
+                    else 0.0
+                )
 
                 # CL-F1: use the real §14.2 anchor-probe estimator when its
                 # re-evaluation data is available for this (policy, sequence,
@@ -218,6 +225,7 @@ def aggregate_sequence_results(
                     "resolved_rate": resolved_rate,
                     "total_cost": total_cost,
                     "total_tokens": total_tokens,
+                    "footprint_tokens": mean_footprint_tokens,
                     "mean_tool_calls": mean_tool_calls,
                     "mean_wall_time": mean_wall_time,
                     "n_tasks": n_tasks,
@@ -252,6 +260,7 @@ def aggregate_sequence_results(
             resolved_rate_values = [s["resolved_rate"] for s in seed_values]
             total_cost_values = [s["total_cost"] for s in seed_values]
             total_tokens_values = [s["total_tokens"] for s in seed_values]
+            footprint_values = [s["footprint_tokens"] for s in seed_values]
             mean_tool_calls_values = [s["mean_tool_calls"] for s in seed_values]
             mean_wall_time_values = [s["mean_wall_time"] for s in seed_values]
             n_tasks = seed_values[0]["n_tasks"]  # Same for all seeds
@@ -272,6 +281,10 @@ def aggregate_sequence_results(
                 else 0.0,
                 "mean_total_tokens": float(np.mean(total_tokens_values)),
                 "std_total_tokens": float(np.std(total_tokens_values, ddof=1))
+                if n_seeds > 1
+                else 0.0,
+                "mean_footprint_tokens": float(np.mean(footprint_values)),
+                "std_footprint_tokens": float(np.std(footprint_values, ddof=1))
                 if n_seeds > 1
                 else 0.0,
                 "mean_tool_calls": float(np.mean(mean_tool_calls_values)),
