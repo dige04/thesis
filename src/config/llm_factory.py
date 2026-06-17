@@ -81,28 +81,46 @@ def _env(key: str, override: str | None = None) -> str:
     return _DEFAULTS[key]
 
 
+def _chat_env(key: str, override: str | None = None) -> str:
+    """Chat-role settings with a FREE-provider override.
+
+    If ``FREE_<key>`` is set (e.g. ``FREE_LLM_CHAT_BASE_URL``), it wins over the
+    normal ``<key>``. This lets an entire alternate chat provider (e.g. a
+    free-unlimited MiniMax M3 endpoint) be switched on by dropping the
+    ``FREE_LLM_*`` vars into ``.env``, and switched off by removing them — without
+    disturbing the Kimi config or the embeddings (which stay on local Ollama).
+    Explicit call-site override still wins over everything.
+    """
+    if override is not None and override != "":
+        return override
+    free = os.environ.get(f"FREE_{key}")
+    if free is not None and free != "":
+        return free
+    return _env(key)
+
+
 # --- Chat (generative) settings ------------------------------------------------
 
 def chat_base_url(override: str | None = None) -> str:
-    return _env("LLM_CHAT_BASE_URL", override)
+    return _chat_env("LLM_CHAT_BASE_URL", override)
 
 
 def chat_api_key(override: str | None = None) -> str:
     # Fall back to the literal "ollama" so a local daemon (which requires a
     # non-empty token but ignores its value) works without configuration.
-    return _env("LLM_CHAT_API_KEY", override) or "ollama"
+    return _chat_env("LLM_CHAT_API_KEY", override) or "ollama"
 
 
 def main_model(override: str | None = None) -> str:
-    return _env("LLM_MAIN_MODEL", override)
+    return _chat_env("LLM_MAIN_MODEL", override)
 
 
 def summary_model(override: str | None = None) -> str:
-    return _env("LLM_SUMMARY_MODEL", override)
+    return _chat_env("LLM_SUMMARY_MODEL", override)
 
 
 def classifier_model(override: str | None = None) -> str:
-    return _env("LLM_CLASSIFIER_MODEL", override)
+    return _chat_env("LLM_CLASSIFIER_MODEL", override)
 
 
 # --- Embedding settings --------------------------------------------------------
