@@ -33,11 +33,11 @@ from typing import Any
 from langgraph.graph import END, StateGraph
 
 from src.config.llm_factory import get_chat_client, main_model
+from src.errors import UsageLimitError, is_usage_limit_error
+from src.model_output import strip_reasoning
 
 from .limit_tracker import LimitTracker, validate_temperature
 from .prompts import build_prompt_context
-from src.errors import UsageLimitError, is_usage_limit_error
-
 from .tools import AgentTools, ContainerSession
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,10 @@ _TOOL_SCHEMAS: list[dict[str, Any]] = [
     _tool("read_file", "Read a file's contents.", {"path": {"type": "string"}}, ["path"]),
     _tool("write_file", "Write (overwrite/create) a file.",
           {"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]),
-    _tool("edit_file", "Apply a simplified unified diff (+/-/space lines) to a file.",
+    _tool("edit_file", "Apply a standard unified diff to a file via `git apply` "
+          "(include the `@@ -a,b +c,d @@` hunk header and exact surrounding context "
+          "lines). If it reports the diff could not be applied, fix the diff or use "
+          "write_file with the full new file contents.",
           {"path": {"type": "string"}, "diff": {"type": "string"}}, ["path", "diff"]),
     _tool("search_code", "Regex-search the repository.",
           {"query": {"type": "string"}, "file_pattern": {"type": "string"}}, ["query"]),
@@ -197,6 +200,10 @@ class CodingAgent:
         self.max_test_runs = config.get("agent", {}).get("max_test_runs_per_task", 5)
         self.max_wall_time_seconds = config.get("agent", {}).get("max_wall_time_seconds", 1200)
         self.temperature = config.get("agent", {}).get("temperature", 0)
+        # Optional reasoning level for the AGENT only (e.g. "high" on a thinking
+        # model like deepseek-v4-flash). Passed to the chat call when set; omitted
+        # otherwise (back-compat). Held constant across conditions (fixed factor).
+        self.reasoning_effort = config.get("agent", {}).get("reasoning_effort")
         self.top_k = config.get("memory", {}).get("top_k", 5)
         self.max_context_tokens = config.get("memory", {}).get("max_context_tokens", 2000)
 
@@ -692,8 +699,17 @@ class CodingAgent:
             sequence_index=task.get("sequence_index", 0),
         )
 
-    def solve_task(self, task: dict[str, Any]) -> dict[str, Any]:
+    def solve_task(
+        self,
+        task: dict[str, Any],
+        retrieved_memories: list[tuple[float, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Solve a single SWE-Bench-CL task via the v5 §4.4 ReAct tool-use loop.
+
+        ``retrieved_memories`` (C4): the SequenceRunner performs the single
+        authoritative retrieval and passes its scored ``(score, record)`` list in,
+        so the memories shown to the model are exactly the ones logged. When None
+        (standalone/test calls), the agent retrieves once itself.
 
         Pipeline: retrieve memories (pure cosine, best LAST) -> build prompt ->
         iterate tool calls under hard limits -> generate the patch via `git diff`.
@@ -723,17 +739,23 @@ class CodingAgent:
 
         task_obj = self._build_task_obj(task)
 
-        # Node 2: retrieve (pure cosine, identical across conditions).
-        try:
-            retrieved = self.policy.retrieve(
-                task=task_obj,
-                memory_store=self.memory_store,
-                top_k=self.top_k,
-                token_budget=self.max_context_tokens,
-            )
-        except Exception as e:  # retrieval must never crash the task
-            logger.warning(f"Retrieval failed for {state.task_id}: {e}")
-            retrieved = []
+        # Node 2: retrieve (pure cosine, identical across conditions). C4: prefer
+        # the runner's single authoritative retrieval (passed in) so the context
+        # shown to the model is exactly what gets logged and no second embedding
+        # query is issued. Only retrieve here when called standalone.
+        if retrieved_memories is None:
+            try:
+                retrieved = self.policy.retrieve(
+                    task=task_obj,
+                    memory_store=self.memory_store,
+                    top_k=self.top_k,
+                    token_budget=self.max_context_tokens,
+                )
+            except Exception as e:  # retrieval must never crash the task
+                logger.warning(f"Retrieval failed for {state.task_id}: {e}")
+                retrieved = []
+        else:
+            retrieved = list(retrieved_memories)
         state.retrieved_memories = retrieved
         state.retrieved_memory_ids = [record.memory_id for _, record in retrieved]
 
@@ -833,12 +855,15 @@ class CodingAgent:
                 break
 
             try:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    tools=_TOOL_SCHEMAS,
-                    temperature=self.temperature,  # FROZEN: 0
-                )
+                create_kwargs: dict[str, Any] = {
+                    "model": model,
+                    "messages": messages,
+                    "tools": _TOOL_SCHEMAS,
+                    "temperature": self.temperature,  # A2: temp=1 (Kimi/reasoning models)
+                }
+                if self.reasoning_effort:
+                    create_kwargs["reasoning_effort"] = self.reasoning_effort
+                response = client.chat.completions.create(**create_kwargs)
             except Exception as e:
                 # Provider quota/usage-limit is fatal — abort the run instead of
                 # silently producing empty patches for every remaining task.
@@ -907,11 +932,13 @@ class CodingAgent:
         """Serialize the assistant tool-call turn for the next request.
 
         Only the tool calls are echoed back — the model's free-text reasoning is
-        intentionally NOT persisted to the trajectory (v5 §11.3, no CoT).
+        intentionally NOT persisted to the trajectory (v5 §11.3, no CoT). Reasoning
+        models (MiniMax M3) wrap CoT in <think>...</think>; we strip it from the
+        re-sent content so it is not re-billed as prompt tokens each turn.
         """
         return {
             "role": "assistant",
-            "content": getattr(message, "content", "") or "",
+            "content": strip_reasoning(getattr(message, "content", "") or ""),
             "tool_calls": [
                 {
                     "id": tc.id,

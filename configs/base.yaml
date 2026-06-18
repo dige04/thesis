@@ -29,10 +29,11 @@ agent:
   # auxiliary roles (classifier, reflection, CLS summary) = the much cheaper
   # deepseek-v4-flash on OpenCode go, routed via AUX_LLM_CHAT_* (per-role aux client).
   # Held constant across all 6 conditions × seeds. See AMENDMENTS.md.
-  main_model: "kimi-k2.7-code"         # main coding agent (sub/go, reasoning)
-  summary_model: "deepseek-v4-flash"   # CLS consolidation summary (aux, on go)
-  classifier_model: "deepseek-v4-flash"  # 5-type classification (aux, on go)
-  temperature: 1                      # AMENDMENT 2026-06-14 (advisor-approved): Kimi For Coding reasoning models only accept temp=1 (was 0). Held constant across all conditions; disclose in Methods.
+  main_model: "deepseek-v4-flash"      # main coding agent (OpenCode go; ALL roles single model, D7→D8)
+  summary_model: "deepseek-v4-flash"   # CLS consolidation summary
+  classifier_model: "deepseek-v4-flash"  # 5-type classification
+  temperature: 1                      # AMENDMENT 2026-06-14 (advisor-approved): reasoning models only accept temp=1 (was 0). Held constant across all conditions; disclose in Methods.
+  # reasoning_effort: default (smoke 2026-06-18: high gave no resolve/stability gain on Flash, +7% tokens → not worth it). Omit = provider default.
   max_steps_per_task: 20              # LOCKED
   max_tool_calls_per_task: 80
   max_test_runs_per_task: 5
