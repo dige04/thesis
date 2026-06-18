@@ -20,6 +20,40 @@ Research code for a master's thesis: **Memory Pruning and Forgetting Policies fo
 
 The experiment runs on **OpenCode Zen "go"** (OpenAI-compatible), not GPT-5.4 (user-authorized; provider switched from Ollama Cloud → OpenCode Zen go on 2026-06-08 — both OpenAI-compatible, config-only switch). See the deviation table **D1–D5 in CLAUDE.md** (model, embedder, cost metric, classifier structured-output, host/architecture). All must be disclosed in the thesis Methods. The model is held constant across all conditions/seeds, so between-policy comparisons remain valid; absolute numbers are not comparable to GPT-5.4 baselines.
 
+---
+
+## ⚡ CURRENT STATE — D7 (2026-06-18): Kimi k2.7-code agent + DeepSeek aux, sustained fleet run
+> READ FIRST. This supersedes the OpenCode-go / MiniMax-M3 (D6) text below. Full disclosure = **AMENDMENTS.md D7**.
+
+**Models (per-role split):**
+- **Agent** = `kimi-k2.7-code` — Kimi "For Coding" subscription via a local **CLIProxyAPI** (`localhost:8317`); the sfo workers reach it through an **nyc1-anchored SSH tunnel**. OpenCode go also serves the same id (bonus capacity).
+- **Aux (5-type classifier + reflection + CLS summary)** = `deepseek-v4-flash` on **OpenCode go**, routed via a **per-role aux client**: `src.config.llm_factory.get_aux_client()` + env `AUX_LLM_CHAT_BASE_URL/_API_KEY/_API_KEYS` (falls back to the chat client when unset → backward-compatible). Pin `LLM_MAIN_MODEL=kimi-k2.7-code`, `LLM_CLASSIFIER_MODEL=LLM_SUMMARY_MODEL=deepseek-v4-flash`, and base.yaml `reflection.model=deepseek-v4-flash`.
+- Embeddings unchanged: local Ollama `nomic-embed-text-v2-moe` (768-d).
+- *Why:* agent on k2.7-code = the science (reasoning); aux on DeepSeek = ~27× cheaper, method-neutral (aux only sets the type label + record metadata; the retrieval payload is raw `[Issue+Err+Diff]`+nomic, untouched). Calibrated 0% JSON-failure, accurate 5-type.
+
+**Matrix composition:** 132 fresh k2.7-code units (`runs_k27/`, sfo fleet) + **12 KEPT gate-3 units** (`runs/` on nyc1, agent `k2.6`/aux `k2.5`, django+pytest seed1 × 6 policies — NOT re-run). Within every (seq×seed) cell all 6 policies use identical models ⇒ no policy confound; report a **drop-gate-3-cells sensitivity check**. Provenance: `MODEL_PROVENANCE.json` per dataset dir + dir separation + committed `base.yaml` (k2.6 pre-`b495e6e`, k2.7-code after).
+
+**Fleet & sustained running:** 5 sfo3 droplets + nyc1 (prod + CLIProxy + the 12 k2.6 units). Each sfo runs **systemd** units (boot-persistent, `Restart=always`):
+- `thesis-tunnel.service` — `ssh -L 8317` → nyc1 cli-proxy (scoped forward-only key `/root/.ssh/thesis_tunnel_key`, authorized on nyc1 with `permitopen=127.0.0.1:8317`).
+- `thesis-matrix@<shard>.service` — `run_matrix_shard.sh <shard> 5 2` (shard `i%5`, CONC 2, `RUNS_ROOT=runs_k27`).
+- `thesis-doctor@<shard>.service` — `scripts/doctor.sh`: auto-heals disk(docker-image leak)/ollama/tunnel/process + `doctor_status.json` heartbeat; fail-closed on go-cap, **never switches aux model mid-run**.
+- Files: `scripts/doctor.sh`, `scripts/systemd/{thesis-tunnel,thesis-matrix@,thesis-doctor@}.service`, `scripts/fleet_setup.sh`. Set up one droplet: `bash scripts/fleet_setup.sh <shard>`.
+
+**Operate** (IPs 0=209.38.73.215 1=164.92.103.21 2=209.38.66.73 3=146.190.38.23 4=143.198.230.28; nyc1=157.230.177.56; key `~/.ssh/id_ed25519`):
+- **STOP/pause:** per droplet `systemctl stop thesis-doctor@N` (FIRST — else it resurrects the matrix) → `systemctl stop thesis-matrix@N` → `docker ps -q|xargs -r docker kill` → `systemctl disable thesis-matrix@N thesis-doctor@N`. Leave the tunnel.
+- **RESUME:** `systemctl enable --now thesis-matrix@N thesis-doctor@N` on each.
+- **MONITOR:** `ssh root@<ip> cat /root/thesis/doctor_status.json`.
+
+**Run state (2026-06-18):** fleet **STOPPED** by the user — quota concern: ~5% of the monthly sub quota burned for ~109 partial tasks with **0 full units** (the sub's monthly quota can't carry all 132 at this concurrency). The 10 partial units are **not cleanly resumable** (no mid-unit resume; the shard partial-clears; + the store path bug below) → they re-run from scratch. One review unit (`recency_prune·pytest·seed2`) is finishing on sfo-0 for the user to inspect. **OPEN DECISION (user): full-run capacity** — Moonshot pay-per-token k2.7-code (uncapped, ~$200–300) vs reduce scope (touches A7). **Mid-unit resume code = SKIPPED** (user's call).
+
+**Pitfalls (each cost real time):**
+- `rsync src/ configs/ scripts/ DEST/` (trailing slashes) **flattens** contents into DEST → stray `/root/thesis/logging/` shadows stdlib `logging` → every unit `EXIT=1`. Use `rsync src configs scripts DEST/` (NO trailing slash).
+- `pkill -f run_matrix_shard` **self-matches the ssh command** → kills its own session (exit 255). Use `pkill -f 'run_matrix[_]shard'`.
+- Background/detached ssh **fails the Keychain passphrase** → **foreground ssh only**; run heavy/long remote work via remote `nohup`/systemd, not a bg ssh from the Mac.
+- **Pre-existing bug:** `MemoryStore.run_dir` hardcodes `Path("runs")` (`store.py:99`) not `RUNS_ROOT` → `memory.db`/`memory.faiss` land in `runs/`, split from task data in `runs_k27/` (rsync of `runs_k27/` misses them; also blocks clean mid-unit resume). Fix before relying on resume or collecting memory.db.
+
+---
+
 ## Running on OpenCode Zen go
 
 ### Provider architecture
