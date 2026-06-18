@@ -20,11 +20,14 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from src.config.llm_factory import get_chat_client
+from src.config.llm_factory import get_aux_client
 from src.errors import (
     ClassifierError,
     ReflectionError,
+    UsageLimitError,
 )
+from src.metrics.cost_tracker import usage_from_chat_response
+from src.model_output import extract_json_object
 
 from .classifier import classify_memory_type
 from .record import MemoryRecord
@@ -95,7 +98,8 @@ def reflect_and_write_memory(
     retrieved_memory_ids: list[str],
     sequence_index: int,
     model: str = "gpt-4o-mini",
-    temperature: float = 0.0
+    temperature: float = 0.0,
+    usage_sink: list[dict[str, Any]] | None = None,
 ) -> MemoryRecord | None:
     """Execute reflection step and write memory record.
 
@@ -121,6 +125,10 @@ def reflect_and_write_memory(
         sequence_index: Position of this task in the sequence
         model: Model to use for reflection LLM call (default: gpt-4o-mini)
         temperature: Temperature for reflection LLM call (default: 0.0)
+        usage_sink: Optional list; when provided, the reflection LLM call and the
+            classifier call it triggers each append a usage dict
+            ({"call_type", "model", "prompt_tokens", "completion_tokens"}) so the
+            caller can aggregate token cost for the Pareto axis (E1).
 
     Returns:
         MemoryRecord if successfully created and written, None if reflection failed
@@ -149,7 +157,8 @@ def reflect_and_write_memory(
             patch=patch,
             evaluation_result=evaluation_result,
             model=model,
-            temperature=temperature
+            temperature=temperature,
+            usage_sink=usage_sink,
         )
 
         # Step 2: Invoke type classifier (CRITICAL - must succeed)
@@ -161,7 +170,8 @@ def reflect_and_write_memory(
                 patch_summary=reflection_data["patch_summary"],
                 files_touched=reflection_data["files_touched"],
                 functions_touched=reflection_data["functions_touched"],
-                task_id=task.task_id
+                task_id=task.task_id,
+                usage_sink=usage_sink,
             )
         except ClassifierError as e:
             # Requirement 15.5: Fail entirely if classifier unavailable
@@ -213,6 +223,14 @@ def reflect_and_write_memory(
     except ClassifierError:
         # Re-raise classifier errors (already logged)
         raise
+    except UsageLimitError:
+        # Provider quota is FATAL and must NOT be downgraded to ReflectionError
+        # (which the runner swallows with "continue without memory"). Re-raise so
+        # it propagates to the runner's UsageLimitError handler and aborts the run.
+        # The classifier raises UsageLimitError, a sibling of ClassifierError, so it
+        # is not caught above — without this clause it would fall through to the
+        # generic handler below and silently mutate the experimental condition.
+        raise
     except Exception as e:
         logger.error(
             f"Unexpected error during reflection for task {task.task_id}: {e}",
@@ -229,7 +247,8 @@ def _extract_reflection_data(
     patch: str | None,
     evaluation_result: dict[str, Any],
     model: str,
-    temperature: float
+    temperature: float,
+    usage_sink: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Extract structured reflection data from task execution.
 
@@ -309,6 +328,7 @@ def _extract_reflection_data(
         evaluation_result=evaluation_result,
         model=model,
         temperature=temperature,
+        usage_sink=usage_sink,
     )
 
     if summary is not None:
@@ -392,6 +412,7 @@ def _llm_reflection_summary(
     evaluation_result: dict[str, Any],
     model: str,
     temperature: float,
+    usage_sink: list[dict[str, Any]] | None = None,
 ) -> ReflectionSummary | None:
     """Call the reflection LLM and validate its structured JSON output.
 
@@ -416,21 +437,35 @@ def _llm_reflection_summary(
     ]
 
     try:
-        client = get_chat_client()
-        # JSON mode (NOT beta.parse) + Pydantic validation. temperature is passed
-        # through (frozen to 0 by the caller/config) per the classifier pattern.
+        client = get_aux_client()
+        # Prompt-instructed JSON + tolerant extraction + Pydantic validation. No
+        # response_format: MiniMax M3 returns 400 model_not_capable for json_object
+        # mode (D4 extended 2026-06-17). temperature passed through (config-frozen).
         response = client.chat.completions.create(
             model=model,
             messages=messages,
-            response_format={"type": "json_object"},
             temperature=temperature,
         )
+
+        # Surface token usage for cost telemetry (E1). Recorded BEFORE validation
+        # so even a malformed/empty response (which then falls back to the naive
+        # summary) still has its real token spend counted.
+        if usage_sink is not None:
+            prompt_tokens, completion_tokens = usage_from_chat_response(response)
+            usage_sink.append(
+                {
+                    "call_type": "reflection",
+                    "model": model,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                }
+            )
 
         content = response.choices[0].message.content
         if not content or not isinstance(content, str):
             raise ValueError("reflection LLM returned empty/non-string content")
 
-        return ReflectionSummary.model_validate_json(content)
+        return ReflectionSummary.model_validate(extract_json_object(content))
 
     except (ValidationError, ValueError) as e:
         logger.warning(

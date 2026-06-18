@@ -95,6 +95,22 @@ is collected; (c) held **constant across all conditions × seeds**; (d) disclose
   demote anchor-probe stability. Touches v5 Invariant #29 (anchor-probe = PRIMARY
   CL-Stability). **Decide before committing the matrix's anchor-probe budget.**
 
+## A6 — Seeds 3 → 1 (deadline-constrained)
+- **Date:** 2026-06-17
+- **Change:** main matrix runs **1 seed** (8 sequences × 6 policies = **48 runs**)
+  instead of 3 seeds × 144 runs.
+- **Reason:** 10-day submission deadline. The full 144-run matrix + anchor-probe
+  is multiple days of compute and cannot fit alongside analysis + writing +
+  defense prep. 1 seed **preserves** the N=8 sequence-level primary test
+  (Invariants #1, #11), CL-F1 (#9), and anchor-probe (#29); it relaxes only the
+  within-cell replication.
+- **Validity:** the single seed is identical across all conditions/sequences
+  (fixed factor); between-policy comparisons remain valid. Robustness to seed
+  noise is reduced → the seed dimension is **exploratory**; disclose prominently
+  as a limitation. The 2 gate-3 sequences (django, pytest) are reused.
+- **Adaptive:** if compute finishes with time to spare, add seed 2.
+- **Touches:** v5 Invariant #2 (3 seeds / 144 runs). Disclose prominently.
+
 ---
 
 ## D1–D5 — Runtime deviations
@@ -104,3 +120,91 @@ deviations). Summary: D1 model → Kimi "for coding" (kimi-k2.6); D2 embedder �
 local Ollama `nomic-embed-text-v2-moe` (768-d); D3 cost metric → token-count
 proxy; D4 classifier → JSON-mode + Pydantic (and see A2 re: temperature); D5 host
 → x86_64 DigitalOcean droplet, prebuilt swebench images.
+
+---
+
+## A7 — A6 REVERTED: 3 seeds / 144 runs RESTORED
+- **Date:** 2026-06-17
+- **Change:** the main matrix runs the full **3 seeds × 8 sequences × 6 policies
+  = 144 runs**, restoring v5 Invariant #2. A6's 1-seed reduction is **withdrawn**.
+- **Reason:** the move to a **free-unlimited** generative provider (MiniMax M3 via
+  the 0G router — see D6) removed the per-call quota/cost pressure that motivated
+  A6, and a **5-VPS horizontal fleet** (snapshot-cloned droplets, sharded across
+  the 144 policy×seed×sequence units, ~20 concurrent eval slots) brings the full
+  matrix inside the deadline (~12–20 h wall-clock).
+- **Validity:** Invariant #2 satisfied as pre-registered; 3-seed within-cell
+  replication restored, so the seed dimension is **no longer exploratory**. No
+  gate-3 reuse — all 144 runs are fresh on M3 (no model mixing).
+- **Touches:** restores v5 Invariant #2; supersedes A6.
+
+## D6 — Provider switch: Kimi → MiniMax M3 (supersedes D1's model choice)
+- **Date:** 2026-06-17
+- **Change:** the frozen generative model is **MiniMax M3** (OpenAI-compatible via
+  the 0G `router-api.0g.ai` endpoint), replacing Kimi-k2.6 (D1). Held **constant
+  across all 6 conditions × 3 seeds** (agent + reflection + CLS consolidation +
+  5-type classifier — one model, all roles). Embeddings unchanged (local Ollama,
+  D2).
+- **D6a — Reasoning model.** M3 emits `<think>…</think>` CoT (on by default, no
+  documented disable). CoT is **stripped** (`src/model_output.strip_reasoning`)
+  before JSON parsing, before embedding into memory records (Invariant #4 payload
+  stays CoT-free), and before re-sending agent turns; trajectory logging already
+  excludes message content (v5 §11.3). **Cost-axis caveat:** M3 completion-token
+  counts include reasoning tokens, so the D3 token-cost Pareto axis is inflated vs
+  a non-reasoning model — **uniform across all conditions** (between-policy
+  comparison valid), but absolute token cost is **not** comparable to a
+  Kimi/GPT-5.4 design. (D1 originally chose Kimi to keep this axis clean; the
+  free-unlimited access outweighed it under deadline.) Disclose.
+- **D6b — No JSON mode.** M3 returns `400 model_not_capable` for
+  `response_format={"type":"json_object"}`. All three structured-output sites
+  (classifier #7, reflection, CLS consolidation #9) **drop** `response_format` and
+  use prompt-instructed JSON + tolerant extraction
+  (`src/model_output.extract_json_object`) + Pydantic validation. Extends D4;
+  classifier failure rate logged identically across conditions.
+- **D6c — Multi-key rotation.** The 0G free tier rate/credit-limits per API key; a
+  **16-key pool** (`FREE_LLM_CHAT_API_KEYS`) is rotated per request with failover
+  on 402/429/401, **failing closed** only when the whole pool is exhausted — so
+  balance depletion can never silently corrupt the matrix as false `resolved=0`
+  (402/insufficient_balance now classified fatal in `is_usage_limit_error`).
+- **Execution (extends D5):** 5 snapshot-cloned x86_64 droplets (the fleet) in
+  addition to the original; matrix sharded across them (`run_matrix_shard.sh`).
+- **Reversible:** `.env`-only (drop FREE_LLM_* → back to Kimi/OpenAI).
+- **Touches:** supersedes D1 (model); extends D3 (cost axis), D4 (JSON path), D5
+  (host/fleet). Matching edits to CLAUDE.md's deviation table proposed separately
+  (locked file — not auto-edited).
+
+## D7 — M3 (D6) discarded; reverted to Kimi `kimi-k2.7-code` agent + `deepseek-v4-flash` aux (DRAFT — review)
+- **Date:** 2026-06-18
+- **Change:** The MiniMax M3 run (D6) is **discarded** (no usable data; provider
+  switch ⇒ no model-mixing). The matrix is re-executed on Kimi. **Per-role split:**
+  the **coding agent** = `kimi-k2.7-code` (Kimi "For Coding" subscription via the
+  CLIProxyAPI sub, plus OpenCode go for the same model id); the **auxiliary LLM
+  roles** (5-type classifier, reflection, CLS-consolidation summary) = the much
+  cheaper `deepseek-v4-flash` on OpenCode go, routed through a per-role aux client
+  (`AUX_LLM_CHAT_*` → `src.config.llm_factory.get_aux_client`). Embeddings unchanged
+  (local Ollama, D2).
+- **Final matrix composition:** **132 units** = agent `kimi-k2.7-code` + aux
+  `deepseek-v4-flash`; **12 reused gate-3 units** (django + pytest, seed-1, all 6
+  policies) = agent `kimi-k2.6` + aux `kimi-k2.5`. Within **every (sequence × seed)
+  cell all 6 policies use identical models**, so the model never confounds a
+  between-policy contrast (H1–H5). **Sensitivity check:** re-run the primary tests
+  dropping the 2 gate-3 cells (django-s1, pytest-s1) and confirm conclusions hold.
+- **D7a — Auxiliary model on a 2nd vendor (DeepSeek).** Defensible as held constant
+  across all conditions; the aux LLM does **not** author the retrieval payload
+  (Invariant #4 = raw `[Issue+Final Error+Final Diff]` + nomic embedder), only the
+  type label + record metadata. **Classifier failure rate logged**; calibration on
+  the real classifier path = **0% failure**, accurate 5-type labels.
+- **D7b — Reasoning handled per provider.** Sub `kimi-k2.7-code` emits inline
+  `<think>…</think>` → stripped (`strip_reasoning`). go `deepseek-v4-flash` returns
+  reasoning in a separate `reasoning_content` field → `message.content` already
+  clean. Both paths parsed by `extract_json_object` + Pydantic. The D6a token-cost-
+  axis inflation (reasoning tokens counted) **persists** for the k2.7-code agent
+  (≈96% of tokens); uniform across conditions.
+- **Execution.** 5 sfo3 droplets, **systemd-managed** (`thesis-tunnel` /
+  `thesis-matrix@<shard>` / `thesis-doctor@<shard>`, `Restart=always`,
+  boot-persistent); agent reaches the sub via an **nyc1-anchored SSH tunnel** (scoped
+  forward-only key); a per-droplet **doctor** auto-heals disk/ollama/tunnel/process
+  and heartbeats. Sharded `i % 5`, `RUNS_ROOT=runs_k27`. **Fail-closed** on go-cap
+  (402) preserved — no false `resolved=0`.
+- **Retained:** 3-seed/144 (A7); A1 (cap=10), A2 (temp=1), A3, A4.
+- **Reversible:** `.env`/`AUX_LLM_CHAT_*` only.
+- **Touches:** supersedes D6 (model) + A7's "all 144 fresh on M3" clause.

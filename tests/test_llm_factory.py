@@ -29,9 +29,17 @@ def _clean_clients(monkeypatch):
     for _k in (
         "FREE_LLM_CHAT_BASE_URL",
         "FREE_LLM_CHAT_API_KEY",
+        # The multi-key pool: when a fleet .env sets it, get_chat_client() returns
+        # a KeyRotatingClient (no .base_url) and the single-client precedence tests
+        # below break. Scrub it so they stay hermetic regardless of .env.
+        "FREE_LLM_CHAT_API_KEYS",
         "FREE_LLM_MAIN_MODEL",
         "FREE_LLM_SUMMARY_MODEL",
         "FREE_LLM_CLASSIFIER_MODEL",
+        # AUX split layer — keep hermetic once AUX_LLM_CHAT_* is configured in .env.
+        "AUX_LLM_CHAT_BASE_URL",
+        "AUX_LLM_CHAT_API_KEY",
+        "AUX_LLM_CHAT_API_KEYS",
     ):
         monkeypatch.delenv(_k, raising=False)
     llm_factory.reset_clients()
@@ -103,6 +111,10 @@ def test_embedding_dim_respects_int_override(monkeypatch):
 
 
 def test_chat_and_embedding_clients_use_distinct_base_urls(monkeypatch):
+    # Neutralize any FREE_LLM_CHAT_* override/key-pool from the matrix .env so
+    # this targets the base LLM_CHAT_* layer (else get_chat_client is a pool client).
+    for _k in ("FREE_LLM_CHAT_BASE_URL", "FREE_LLM_CHAT_API_KEY", "FREE_LLM_CHAT_API_KEYS"):
+        monkeypatch.delenv(_k, raising=False)
     monkeypatch.setenv("LLM_CHAT_BASE_URL", "https://chat.example.com/v1")
     monkeypatch.setenv("EMBEDDING_BASE_URL", "https://embed.example.com/v1")
     monkeypatch.setenv("LLM_CHAT_API_KEY", "chat-key")
@@ -146,6 +158,8 @@ def test_api_keys_respect_explicit_values(monkeypatch):
 
 
 def test_get_chat_client_is_cached_until_reset(monkeypatch):
+    for _k in ("FREE_LLM_CHAT_BASE_URL", "FREE_LLM_CHAT_API_KEY", "FREE_LLM_CHAT_API_KEYS"):
+        monkeypatch.delenv(_k, raising=False)
     monkeypatch.setenv("LLM_CHAT_BASE_URL", "https://first.example.com/v1")
     llm_factory.reset_clients()
     first = llm_factory.get_chat_client()

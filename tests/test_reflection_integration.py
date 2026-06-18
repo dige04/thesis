@@ -33,7 +33,7 @@ class TestReflectionExtraction:
     by TestReflectionLLMCall.
     """
 
-    @patch("src.memory.reflection.get_chat_client")
+    @patch("src.memory.reflection.get_aux_client")
     def test_extract_reflection_data_basic(self, mock_get_client):
         """Test basic reflection data extraction (naive fallback path)."""
         mock_get_client.side_effect = RuntimeError("no LLM in unit test")
@@ -82,7 +82,7 @@ class TestReflectionExtraction:
         assert "tests/test_foo.py" in data["files_touched"]
         assert data["commands_run"] == ["pytest", "git diff"]
 
-    @patch("src.memory.reflection.get_chat_client")
+    @patch("src.memory.reflection.get_aux_client")
     def test_extract_reflection_data_failed_task(self, mock_get_client):
         """Test reflection data extraction for failed task (naive fallback path)."""
         mock_get_client.side_effect = RuntimeError("no LLM in unit test")
@@ -208,7 +208,7 @@ class TestEmbeddingTextConstruction:
 # reflection summary text. Force the naive fallback by making get_chat_client
 # raise, so they stay deterministic and offline instead of attempting a real
 # reflection LLM call. The LLM path itself is covered by TestReflectionLLMCall.
-@patch("src.memory.reflection.get_chat_client", side_effect=RuntimeError("offline in unit test"))
+@patch("src.memory.reflection.get_aux_client", side_effect=RuntimeError("offline in unit test"))
 class TestReflectAndWriteMemory:
     """Test the complete reflect_and_write_memory workflow."""
 
@@ -371,7 +371,7 @@ class TestReflectAndWriteMemory:
 # plan 4.5: as with TestReflectAndWriteMemory, force the naive reflection
 # fallback (offline) so these requirement-compliance flow tests stay
 # deterministic; they assert orchestration/structure, not summary text.
-@patch("src.memory.reflection.get_chat_client", side_effect=RuntimeError("offline in unit test"))
+@patch("src.memory.reflection.get_aux_client", side_effect=RuntimeError("offline in unit test"))
 class TestRequirement15Compliance:
     """Test compliance with Requirement 15 acceptance criteria."""
 
@@ -623,7 +623,7 @@ class TestReflectionLLMCall:
     """plan 4.5: _extract_reflection_data must perform a real reflection LLM
     call (JSON mode + Pydantic validation), with naive fallback on failure."""
 
-    @patch("src.memory.reflection.get_chat_client")
+    @patch("src.memory.reflection.get_aux_client")
     def test_uses_llm_summary_when_available(self, mock_get_client):
         """The LLM's structured JSON summary should populate the summaries
         and functions_touched, NOT the naive truncation."""
@@ -665,7 +665,9 @@ class TestReflectionLLMCall:
         call_kwargs = mock_get_client.return_value.chat.completions.create.call_args.kwargs
         assert call_kwargs["model"] == "gpt-oss:20b-cloud"
         assert call_kwargs["temperature"] == 0.0
-        assert call_kwargs["response_format"] == {"type": "json_object"}
+        # D4 extended (2026-06-17): no json_object mode (MiniMax M3 returns 400);
+        # prompt-instructed JSON + tolerant extraction recover the summary instead.
+        assert "response_format" not in call_kwargs
 
         # LLM summaries win over the naive truncation.
         assert data["issue_summary"] == "LLM: QuerySet.exclude returns wrong rows when chained"
@@ -679,7 +681,7 @@ class TestReflectionLLMCall:
         assert "tests/test_query.py" in data["files_touched"]
         assert data["commands_run"] == ["pytest"]
 
-    @patch("src.memory.reflection.get_chat_client")
+    @patch("src.memory.reflection.get_aux_client")
     def test_falls_back_to_naive_on_broken_client(self, mock_get_client, caplog):
         """A broken client (raises on create) must NOT raise — fall back to the
         naive extraction so the must-succeed classifier step downstream runs."""
@@ -723,7 +725,7 @@ class TestReflectionLLMCall:
         assert any("fall" in r.message.lower() or "fallback" in r.message.lower()
                    for r in caplog.records)
 
-    @patch("src.memory.reflection.get_chat_client")
+    @patch("src.memory.reflection.get_aux_client")
     def test_falls_back_to_naive_on_invalid_json(self, mock_get_client):
         """Invalid / non-JSON content must fall back to naive extraction."""
         mock_get_client.return_value = _make_llm_client("this is not json at all")

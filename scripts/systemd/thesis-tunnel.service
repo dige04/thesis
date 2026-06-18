@@ -1,0 +1,16 @@
+[Unit]
+Description=Thesis sub-proxy tunnel (sfo localhost:8317 -> nyc1 cli-proxy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Forward this droplet's 127.0.0.1:8317 to nyc1's local cli-proxy (the Kimi sub).
+# Scoped tunnel-only key (no shell, permitopen=127.0.0.1:8317). ServerAlive* makes
+# ssh exit on a dead link; systemd Restart=always brings it straight back (autossh-equivalent).
+ExecStart=/usr/bin/ssh -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -L 127.0.0.1:8317:127.0.0.1:8317 -i /root/.ssh/thesis_tunnel_key root@157.230.177.56
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

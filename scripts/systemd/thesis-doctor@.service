@@ -1,0 +1,13 @@
+[Unit]
+Description=Thesis fleet doctor (shard %i) - disk/ollama/tunnel/matrix heal + heartbeat
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/thesis
+ExecStart=/bin/bash /root/thesis/scripts/doctor.sh %i
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

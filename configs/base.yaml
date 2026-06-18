@@ -25,9 +25,13 @@ agent:
   # these. See AGENTS.md "Running on OpenCode Zen".
   # DEVIATION D1 from v5 §0.1 (model frozen to GPT-5.4): switched to OpenCode Zen
   # "go" tier (OpenAI-compatible), held constant across all 6 conditions × 3 seeds.
-  main_model: "kimi-k2.6"              # main coding agent (oa-compat, large ctx)
-  summary_model: "kimi-k2.5"           # reflection + CLS consolidation
-  classifier_model: "kimi-k2.5"        # 5-type classification (JSON-mode verified)
+  # D6-revert (2026-06-18): coding agent = Kimi kimi-k2.7-code (sub bulk + go bonus);
+  # auxiliary roles (classifier, reflection, CLS summary) = the much cheaper
+  # deepseek-v4-flash on OpenCode go, routed via AUX_LLM_CHAT_* (per-role aux client).
+  # Held constant across all 6 conditions × seeds. See AMENDMENTS.md.
+  main_model: "kimi-k2.7-code"         # main coding agent (sub/go, reasoning)
+  summary_model: "deepseek-v4-flash"   # CLS consolidation summary (aux, on go)
+  classifier_model: "deepseek-v4-flash"  # 5-type classification (aux, on go)
   temperature: 1                      # AMENDMENT 2026-06-14 (advisor-approved): Kimi For Coding reasoning models only accept temp=1 (was 0). Held constant across all conditions; disclose in Methods.
   max_steps_per_task: 20              # LOCKED
   max_tool_calls_per_task: 80
@@ -44,9 +48,9 @@ agent:
   instance_namespace: "swebench"
 
 reflection:
-  # Summary model for memory reflection (read at sequence_runner.py:622).
-  # DEVIATION D1 from v5: OpenCode Zen go instead of gpt-4o-mini.
-  model: "kimi-k2.5"
+  # Summary model for memory reflection (read at sequence_runner.py:948 → routed to
+  # the AUX endpoint via get_aux_client). D6-revert: deepseek-v4-flash on go (aux).
+  model: "deepseek-v4-flash"
   temperature: 1                      # AMENDMENT 2026-06-14: temp=1 (Kimi reasoning models); was 0
 
 memory:

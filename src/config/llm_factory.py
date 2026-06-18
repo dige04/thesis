@@ -111,6 +111,22 @@ def chat_api_key(override: str | None = None) -> str:
     return _chat_env("LLM_CHAT_API_KEY", override) or "ollama"
 
 
+def chat_api_keys() -> list[str]:
+    """Pool of chat API keys for rotation (the 0G free tier rate-limits PER key).
+
+    ``FREE_LLM_CHAT_API_KEYS`` (comma-separated) takes precedence over the single
+    ``chat_api_key()``. ``get_chat_client()`` builds a :class:`KeyRotatingClient`
+    from a >1 pool that fails over to the next key on a 402/429 quota error,
+    sustaining the matrix across many keys without a single-key wall.
+    """
+    pool = os.environ.get("FREE_LLM_CHAT_API_KEYS")
+    if pool:
+        keys = [k.strip() for k in pool.split(",") if k.strip()]
+        if keys:
+            return keys
+    return [chat_api_key()]
+
+
 def main_model(override: str | None = None) -> str:
     return _chat_env("LLM_MAIN_MODEL", override)
 
@@ -121,6 +137,31 @@ def summary_model(override: str | None = None) -> str:
 
 def classifier_model(override: str | None = None) -> str:
     return _chat_env("LLM_CLASSIFIER_MODEL", override)
+
+
+# --- Auxiliary chat endpoint (classifier / reflection / CLS summary) -----------
+# The coding agent runs on the main chat endpoint (LLM_CHAT_*); the auxiliary
+# roles can be routed to a SEPARATE, cheaper endpoint (e.g. deepseek-v4-flash on
+# OpenCode go) via AUX_LLM_CHAT_*. When AUX_LLM_CHAT_BASE_URL is unset the aux
+# roles share the main chat client (backward-compatible single-endpoint setup).
+# Only the ENDPOINT moves; the per-role model NAME still comes from
+# summary_model()/classifier_model().
+
+def aux_base_url() -> str:
+    """Aux chat endpoint URL, or "" when aux shares the main chat client."""
+    return os.environ.get("AUX_LLM_CHAT_BASE_URL", "") or ""
+
+
+def aux_api_keys() -> list[str]:
+    """Pool of aux API keys (``AUX_LLM_CHAT_API_KEYS`` comma-separated) or the
+    single ``AUX_LLM_CHAT_API_KEY``; falls back to the literal "ollama"."""
+    pool = os.environ.get("AUX_LLM_CHAT_API_KEYS")
+    if pool:
+        keys = [k.strip() for k in pool.split(",") if k.strip()]
+        if keys:
+            return keys
+    single = os.environ.get("AUX_LLM_CHAT_API_KEY")
+    return [single] if single else ["ollama"]
 
 
 # --- Embedding settings --------------------------------------------------------
@@ -153,12 +194,109 @@ def cost_metric_mode(override: str | None = None) -> str:
 # Cached so we reuse a single connection-pooled client per process. Tests can
 # call reset_clients() after monkeypatching env vars.
 
+def _is_auth_error(exc: BaseException) -> bool:
+    """True for an invalid/expired API key (HTTP 401) — rotate past a dead key
+    so one bad key in the pool never silently fails the tasks it would serve."""
+    text = str(exc).lower()
+    if "invalid_auth" in text or "invalid authentication" in text:
+        return True
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status == 401
+
+
+class _RotatingCompletions:
+    def __init__(self, parent: KeyRotatingClient) -> None:
+        self._parent = parent
+
+    def create(self, **kwargs: Any) -> Any:
+        return self._parent._create_with_rotation(**kwargs)
+
+
+class _RotatingChat:
+    def __init__(self, parent: KeyRotatingClient) -> None:
+        self.completions = _RotatingCompletions(parent)
+
+
+class KeyRotatingClient:
+    """OpenAI-SDK-compatible client that rotates over a pool of API keys.
+
+    On a provider quota/balance error (402/429-quota, per
+    :func:`src.errors.is_usage_limit_error`) it fails over to the next key and
+    retries; only when EVERY key in the pool is exhausted does it raise
+    ``UsageLimitError`` (fail-closed — never a silent corruption). Non-quota
+    errors propagate immediately (no rotation). ``start_index`` (e.g.
+    ``os.getpid()``) spreads load across keys when many worker processes run.
+    Only ``.chat.completions.create`` is supported (all this codebase uses).
+    """
+
+    def __init__(self, clients: list[Any], start_index: int = 0) -> None:
+        if not clients:
+            raise ValueError("KeyRotatingClient requires at least one client")
+        self._clients = clients
+        self._n = len(clients)
+        self._idx = start_index % self._n
+        self.chat = _RotatingChat(self)
+
+    def _create_with_rotation(self, **kwargs: Any) -> Any:
+        from src.errors import UsageLimitError, is_usage_limit_error
+
+        last_exc: Exception | None = None
+        for _ in range(self._n):
+            client = self._clients[self._idx]
+            try:
+                return client.chat.completions.create(**kwargs)
+            except Exception as e:
+                # Rotate past a rate/balance-limited (402/429) OR dead (401) key.
+                if is_usage_limit_error(e) or _is_auth_error(e):
+                    last_exc = e
+                    self._idx = (self._idx + 1) % self._n  # fail over to next key
+                    continue
+                raise
+        raise UsageLimitError(
+            f"All {self._n} chat API keys hit a usage/balance limit: {last_exc}"
+        )
+
+
 @lru_cache(maxsize=1)
 def get_chat_client() -> Any:
-    """OpenAI-SDK client pointed at the chat/generative endpoint (Ollama Cloud)."""
+    """Chat client for the generative endpoint.
+
+    Returns a :class:`KeyRotatingClient` when a multi-key pool is configured
+    (``FREE_LLM_CHAT_API_KEYS``), else a plain OpenAI client. Cached per process;
+    a KeyRotatingClient seeds its start index from the PID to spread key load.
+    """
     from openai import OpenAI
 
-    return OpenAI(base_url=chat_base_url(), api_key=chat_api_key())
+    base = chat_base_url()
+    keys = chat_api_keys()
+    if len(keys) > 1:
+        clients = [OpenAI(base_url=base, api_key=k) for k in keys]
+        return KeyRotatingClient(clients, start_index=os.getpid())
+    return OpenAI(base_url=base, api_key=keys[0])
+
+
+@lru_cache(maxsize=1)
+def get_aux_client() -> Any:
+    """Chat client for auxiliary roles (classifier, reflection, CLS summary).
+
+    With ``AUX_LLM_CHAT_BASE_URL`` set, build a SEPARATE client at that endpoint
+    (KeyRotatingClient for a >1 key pool, else a plain client) — lets aux run on a
+    cheaper model/provider while the agent stays on the main endpoint. Unset ⇒
+    return the main ``get_chat_client()`` (backward-compatible). Only the ENDPOINT
+    is routed here; the per-role model name still comes from the model getters.
+    """
+    base = aux_base_url()
+    if not base:
+        return get_chat_client()
+    from openai import OpenAI
+
+    keys = aux_api_keys()
+    if len(keys) > 1:
+        clients = [OpenAI(base_url=base, api_key=k) for k in keys]
+        return KeyRotatingClient(clients, start_index=os.getpid())
+    return OpenAI(base_url=base, api_key=keys[0])
 
 
 @lru_cache(maxsize=1)
@@ -172,4 +310,5 @@ def get_embedding_client() -> Any:
 def reset_clients() -> None:
     """Clear cached clients (call after changing env vars, e.g. in tests)."""
     get_chat_client.cache_clear()
+    get_aux_client.cache_clear()
     get_embedding_client.cache_clear()

@@ -29,7 +29,9 @@ import numpy as np
 from pydantic import BaseModel, Field, ValidationError
 from sklearn.cluster import DBSCAN
 
-from src.config.llm_factory import get_chat_client, summary_model
+from src.config.llm_factory import get_aux_client, summary_model
+from src.metrics.cost_tracker import usage_from_chat_response
+from src.model_output import extract_json_object
 
 from ..embedding_utils import _truncate_to_token_budget, count_tokens
 from ..retriever import shared_retrieve
@@ -47,12 +49,13 @@ logger = logging.getLogger(__name__)
 CONSOLIDATION_INTERVAL = 5  # Trigger every 5 tasks
 MIN_CLUSTER_SIZE = 3  # Minimum memories to consolidate
 MAX_SUMMARY_TOKENS = 350  # Maximum tokens for consolidated summary
-OLD_MEMORY_THRESHOLD = 10  # Memories must be >= 10 tasks old
+OLD_MEMORY_THRESHOLD = 5  # AMENDMENT A3 (2026-06-17): was 10. Lowered to cap/2 so CLS can consolidate at cap=10 — at cap=10 no active record ever reaches age 10, leaving CLS inert (gate-3). Derived from the A1 cap amendment; see AMENDMENTS.md / Invariant #23.
 SIMILARITY_THRESHOLD = 0.70  # Minimum cosine similarity for clustering
 EXCLUDE_TYPE = "architectural"  # Sacred tier - never consolidate
 
-# Temperature is FROZEN at 0 for deterministic, reproducible summaries.
-SUMMARY_TEMPERATURE = 0
+# Temperature held constant across conditions. AMENDMENT 2026-06-14: Kimi
+# reasoning models (via CLIProxyAPI) only accept temp=1 (was 0); disclose.
+SUMMARY_TEMPERATURE = 1
 
 
 class ConsolidationSummary(BaseModel):
@@ -188,6 +191,11 @@ class CLSConsolidationPolicy(MemoryPolicy):
         """
         self.max_records = max_records
         self._tasks_since_last_consolidation = 0
+
+        # Consolidation LLM token usage buffer for cost telemetry (E1). Each
+        # _generate_summary call appends a usage dict; the SequenceRunner drains
+        # it after policy.maintain() via drain_consolidation_usage().
+        self._consolidation_usage: list[dict[str, Any]] = []
 
         logger.info(
             f"Initialized CLSConsolidationPolicy: max_records={max_records}, "
@@ -754,21 +762,34 @@ class CLSConsolidationPolicy(MemoryPolicy):
         ]
 
         try:
-            client = get_chat_client()
-            # JSON mode (NOT beta.parse) + Pydantic validation — temperature is
-            # ALWAYS 0 (frozen invariant). See CONSOLIDATION_JSON_INSTRUCTIONS / D4.
+            client = get_aux_client()
+            # Prompt-instructed JSON + tolerant extraction + Pydantic validation.
+            # No response_format: MiniMax M3 returns 400 model_not_capable for
+            # json_object mode (D4 extended 2026-06-17).
             response = client.chat.completions.create(
                 model=summary_model(),
                 messages=messages,
-                response_format={"type": "json_object"},
-                temperature=SUMMARY_TEMPERATURE,  # FROZEN: Always 0
+                temperature=SUMMARY_TEMPERATURE,
+            )
+
+            # Surface token usage for cost telemetry (E1). Recorded BEFORE
+            # validation so a malformed-then-fallback response still counts its
+            # real token spend toward the Pareto axis.
+            prompt_tokens, completion_tokens = usage_from_chat_response(response)
+            self._consolidation_usage.append(
+                {
+                    "call_type": "consolidation",
+                    "model": summary_model(),
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                }
             )
 
             content = response.choices[0].message.content
             if not content or not isinstance(content, str):
                 raise ValueError("consolidation LLM returned empty/non-string content")
 
-            validated = ConsolidationSummary.model_validate_json(content)
+            validated = ConsolidationSummary.model_validate(extract_json_object(content))
             return validated.model_dump()
 
         except (ValidationError, ValueError, json.JSONDecodeError) as e:
@@ -784,6 +805,17 @@ class CLSConsolidationPolicy(MemoryPolicy):
                 f"summary: {e}"
             )
             return self._generate_summary_placeholder(cluster)
+
+    def drain_consolidation_usage(self) -> list[dict[str, Any]]:
+        """Return and clear accumulated consolidation LLM usage records (E1).
+
+        The SequenceRunner calls this after policy.maintain() to attribute CLS
+        consolidation token cost to the CostTracker. Only this policy emits
+        consolidation calls, so the runner checks for the method via duck-typing.
+        """
+        drained = self._consolidation_usage
+        self._consolidation_usage = []
+        return drained
 
     @staticmethod
     def _compose_summary_text(summary: dict[str, Any]) -> str:

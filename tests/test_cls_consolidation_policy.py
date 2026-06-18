@@ -151,13 +151,29 @@ class TestCLSConsolidationPolicyInstantiation:
         assert CLSConsolidationPolicy.CONSOLIDATION_INTERVAL == 5
         assert CLSConsolidationPolicy.MIN_CLUSTER_SIZE == 3
         assert CLSConsolidationPolicy.MAX_SUMMARY_TOKENS == 350
-        assert CLSConsolidationPolicy.OLD_MEMORY_THRESHOLD == 10
+        # AMENDMENT A3 (2026-06-17): 10 -> 5 (= cap/2). The frozen v5 value of 10
+        # was incompatible with the A1 cap=10 amendment (no active record ever
+        # reaches age 10 at cap=10), leaving CLS inert. See AMENDMENTS.md.
+        assert CLSConsolidationPolicy.OLD_MEMORY_THRESHOLD == 5
         assert CLSConsolidationPolicy.SIMILARITY_THRESHOLD == 0.70
 
     def test_initializes_task_counter_to_zero(self):
         """Verify task counter initializes to zero."""
         policy = CLSConsolidationPolicy(max_records=100)
         assert policy._tasks_since_last_consolidation == 0
+
+    def test_select_candidates_fires_at_cap_10(self):
+        """CLS must be able to consolidate under the A1 cap=10 (AMENDMENT A3).
+
+        At cap=10 the active set spans ~10 consecutive sequence indices, so the
+        oldest record is only ~9 tasks old — it never reaches the old threshold
+        of 10. With the amended threshold (5 = cap/2), the oldest ~5 records
+        qualify, so consolidation can actually occur.
+        """
+        policy = CLSConsolidationPolicy(max_records=10)
+        records = [create_mock_record(f"m{i}", sequence_index=i) for i in range(10)]
+        candidates = policy._select_candidates(records, current_step=9)
+        assert {c.memory_id for c in candidates} == {"m0", "m1", "m2", "m3", "m4"}
 
 
 class TestCLSConsolidationPolicyRetrieve:
@@ -720,9 +736,12 @@ class TestCLSConsolidationPolicyFrozenInvariants:
         """Verify max summary tokens is 350 (Invariant #9)."""
         assert CLSConsolidationPolicy.MAX_SUMMARY_TOKENS == 350
 
-    def test_old_memory_threshold_is_10(self):
-        """Verify old memory threshold is 10 tasks (Invariant #9)."""
-        assert CLSConsolidationPolicy.OLD_MEMORY_THRESHOLD == 10
+    def test_old_memory_threshold_is_5(self):
+        """Old-memory threshold is 5 (AMENDMENT A3; was 10 per v5 Invariant #23).
+
+        Lowered to cap/2 so CLS can consolidate under the A1 cap=10. See AMENDMENTS.md.
+        """
+        assert CLSConsolidationPolicy.OLD_MEMORY_THRESHOLD == 5
 
 
 class _FakeChatCompletion:
@@ -810,16 +829,18 @@ class TestCLSConsolidationPolicyLLMSummary:
         fake_client = _FakeChatClient(content=self._llm_json())
 
         with patch(
-            "src.memory.policies.cls_consolidation.get_chat_client",
+            "src.memory.policies.cls_consolidation.get_aux_client",
             return_value=fake_client,
         ):
             policy._consolidate_cluster(cluster, store, current_step=20)
 
-        # LLM was actually called with temperature=0 and json_object format
+        # LLM called at temperature=1 (2026-06-14 amendment: Kimi reasoning).
+        # D4 extended (2026-06-17): no json_object mode — MiniMax M3 returns 400
+        # model_not_capable, so we drop it and use tolerant JSON extraction.
         assert len(fake_client.calls) == 1
         call = fake_client.calls[0]
-        assert call["temperature"] == 0
-        assert call["response_format"] == {"type": "json_object"}
+        assert call["temperature"] == 1
+        assert "response_format" not in call
 
         consolidated = [r for r in store.records if r.is_consolidated]
         assert len(consolidated) == 1
@@ -871,7 +892,7 @@ class TestCLSConsolidationPolicyLLMSummary:
         fake_client = _FakeChatClient(content=huge)
 
         with patch(
-            "src.memory.policies.cls_consolidation.get_chat_client",
+            "src.memory.policies.cls_consolidation.get_aux_client",
             return_value=fake_client,
         ):
             policy._consolidate_cluster(cluster, store, current_step=20)
@@ -901,7 +922,7 @@ class TestCLSConsolidationPolicyLLMSummary:
         fake_client = _FakeChatClient(raise_exc=RuntimeError("boom"))
 
         with patch(
-            "src.memory.policies.cls_consolidation.get_chat_client",
+            "src.memory.policies.cls_consolidation.get_aux_client",
             return_value=fake_client,
         ):
             # Must NOT raise
@@ -935,7 +956,7 @@ class TestCLSConsolidationPolicyLLMSummary:
         fake_client = _FakeChatClient(content="not valid json at all")
 
         with patch(
-            "src.memory.policies.cls_consolidation.get_chat_client",
+            "src.memory.policies.cls_consolidation.get_aux_client",
             return_value=fake_client,
         ):
             policy._consolidate_cluster(cluster, store, current_step=20)

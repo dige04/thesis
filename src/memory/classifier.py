@@ -17,12 +17,15 @@ Design: §6 Type Classification System
 
 import logging
 from enum import StrEnum
+from typing import Any
 
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
-from src.config.llm_factory import chat_base_url, classifier_model, get_chat_client
+from src.config.llm_factory import chat_base_url, classifier_model, get_aux_client
 from src.errors import ClassifierError, UsageLimitError, is_usage_limit_error
+from src.metrics.cost_tracker import usage_from_chat_response
+from src.model_output import extract_json_object
 
 from .record import VALID_MEMORY_TYPES
 
@@ -71,8 +74,9 @@ class MemoryClassifier:
     Design: §6 Type Classification System
     """
 
-    # Frozen temperature (deterministic)
-    TEMPERATURE = 0
+    # Temperature held constant across conditions. AMENDMENT 2026-06-14: Kimi
+    # reasoning models (via CLIProxyAPI) only accept temp=1 (was 0); disclose.
+    TEMPERATURE = 1
 
     # Appended to the system prompt. Ollama's OpenAI-compatible endpoint ignores
     # the OpenAI json_schema response_format (ollama/ollama #10001), so we use
@@ -137,7 +141,7 @@ Classify the change into ONE of the 5 types above."""
             if api_key is not None:
                 self.client = OpenAI(base_url=chat_base_url(), api_key=api_key)
             else:
-                self.client = get_chat_client()
+                self.client = get_aux_client()
             logger.info(
                 f"Initialized MemoryClassifier with model={self.model}, "
                 f"temp={self.TEMPERATURE}"
@@ -155,6 +159,7 @@ Classify the change into ONE of the 5 types above."""
         task_id: str | None = None,
         retry_count: int = 0,
         max_retries: int = 2,
+        usage_sink: list[dict[str, Any]] | None = None,
     ) -> str:
         """
         Classify a memory record into one of 5 content types.
@@ -169,6 +174,11 @@ Classify the change into ONE of the 5 types above."""
             functions_touched: List of modified functions
             task_id: Optional task ID for logging
             retry_count: Number of retries attempted (for logging)
+            usage_sink: Optional list; when provided, each underlying LLM call
+                appends a dict ``{"call_type": "classifier", "model", ...,
+                "prompt_tokens", "completion_tokens"}`` so the caller can
+                aggregate token cost (E1). Every attempt (incl. retries) is
+                recorded — retries consume real tokens.
 
         Returns:
             One of the 5 valid memory types: architectural, api_change,
@@ -198,20 +208,36 @@ Classify the change into ONE of the 5 types above."""
         last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
-                # JSON mode (NOT beta.parse) + Pydantic validation — temperature
-                # is ALWAYS 0 (frozen invariant). See JSON_FORMAT_INSTRUCTIONS / D4.
+                # Prompt-instructed JSON + tolerant extraction + Pydantic
+                # validation. No response_format: MiniMax M3 returns 400
+                # model_not_capable for json_object mode (D4 extended 2026-06-17).
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    response_format={"type": "json_object"},
-                    temperature=self.TEMPERATURE,  # FROZEN: Always 0
+                    temperature=self.TEMPERATURE,
                 )
+
+                # Surface token usage for cost telemetry (E1). Recorded BEFORE
+                # validation so a malformed-then-retried response still counts
+                # its tokens (retries are real spend).
+                if usage_sink is not None:
+                    prompt_tokens, completion_tokens = usage_from_chat_response(response)
+                    usage_sink.append(
+                        {
+                            "call_type": "classifier",
+                            "model": self.model,
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                        }
+                    )
 
                 content = response.choices[0].message.content
                 if not content or not isinstance(content, str):
                     raise ValueError("classifier returned empty/non-string content")
 
-                classification = MemoryTypeClassification.model_validate_json(content)
+                classification = MemoryTypeClassification.model_validate(
+                    extract_json_object(content)
+                )
                 memory_type = classification.memory_type.value
 
                 # Redundant with the enum, but explicit per Invariant #7.
@@ -311,7 +337,8 @@ def classify_memory_type(
     functions_touched: list[str],
     task_id: str | None = None,
     retry_count: int = 0,
-    api_key: str | None = None
+    api_key: str | None = None,
+    usage_sink: list[dict[str, Any]] | None = None,
 ) -> str:
     """
     Convenience function to classify a memory type without creating a classifier instance.
@@ -343,5 +370,6 @@ def classify_memory_type(
         files_touched=files_touched,
         functions_touched=functions_touched,
         task_id=task_id,
-        retry_count=retry_count
+        retry_count=retry_count,
+        usage_sink=usage_sink,
     )
