@@ -22,8 +22,18 @@ The experiment runs on **OpenCode Zen "go"** (OpenAI-compatible), not GPT-5.4 (u
 
 ---
 
-## ⚡ CURRENT STATE — D7 (2026-06-18): Kimi k2.7-code agent + DeepSeek aux, sustained fleet run
-> READ FIRST. This supersedes the OpenCode-go / MiniMax-M3 (D6) text below. Full disclosure = **AMENDMENTS.md D7**.
+## ⚡ CURRENT STATE — D8 (2026-06-18): ALL roles on go DeepSeek-V4-Flash (default thinking)
+> READ FIRST. **Supersedes D7 below** — the Kimi-k2.7-on-sub + DeepSeek-aux + nyc1-tunnel plan was dropped: the Kimi sub's MONTHLY quota couldn't carry 144 (~5% burned for 0 full units). Full disclosure = **AMENDMENTS.md D8**.
+>
+> - **Models:** agent + 5-type classifier + reflection + CLS summary = **`deepseek-v4-flash` on OpenCode go** — ONE model, **default thinking** (smoke: ~50% resolve ≈ k2.6 (not floor); `reasoning_effort=high` gave no resolve/stability gain at +7% tokens → default). Embeddings: local Ollama `nomic-embed-text-v2-moe` (unchanged). **No sub / no tunnel / no aux-split.**
+> - **Matrix:** ALL **144 FRESH** (6×8×3) on Flash; the 12 k2.6 gate-3 units are **DROPPED** (Flash is cheap to re-run ⇒ a single-model 144 is the cleanest story). `RUNS_ROOT=runs_k27` (wiped), **no skip-markers**.
+> - **Quota:** ~108k requests ≈ **~68% of one go-Flash account** ($60/mo ≈ 158k req). `.env` `FREE_LLM_CHAT_API_KEYS` = comma pool; on **402** (a key capped), ADD a fresh go key (another account) to the pool + `systemctl restart thesis-matrix@N` → `KeyRotatingClient` fails over (fail-closed, no data loss). Doctor heartbeat reports `err402`.
+> - **Fleet:** 5 sfo droplets, systemd `thesis-matrix@<shard>` + `thesis-doctor@<shard>` (`Restart=always`, CONC=2 ⇒ ~10 concurrent ⇒ **~1–1.5d** ETA; launched ~18:35Z 06-18). `thesis-tunnel` **DISABLED**. `doctor.sh` = all-go variant (no tunnel check; go-quota gauge + 402 alert). go allows concurrency so the fleet parallelizes. Monitor: `ssh root@<ip> cat /root/thesis/doctor_status.json`.
+
+---
+
+## ⚡ CURRENT STATE — D7 (2026-06-18) [SUPERSEDED by D8 above]: Kimi k2.7-code agent + DeepSeek aux
+> Historical. Full D7 disclosure = **AMENDMENTS.md D7**.
 
 **Models (per-role split):**
 - **Agent** = `kimi-k2.7-code` — Kimi "For Coding" subscription via a local **CLIProxyAPI** (`localhost:8317`); the sfo workers reach it through an **nyc1-anchored SSH tunnel**. OpenCode go also serves the same id (bonus capacity).

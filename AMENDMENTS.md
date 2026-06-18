@@ -208,3 +208,30 @@ proxy; D4 classifier → JSON-mode + Pydantic (and see A2 re: temperature); D5 h
 - **Retained:** 3-seed/144 (A7); A1 (cap=10), A2 (temp=1), A3, A4.
 - **Reversible:** `.env`/`AUX_LLM_CHAT_*` only.
 - **Touches:** supersedes D6 (model) + A7's "all 144 fresh on M3" clause.
+
+## D8 — D7 SUPERSEDED: single model = `deepseek-v4-flash` (OpenCode go) for ALL roles; all-144 fresh
+- **Date:** 2026-06-18
+- **Change:** the per-role split (D7: agent k2.7-code on the Kimi sub + DeepSeek aux) is **withdrawn**
+  because the Kimi For-Coding **subscription's monthly quota cannot carry 144 units** (~5% of the
+  monthly burned for ~109 partial tasks / 0 completed units in the pilot fleet). New design: **one
+  model, all roles — `deepseek-v4-flash` on OpenCode go** (agent + 5-type classifier + reflection +
+  CLS summary), **default thinking**. Embeddings unchanged (local Ollama nomic, D2).
+- **Why valid + chosen:** Flash ≈ 79% SWE-bench Verified / smoke ~50% resolve **≈ the k2.6 gate-3
+  rate** (not floor); it's another **fixed-factor model deviation** (like D1/D6), held constant across
+  all 6 conditions × seeds ⇒ between-policy contrasts valid; absolute rates not leaderboard-comparable.
+  **All 144 run FRESH on Flash** — the 12 k2.6 gate-3 units are **dropped** (Flash is cheap to re-run,
+  so a single-model 144 is cleaner than a k2.6↔Flash cross-vendor mix). This **removes** the D7
+  agent/aux model mix entirely → the matrix is a clean single model.
+- **D8a — Thinking level.** Flash on go accepts `reasoning_effort` (low/med/high, modest effect) and
+  `thinking.budget_tokens` (stronger). Pilot 2026-06-18: `reasoning_effort=high` gave **no resolve or
+  stability gain** vs default (+7% tokens) → **default thinking** (held constant; disclose). Agent has
+  an optional config `agent.reasoning_effort` (off by default). Flash is a light reasoning model → the
+  D6a token-cost-axis inflation caveat persists (uniform across conditions).
+- **D8b — Cost/quota.** go is one $-capped account (~158k DeepSeek-Flash req/mo at $60). Matrix ≈
+  ~108k requests ≈ ~68% of one account → fits, but a **multi-key pool** (`FREE_LLM_CHAT_API_KEYS`) +
+  `KeyRotatingClient` failover lets additional go accounts' keys be appended on 402 (fail-closed; no
+  false `resolved=0`). go allows concurrency ⇒ the 5-VPS fleet parallelizes (unlike the rate-capped sub).
+- **Execution:** 5 sfo droplets, systemd `thesis-matrix@`/`thesis-doctor@` (no `thesis-tunnel`); doctor
+  is the all-go variant (go-quota gauge). ~1–1.5 d wall-clock.
+- **Retained:** 3-seed/144 (A7); A1–A4.
+- **Touches:** supersedes D7 (model + per-role split + sub/tunnel) and D6/D1 (model).
