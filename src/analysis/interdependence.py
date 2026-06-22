@@ -95,13 +95,16 @@ def structural_interdependence(task_files: list[set[str]]) -> dict[str, Any]:
 
 
 def memory_lift_by_position(
-    no_memory: list[int], full: list[int]
+    no_memory: list[float], full: list[float]
 ) -> dict[str, Any]:
     """Full minus No-Memory resolved rate — overall and split early/late.
 
     Both inputs are aligned by sequence position (``[i]`` is the same task under
-    each condition; valid because Invariant #1 fixes the sequence order). The
-    early/late split is the interdependence signal: if memory helps *because*
+    each condition; valid because Invariant #1 fixes the sequence order).  Inputs
+    may be fractional (e.g. per-seed-averaged resolve rates) — no ``int()``
+    truncation is applied.
+
+    The early/late split is the interdependence signal: if memory helps *because*
     later tasks build on earlier ones, the benefit concentrates late
     (``late_minus_early > 0``).
 
@@ -115,10 +118,11 @@ def memory_lift_by_position(
         )
     n = len(full)
 
-    def _mean(xs: list[int]) -> float:
+    def _mean(xs: list[float]) -> float:
         return sum(xs) / len(xs) if xs else 0.0
 
-    per_position = [int(full[i]) - int(no_memory[i]) for i in range(n)]
+    # Use float() to preserve fractional averages — do NOT truncate via int().
+    per_position = [float(full[i]) - float(no_memory[i]) for i in range(n)]
     overall_lift = _mean(full) - _mean(no_memory)
 
     half = n // 2

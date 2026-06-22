@@ -104,9 +104,20 @@ def stage_plots(agg: dict[str, Any], out: Path) -> None:
             print(f"[plots] Pareto ({axis}) skipped: {type(e).__name__}: {e}")
 
 
-def _resolved_by_index(runs_dir: Path) -> dict[tuple[str, str], dict[int, int]]:
-    """Map {(policy, repo): {sequence_index: resolved}} across all run dirs."""
-    out: dict[tuple[str, str], dict[int, int]] = defaultdict(dict)
+_EXPECTED_SEEDS: frozenset[int] = frozenset({1, 2, 3})
+
+
+def _resolved_by_index(
+    runs_dir: Path,
+) -> dict[tuple[str, str, int], dict[int, int]]:
+    """Map {(policy, repo, seed): {sequence_index: resolved}} across all run dirs.
+
+    Keying on the full (policy, repo, seed) triple prevents seed-overwrite: each
+    seed's resolved pattern is stored independently. The ``seed`` field is read
+    directly from the task_results.jsonl rows (it is always present in real run
+    output) and is therefore independent of directory-name conventions.
+    """
+    out: dict[tuple[str, str, int], dict[int, int]] = defaultdict(dict)
     for rd in Path(runs_dir).iterdir():
         trp = rd / "task_results.jsonl"
         if not (rd.is_dir() and trp.exists()):
@@ -116,10 +127,13 @@ def _resolved_by_index(runs_dir: Path) -> dict[tuple[str, str], dict[int, int]]:
             if not line:
                 continue
             d = json.loads(line)
-            pol, repo, idx = d.get("policy"), d.get("repo"), d.get("sequence_index")
-            if pol is None or repo is None or idx is None:
+            pol = d.get("policy")
+            repo = d.get("repo")
+            idx = d.get("sequence_index")
+            seed = d.get("seed")
+            if pol is None or repo is None or idx is None or seed is None:
                 continue
-            out[(pol, repo)][int(idx)] = int(bool(d.get("resolved", 0)))
+            out[(pol, repo, int(seed))][int(idx)] = int(bool(d.get("resolved", 0)))
     return out
 
 
@@ -128,19 +142,78 @@ def stage_interdependence(runs_dir: Path, out: Path, curriculum: Path | None) ->
     tdir.mkdir(parents=True, exist_ok=True)
 
     # E7 memory-lift: full_memory vs no_memory per sequence (the does-memory-help verdict).
+    #
+    # Seed-aware algorithm (D-5 fix):
+    #   1. Key on (policy, repo, seed) — never collapse seeds.
+    #   2. Completeness contract: for each repo, ALL seeds in _EXPECTED_SEEDS must
+    #      be present for BOTH conditions.  If any seed is missing in either
+    #      condition, DROP the repo and record it in the sidecar.
+    #   3. Compute lift paired within each seed (no_memory[seed] vs full[seed],
+    #      common indices), then average the per-seed lift dicts.
+    #   4. Memory_lift_by_position receives float averages — no int() truncation.
     by_idx = _resolved_by_index(runs_dir)
-    repos = sorted({repo for (_, repo) in by_idx})
-    rows = []
+    repos = sorted({repo for (_, repo, _seed) in by_idx})
+    rows: list[dict[str, Any]] = []
+    dropped_incomplete: list[dict[str, Any]] = []
+
     for repo in repos:
-        nm, fl = by_idx.get(("no_memory", repo)), by_idx.get(("full_memory", repo))
-        if not nm or not fl:
+        # Check completeness: all expected seeds must exist for both conditions.
+        nm_seeds = {
+            seed for (pol, r, seed) in by_idx if pol == "no_memory" and r == repo
+        }
+        fl_seeds = {
+            seed for (pol, r, seed) in by_idx if pol == "full_memory" and r == repo
+        }
+        missing_nm = _EXPECTED_SEEDS - nm_seeds
+        missing_fl = _EXPECTED_SEEDS - fl_seeds
+        if missing_nm or missing_fl:
+            dropped_incomplete.append({
+                "repo": repo,
+                "reason": "incomplete_seeds",
+                "missing_no_memory_seeds": sorted(missing_nm),
+                "missing_full_memory_seeds": sorted(missing_fl),
+            })
             continue
-        common = sorted(set(nm) & set(fl))
-        if len(common) < 2:
+
+        # Pair within each seed, accumulate per-seed lift dicts.
+        per_seed_lifts: list[dict[str, Any]] = []
+        for seed in sorted(_EXPECTED_SEEDS):
+            nm_map = by_idx.get(("no_memory", repo, seed), {})
+            fl_map = by_idx.get(("full_memory", repo, seed), {})
+            common = sorted(set(nm_map) & set(fl_map))
+            if len(common) < 2:
+                continue
+            lift = memory_lift_by_position(
+                [float(nm_map[i]) for i in common],
+                [float(fl_map[i]) for i in common],
+            )
+            per_seed_lifts.append(lift)
+
+        if not per_seed_lifts:
+            dropped_incomplete.append({
+                "repo": repo,
+                "reason": "no_seed_with_sufficient_common_indices",
+                "missing_no_memory_seeds": [],
+                "missing_full_memory_seeds": [],
+            })
             continue
-        lift = memory_lift_by_position([nm[i] for i in common], [fl[i] for i in common])
-        rows.append({"repo": repo, **{k: lift[k] for k in (
-            "overall_lift", "first_half_lift", "second_half_lift", "late_minus_early", "n_tasks")}})
+
+        # Average the per-seed lift values across seeds.
+        n_seeds = len(per_seed_lifts)
+        avg_lift: dict[str, Any] = {}
+        for key in ("overall_lift", "first_half_lift", "second_half_lift",
+                    "late_minus_early", "n_tasks"):
+            avg_lift[key] = sum(s[key] for s in per_seed_lifts) / n_seeds
+
+        rows.append({
+            "repo": repo,
+            "n_seeds": n_seeds,
+            **{k: avg_lift[k] for k in (
+                "overall_lift", "first_half_lift", "second_half_lift",
+                "late_minus_early", "n_tasks",
+            )},
+        })
+
     if rows:
         with open(tdir / "memory_lift.csv", "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
@@ -149,6 +222,17 @@ def stage_interdependence(runs_dir: Path, out: Path, curriculum: Path | None) ->
         print(f"[interdependence] memory-lift for {len(rows)} sequences -> {tdir / 'memory_lift.csv'}")
     else:
         print("[interdependence] memory-lift SKIP — need no_memory + full_memory runs per sequence")
+
+    # Always write the dropped_incomplete sidecar (even if empty) so callers can
+    # distinguish "nothing was dropped" from "sidecar missing".
+    sidecar_path = tdir / "memory_lift_dropped.json"
+    with open(sidecar_path, "w") as f:
+        json.dump(dropped_incomplete, f, indent=2)
+    if dropped_incomplete:
+        print(
+            f"[interdependence] {len(dropped_incomplete)} repo(s) dropped (incomplete seeds) "
+            f"-> {sidecar_path}"
+        )
 
     # E7 structural interdependence: gold-patch file overlap with earlier tasks.
     if curriculum and Path(curriculum).exists():
