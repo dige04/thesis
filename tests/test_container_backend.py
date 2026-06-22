@@ -130,7 +130,9 @@ def test_agent_tools_routes_through_container_backend(fake):
         "cat /testbed/a.py": (0, "CONTENT", ""),
     }
     tools = AgentTools(backend=ContainerBackend("c1"))
-    assert tools.read_file("a.py") == "CONTENT"
+    # read_file now returns line-numbered output with a header (Task 1); the
+    # container backend's `cat` content must still flow through verbatim.
+    assert "1\tCONTENT" in tools.read_file("a.py")
     stats = tools.get_tracker_stats()
     assert stats["tool_call_breakdown"]["read_file"] == 1
 
