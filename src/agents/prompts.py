@@ -33,10 +33,14 @@ You have a HARD budget of {max_steps} steps (tool calls), after which you are fo
 Retrieved memories may be stale or wrong. Prefer direct evidence from the current repository. Do not blindly copy old solutions.
 
 Tools:
-- read_file(path), write_file(path, content), edit_file(path, diff)
+- read_file(path, start_line, end_line), write_file(path, content), edit_file(path, diff)
 - search_code(query), list_files(path)
 - run_command(command)  # sparingly
-- run_tests(test_command), get_patch(), finish
+- run_tests(test_command), finish
+
+Read the range around a search_code hit. Lines are shown as `N<TAB>...` — NEVER include the `N<TAB>` prefix in edit_file diffs or write_file content.
+
+Re-read the exact lines with read_file before editing them. Prefer write_file with full new contents for small/whole-file changes (no diff syntax needed). Use ONLY the provided tools — there is no shell `grep`/`sed`/`get_patch`; use search_code and run_command.
 
 edit_file takes a STANDARD unified diff (with `@@` hunk headers and exact context lines, as `git apply` expects). If edit_file reports it could not apply your diff, do NOT retry the same diff — switch to write_file with the full new file contents.
 

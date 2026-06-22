@@ -82,9 +82,13 @@ def _tool(name: str, description: str, properties: dict[str, Any], required: lis
     }
 
 
-# OpenAI-compatible tool schemas for the 8 v5 §4.3 tools (+ finish).
+# OpenAI-compatible tool schemas for the v5 §4.3 tools (+ finish).
 _TOOL_SCHEMAS: list[dict[str, Any]] = [
-    _tool("read_file", "Read a file's contents.", {"path": {"type": "string"}}, ["path"]),
+    _tool("read_file", "Read a file's contents. Pass start_line/end_line (1-indexed, "
+          "inclusive) to read a range; lines are shown as `N<TAB>text`. Output is bounded; "
+          "follow the 'call read_file(...) to continue' hint to page.",
+          {"path": {"type": "string"},
+           "start_line": {"type": "integer"}, "end_line": {"type": "integer"}}, ["path"]),
     _tool("write_file", "Write (overwrite/create) a file.",
           {"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]),
     _tool("edit_file", "Apply a standard unified diff to a file via `git apply` "

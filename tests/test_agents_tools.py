@@ -381,3 +381,16 @@ def test_edit_file_path_traversal_rejected(git_repo):
     )
     with pytest.raises(ValueError, match=r"(?i)(traversal|escape|path|\.\.)"):
         tools.edit_file("m.py", diff)
+
+
+# ---------------------------------------------------------------------------
+# Task 3: _TOOL_SCHEMAS — read_file range params; no get_patch advertisement
+# ---------------------------------------------------------------------------
+
+def test_read_file_schema_and_no_get_patch():
+    from src.agents.langgraph_agent import _TOOL_SCHEMAS
+    names = {t["function"]["name"] for t in _TOOL_SCHEMAS}
+    assert "get_patch" not in names
+    rf = next(t for t in _TOOL_SCHEMAS if t["function"]["name"] == "read_file")
+    props = rf["function"]["parameters"]["properties"]
+    assert "start_line" in props and "end_line" in props
