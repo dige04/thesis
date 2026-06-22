@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from src.agents.langgraph_agent import CodingAgent
+from src.benchmark.completion import validate_run_complete, write_completed, write_failed
 from src.benchmark.evaluator import SWEBenchEvaluator
 from src.benchmark.models import Sequence, Task
 from src.benchmark.task_env import RepositoryCheckoutError, TaskEnvironment
@@ -323,12 +324,32 @@ class SequenceRunner:
                     errored_tasks += 1
                     error_task_ids.append(task.task_id)
 
-        except RepositoryCheckoutError:
-            # Re-raise repository errors to fail the sequence
+        except RepositoryCheckoutError as _rce:
+            # Re-raise repository errors to fail the sequence.
+            # Write RUN_FAILED before re-raising so the marker is durable.
+            _fail_msg = f"Repository checkout failed: {_rce}"
+            try:
+                write_failed(
+                    run_dir=self.run_dir,
+                    error_type="RepositoryCheckoutError",
+                    error_message=_fail_msg,
+                )
+            except Exception as _wf_e:
+                logger.warning(f"write_failed sentinel failed: {_wf_e}")
             raise
 
-        except UsageLimitError:
+        except UsageLimitError as _ule:
             # Re-raise provider quota errors to abort the run (and the experiment).
+            # Write RUN_FAILED before re-raising so the marker is durable.
+            _fail_msg = f"ABORTING run — provider usage limit: {_ule}"
+            try:
+                write_failed(
+                    run_dir=self.run_dir,
+                    error_type="UsageLimitError",
+                    error_message=_fail_msg,
+                )
+            except Exception as _wf_e:
+                logger.warning(f"write_failed sentinel failed: {_wf_e}")
             raise
 
         except Exception as e:
@@ -354,6 +375,45 @@ class SequenceRunner:
 
         # Calculate total wall time
         total_wall_time = time.time() - sequence_start_time
+
+        # §3.7 completion sentinel — written AFTER the finally block so
+        # cost_summary.json, memory.db/.faiss (closed above) are all present.
+        # Only attempt this when there was no run-level error.
+        if error_message is None:
+            try:
+                # Load manifest to get config_hash and manifest_hash.
+                import json as _json
+                _manifest_path = (
+                    Path(__file__).parent.parent.parent
+                    / "results" / "manifest" / "runs_144.json"
+                )
+                _config_hash = ""
+                _manifest_hash = ""
+                if _manifest_path.exists():
+                    try:
+                        _manifest_doc = _json.loads(_manifest_path.read_text())
+                        _config_hash = _manifest_doc.get("config_hash_preliminary", "")
+                        _manifest_hash = _manifest_doc.get("manifest_hash", "")
+                    except Exception:
+                        pass
+
+                # Build manifest_entry for validation from the sequence.
+                _entry = {"task_ids": [t.task_id for t in sequence.tasks]}
+                _ok, _missing = validate_run_complete(self.run_dir, _entry)
+                if _ok:
+                    write_completed(
+                        run_dir=self.run_dir,
+                        config_hash=_config_hash,
+                        manifest_hash=_manifest_hash,
+                        task_count=sequence.task_count,
+                    )
+                else:
+                    logger.warning(
+                        f"validate_run_complete failed for {self.run_id} "
+                        f"({len(_missing)} issues): {_missing[:5]}"
+                    )
+            except Exception as _se:
+                logger.warning(f"completion sentinel write failed for {self.run_id}: {_se}")
 
         # Build sequence result
         result = SequenceResult(
@@ -1070,6 +1130,7 @@ class SequenceRunner:
             # Task metadata
             task_difficulty=task.difficulty_label,
             error_message=agent_result.get("error_message"),
+            termination_reason=agent_result.get("termination_reason"),
         )
 
     def _save_retrieval_quality_metrics(self) -> None:

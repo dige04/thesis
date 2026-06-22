@@ -160,6 +160,12 @@ class AgentState:
     # Memory record (generated during reflection)
     memory_record: dict[str, Any] | None = None
 
+    # Why the ReAct loop ended (set by _run_react_loop at each exit).
+    # One of: finished_tool | model_no_tool_calls | step_limit | wall_time |
+    #         tool_call_limit | test_run_limit | llm_error
+    # NOTE: UsageLimitError re-raises and does NOT set this field.
+    termination_reason: str | None = None
+
     # Next node routing
     next_node: str = "planning"
 
@@ -824,6 +830,7 @@ class CodingAgent:
             "total_tokens": state.total_tokens,
             "estimated_cost_usd": 0.0,  # flat-rate Ollama; cost tracked as tokens (D3)
             "limit_status": state.limit_tracker.get_status(),
+            "termination_reason": state.termination_reason,
         }
 
     def _make_tools(self, state: AgentState) -> tuple[AgentTools, ContainerSession | None]:
@@ -865,9 +872,16 @@ class CodingAgent:
             # One model turn == one step. increment_step() is post-increment and
             # returns True when the count EXCEEDS max_steps (20 turns run, the
             # 21st trips) — strict Invariant #3.
-            if tracker.increment_step() or tracker.check_wall_time():
+            # Split the two checks so termination_reason is unambiguous.
+            if tracker.increment_step():
                 state.timeout = True
                 state.error_message = tracker.get_failure_reason()
+                state.termination_reason = "step_limit"
+                break
+            if tracker.check_wall_time():
+                state.timeout = True
+                state.error_message = tracker.get_failure_reason()
+                state.termination_reason = "wall_time"
                 break
 
             try:
@@ -889,6 +903,7 @@ class CodingAgent:
                         f"({state.task_id}): {e}"
                     ) from e
                 state.error_message = f"LLM call failed: {e}"
+                state.termination_reason = "llm_error"
                 break
 
             usage = getattr(response, "usage", None)
@@ -903,6 +918,7 @@ class CodingAgent:
             # No tool call → the model is done.
             if not tool_calls:
                 state.finished = True
+                state.termination_reason = "model_no_tool_calls"
                 break
 
             messages.append(self._assistant_message(message, tool_calls))
@@ -917,6 +933,7 @@ class CodingAgent:
 
                 if name == "finish":
                     state.finished = True
+                    state.termination_reason = "finished_tool"
                     messages.append({"role": "tool", "tool_call_id": tc.id, "content": "acknowledged"})
                     stop = True
                     break
@@ -924,11 +941,13 @@ class CodingAgent:
                 if tracker.increment_tool_call():
                     state.timeout = True
                     state.error_message = tracker.get_failure_reason()
+                    state.termination_reason = "tool_call_limit"
                     stop = True
                     break
                 if name == "run_tests" and tracker.increment_test_run():
                     state.timeout = True
                     state.error_message = tracker.get_failure_reason()
+                    state.termination_reason = "test_run_limit"
                     stop = True
                     break
 

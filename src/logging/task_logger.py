@@ -83,6 +83,11 @@ class TaskResult:
     task_difficulty: str = "medium"  # easy | medium | hard
     error_message: str | None = None
 
+    # ========== Termination Reason ==========
+    # Why the agent loop ended; one of: finished_tool | model_no_tool_calls |
+    # step_limit | wall_time | tool_call_limit | test_run_limit | llm_error | None
+    termination_reason: str | None = None
+
     def __post_init__(self) -> None:
         """Validate task result fields."""
         # Validate resolved is binary
@@ -233,6 +238,7 @@ class TaskResult:
             "consolidated_memory_ids": self.consolidated_memory_ids,
             "task_difficulty": self.task_difficulty,
             "error_message": self.error_message,
+            "termination_reason": self.termination_reason,
         }
 
 
