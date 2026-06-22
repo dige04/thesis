@@ -58,9 +58,9 @@ def test_read_file(temp_repo):
     """Test reading files."""
     tools = AgentTools(str(temp_repo))
 
-    # Read existing file
+    # Read existing file — new format: header + numbered lines
     content = tools.read_file("test.py")
-    assert content == "print('hello')\n"
+    assert "1\tprint('hello')" in content
 
     # Read file in subdirectory
     content = tools.read_file("subdir/module.py")
@@ -274,3 +274,33 @@ def test_tool_call_error_tracking(temp_repo):
     for call in tools.tracker.tool_calls:
         if not call["success"]:
             assert call["error"] is not None
+
+
+# ---------------------------------------------------------------------------
+# read_file range + numbering + budget tests (Task 1)
+# ---------------------------------------------------------------------------
+
+def test_read_file_range_exact_when_fits(tmp_path):
+    f = tmp_path/"b.py"; f.write_text("\n".join(f"line{i}" for i in range(1,501)))
+    out = AgentTools(working_dir=str(tmp_path)).read_file("b.py", 180, 182)
+    assert "180\tline180" in out and "182\tline182" in out and "183\t" not in out and "179\t" not in out
+
+def test_read_file_budget_and_no_skip(tmp_path):
+    from src.agents.tools import MAX_READ_CHARS
+    f = tmp_path/"b.py"; f.write_text("\n".join(f"line{i}" for i in range(1,5001)))
+    out = AgentTools(working_dir=str(tmp_path)).read_file("b.py", 1, 5000)
+    assert len(out) <= MAX_READ_CHARS
+    import re
+    last = max(int(x) for x in re.findall(r"(?m)^(\d+)\t", out))   # highest line shown
+    assert f"read_file(path, {last+1}," in out                    # continuation == last+1 (no skip)
+
+def test_read_file_oversized_line_progresses(tmp_path):
+    from src.agents.tools import MAX_READ_CHARS
+    f = tmp_path/"b.py"; f.write_text("x"*(MAX_READ_CHARS*2)+"\nnext")
+    out = AgentTools(working_dir=str(tmp_path)).read_file("b.py", 1, 2)
+    assert len(out) <= MAX_READ_CHARS and "truncated" in out and "read_file(path, 2," in out
+
+def test_read_file_invalid_and_oob(tmp_path):
+    f = tmp_path/"s.py"; f.write_text("a\nb\nc"); t=AgentTools(working_dir=str(tmp_path))
+    assert "invalid range" in t.read_file("s.py",3,1).lower()
+    assert "past end" in t.read_file("s.py",99).lower()

@@ -34,6 +34,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# read_file budget constants
+MAX_READ_LINES: int = 400
+MAX_READ_CHARS: int = 12000
+
 
 @dataclass
 class ToolCallTracker:
@@ -420,27 +424,52 @@ class AgentTools:
         self.working_dir = getattr(backend, "working_dir", None)
         self.tracker = tracker or ToolCallTracker()
 
-    def read_file(self, path: str) -> str:
-        """Read the contents of a file (relative to the repo root)."""
-        args = {"path": path}
+    def read_file(self, path: str, start_line: int | None = None,
+                  end_line: int | None = None) -> str:
+        """Read the contents of a file (relative to the repo root).
 
+        Supports optional line ranges with line-number prefixes and a hard
+        budget cap (MAX_READ_LINES / MAX_READ_CHARS).  When the output would
+        exceed the budget a continuation hint is appended so the caller knows
+        which range to request next.
+        """
+        args = {"path": path, "start_line": start_line, "end_line": end_line}
         if not self.backend.exists(path):
-            error = f"File not found: {path}"
-            self.tracker.record_call("read_file", args, None, error)
+            error = f"File not found: {path}"; self.tracker.record_call("read_file", args, None, error)
             raise FileNotFoundError(error)
-
         if not self.backend.is_file(path):
-            error = f"Path is not a file: {path}"
-            self.tracker.record_call("read_file", args, None, error)
+            error = f"Path is not a file: {path}"; self.tracker.record_call("read_file", args, None, error)
             raise ValueError(error)
-
         try:
             content = self.backend.read_text(path)
-            self.tracker.record_call("read_file", args, len(content))
-            return content
-        except Exception as e:
-            self.tracker.record_call("read_file", args, None, str(e))
-            raise
+        except Exception as ex:
+            self.tracker.record_call("read_file", args, None, str(ex)); raise
+        lines = content.splitlines(); n = len(lines)
+        self.tracker.record_call("read_file", args, len(content))
+        s = max(1, int(start_line)) if start_line else 1
+        e = n if end_line is None else int(end_line)
+        if s > n:
+            return f"# {path} ({n} lines): requested start_line {s} is past end of file."
+        if e < s:
+            return f"# {path} ({n} lines): invalid range start_line={s} > end_line={e}."
+        e = min(n, e)
+        def header(last: int) -> str:
+            if last < e:
+                return (f"# {path} (lines {s}-{last} of {n}; showing through {last} of requested "
+                        f"{s}-{e}. Call read_file(path, {last + 1}, {e}) to continue.)\n")
+            return f"# {path} (lines {s}-{last} of {n})\n"
+        rows = [f"{i}\t{lines[i-1]}" for i in range(s, min(e, s + MAX_READ_LINES - 1) + 1)]
+        while rows:
+            last = s + len(rows) - 1
+            out = header(last) + "\n".join(rows)
+            if len(out) <= MAX_READ_CHARS:
+                return out
+            if len(rows) == 1:
+                hdr = header(s); suffix = f" …[line {s} truncated]"
+                avail = max(0, MAX_READ_CHARS - len(hdr) - len(f"{s}\t") - len(suffix))
+                return hdr + f"{s}\t{lines[s - 1][:avail]}{suffix}"
+            rows.pop()
+        return header(s)
 
     def write_file(self, path: str, content: str) -> None:
         """Write content to a file, creating parents if needed."""
