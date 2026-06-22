@@ -45,7 +45,19 @@ logger = logging.getLogger(__name__)
 # Max characters of a tool observation fed back to the model / stored in the
 # trajectory (keeps context bounded; trajectory stores action summaries +
 # observations only — NO chain-of-thought, per v5 §11.3).
-_MAX_OBS = 4000
+_MAX_OBS = 12000
+
+
+def _truncate_obs(text: str, limit: int = _MAX_OBS) -> str:
+    if len(text) <= limit:
+        return text
+    tmpl = "\n...[{} chars omitted]...\n"
+    reserve = len(tmpl.format(len(text)))
+    budget = max(0, limit - reserve)
+    head = (budget * 2) // 3
+    tail = budget - head
+    omitted = len(text) - head - tail
+    return (text[:head] + tmpl.format(omitted) + (text[len(text) - tail:] if tail else ""))[:limit]
 
 # Appended to the v5 §4.5 prompt (which build_prompt_context already produces).
 _TOOL_USE_SUFFIX = (
@@ -920,9 +932,9 @@ class CodingAgent:
                 state.trajectory.append({
                     "action": name,
                     "action_input": args,
-                    "observation_summary": observation[:_MAX_OBS],
+                    "observation_summary": _truncate_obs(observation),
                 })
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": observation[:_MAX_OBS]})
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": _truncate_obs(observation)})
 
             if stop:
                 break
@@ -957,7 +969,7 @@ class CodingAgent:
         try:
             if name == "read_file":
                 path = args["path"]
-                content = tools.read_file(path)
+                content = tools.read_file(path, args.get("start_line"), args.get("end_line"))
                 if path not in state.files_read:
                     state.files_read.append(path)
                 return content
