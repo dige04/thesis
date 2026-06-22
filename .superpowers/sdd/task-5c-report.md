@@ -53,8 +53,13 @@ Added `_SYSTEM_PROMPT_LEGACY` string constant (verbatim from `git show 39be860^`
 - `build_tool_schemas(self.resolved_tool_mode)` for the LLM call.
 - `_truncate_obs(observation, mode=self.resolved_tool_mode)` at both call sites.
 
-### 8. Mode recorded in task result — `solve_task` return dict
-`"tool_mode": self.resolved_tool_mode` is added to the `solve_task` result dict. This flows to `task_results.jsonl` via the SequenceRunner (which writes the full result dict per task row).
+### 8. Mode recorded in task result — full persistence chain
+`"tool_mode": self.resolved_tool_mode` is added to the `solve_task` result dict.
+
+The field is wired through the full persistence chain (commit f4b990b):
+- `TaskResult` dataclass (`src/logging/task_logger.py`): `tool_mode: str | None = None` field added after `termination_reason`. Defaults to `None` so all pre-Task-5c rows remain valid.
+- `TaskResult.to_dict()`: `"tool_mode": self.tool_mode` added to the serialised row.
+- `SequenceRunner._build_task_result` (`src/benchmark/sequence_runner.py`): `tool_mode=agent_result.get("tool_mode")` wired in.
 
 ## Where mode is resolved
 1. **Primary**: `tool_mode()` in `src/agents/tools.py` — reads `AGENT_TOOL_MODE` env var.
