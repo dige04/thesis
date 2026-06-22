@@ -1131,6 +1131,7 @@ class SequenceRunner:
             task_difficulty=task.difficulty_label,
             error_message=agent_result.get("error_message"),
             termination_reason=agent_result.get("termination_reason"),
+            tool_mode=agent_result.get("tool_mode"),
         )
 
     def _save_retrieval_quality_metrics(self) -> None:

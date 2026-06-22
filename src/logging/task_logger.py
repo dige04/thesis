@@ -88,6 +88,10 @@ class TaskResult:
     # step_limit | wall_time | tool_call_limit | test_run_limit | llm_error | None
     termination_reason: str | None = None
 
+    # ========== Tool Mode (Task 5c / A/B experiment) ==========
+    # Resolved AGENT_TOOL_MODE for this run: "legacy" | "fixed" | None
+    tool_mode: str | None = None
+
     def __post_init__(self) -> None:
         """Validate task result fields."""
         # Validate resolved is binary
@@ -239,6 +243,7 @@ class TaskResult:
             "task_difficulty": self.task_difficulty,
             "error_message": self.error_message,
             "termination_reason": self.termination_reason,
+            "tool_mode": self.tool_mode,
         }
 
 

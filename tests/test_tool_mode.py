@@ -216,3 +216,139 @@ class TestSystemPromptByMode:
         prompt_default = get_system_prompt()
         prompt_fixed = get_system_prompt(mode="fixed")
         assert prompt_default == prompt_fixed
+
+
+# ---------------------------------------------------------------------------
+# Persistence: tool_mode flows into task_results.jsonl
+# ---------------------------------------------------------------------------
+
+class TestToolModePersistence:
+    """Verify that tool_mode survives the full chain to the persisted row.
+
+    Chain: solve_task → _build_task_result → TaskResult → to_dict → jsonl row.
+    Tests are unit-level (no SequenceRunner spin-up needed).
+    """
+
+    def test_task_result_has_tool_mode_field(self):
+        """TaskResult dataclass accepts tool_mode."""
+        from src.logging.task_logger import TaskResult
+        tr = TaskResult(
+            run_id="test_run",
+            policy="full_memory",
+            seed=1,
+            repo="astropy/astropy",
+            task_id="astropy__astropy-1234",
+            sequence_index=0,
+            resolved=1,
+            patch_generated=True,
+            patch_applied=True,
+            syntax_error=False,
+            timeout=False,
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            estimated_cost_usd=0.0,
+            task_api_cost=0.0,
+            consolidation_llm_cost=0.0,
+            wall_time_seconds=1.0,
+            tool_calls=5,
+            test_runs=1,
+            files_read=2,
+            files_modified=1,
+            syntax_error_rate=0.0,
+            retrieved_memory_ids=[],
+            retrieved_memory_scores=[],
+            retrieved_memory_types=[],
+            retrieved_memory_ages=[],
+            memory_count_before=0,
+            memory_count_after=0,
+            memory_tokens_before=0,
+            memory_tokens_after=0,
+            task_difficulty="medium",
+            tool_mode="fixed",
+        )
+        assert tr.tool_mode == "fixed"
+
+    def test_task_result_to_dict_includes_tool_mode(self):
+        """to_dict() must include tool_mode so jsonl rows carry the field."""
+        from src.logging.task_logger import TaskResult
+        tr = TaskResult(
+            run_id="test_run",
+            policy="full_memory",
+            seed=1,
+            repo="astropy/astropy",
+            task_id="astropy__astropy-1234",
+            sequence_index=0,
+            resolved=0,
+            patch_generated=False,
+            patch_applied=False,
+            syntax_error=False,
+            timeout=False,
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            estimated_cost_usd=0.0,
+            task_api_cost=0.0,
+            consolidation_llm_cost=0.0,
+            wall_time_seconds=0.0,
+            tool_calls=0,
+            test_runs=0,
+            files_read=0,
+            files_modified=0,
+            syntax_error_rate=0.0,
+            retrieved_memory_ids=[],
+            retrieved_memory_scores=[],
+            retrieved_memory_types=[],
+            retrieved_memory_ages=[],
+            memory_count_before=0,
+            memory_count_after=0,
+            memory_tokens_before=0,
+            memory_tokens_after=0,
+            task_difficulty="medium",
+            tool_mode="legacy",
+        )
+        row = tr.to_dict()
+        assert "tool_mode" in row, "tool_mode must be present in serialized row"
+        assert row["tool_mode"] == "legacy"
+
+    def test_task_result_tool_mode_default_is_none(self):
+        """Existing rows (pre-Task-5c) are unaffected: tool_mode defaults to None."""
+        from src.logging.task_logger import TaskResult
+        tr = TaskResult(
+            run_id="test_run",
+            policy="full_memory",
+            seed=1,
+            repo="astropy/astropy",
+            task_id="astropy__astropy-1234",
+            sequence_index=0,
+            resolved=0,
+            patch_generated=False,
+            patch_applied=False,
+            syntax_error=False,
+            timeout=False,
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            estimated_cost_usd=0.0,
+            task_api_cost=0.0,
+            consolidation_llm_cost=0.0,
+            wall_time_seconds=0.0,
+            tool_calls=0,
+            test_runs=0,
+            files_read=0,
+            files_modified=0,
+            syntax_error_rate=0.0,
+            retrieved_memory_ids=[],
+            retrieved_memory_scores=[],
+            retrieved_memory_types=[],
+            retrieved_memory_ages=[],
+            memory_count_before=0,
+            memory_count_after=0,
+            memory_tokens_before=0,
+            memory_tokens_after=0,
+            task_difficulty="medium",
+            # tool_mode omitted — should default to None
+        )
+        assert tr.tool_mode is None
+        row = tr.to_dict()
+        assert row["tool_mode"] is None
