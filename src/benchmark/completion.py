@@ -244,6 +244,27 @@ def write_failed(
 
 
 # ---------------------------------------------------------------------------
+# is_run_complete
+# ---------------------------------------------------------------------------
+
+
+def is_run_complete(run_dir: Path | str) -> bool:
+    """Return True iff ``RUN_COMPLETED.json`` exists in *run_dir*.
+
+    This is the single gate that orchestrators (experiment_runner loops,
+    pilot scripts) must check before counting a returned ``run_sequence()``
+    call as a completed run.  A run that returned but whose directory is
+    missing the sentinel was aborted or partially written — it must NOT be
+    counted toward ``completed_runs`` and must remain eligible for reconcile.
+
+    Do NOT re-implement the check inline; always call this function so that
+    the definition stays in one place alongside ``write_completed`` /
+    ``validate_run_complete``.
+    """
+    return (Path(run_dir) / "RUN_COMPLETED.json").exists()
+
+
+# ---------------------------------------------------------------------------
 # archive_prior_attempt
 # ---------------------------------------------------------------------------
 

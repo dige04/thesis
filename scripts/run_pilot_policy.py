@@ -21,7 +21,8 @@ import logging
 import sys
 from pathlib import Path
 
-from src.benchmark.sequence_runner import SequenceRunner
+from src.benchmark.completion import is_run_complete
+from src.benchmark.sequence_runner import SequenceRunner, _runs_root
 from src.benchmark.swebenchcl_loader import SWEBenchCLLoader
 from src.config.loader import load_config
 from src.memory.policies.cls_consolidation import CLSConsolidationPolicy
@@ -79,12 +80,22 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("=== PILOT %s on %s (%d tasks) ===", args.policy, seq_name, sequence.task_count)
         runner = SequenceRunner(run_id=run_id, policy=policy, config=config)
         result = runner.run_sequence(sequence=sequence, seed=args.seed)
-        out = results_dir / f"{run_id}_result.json"
-        out.write_text(json.dumps(dataclasses.asdict(result), indent=2), encoding="utf-8")
-        logger.info(
-            "PILOT DONE %s/%s: resolved=%d/%d -> %s",
-            args.policy, seq_name, result.resolved_tasks, result.total_tasks, out,
-        )
+        # Gate on sentinel: only write the success result if the run completed.
+        run_dir = _runs_root() / run_id
+        if is_run_complete(run_dir):
+            out = results_dir / f"{run_id}_result.json"
+            out.write_text(json.dumps(dataclasses.asdict(result), indent=2), encoding="utf-8")
+            logger.info(
+                "PILOT DONE %s/%s: resolved=%d/%d -> %s",
+                args.policy, seq_name, result.resolved_tasks, result.total_tasks, out,
+            )
+        else:
+            logger.warning(
+                "PILOT INCOMPLETE %s/%s: run_sequence returned but "
+                "RUN_COMPLETED.json absent in %s — no result file written; "
+                "eligible for reconcile.",
+                args.policy, seq_name, run_dir,
+            )
     return 0
 
 

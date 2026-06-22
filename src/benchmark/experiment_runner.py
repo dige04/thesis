@@ -33,8 +33,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from src.benchmark.completion import is_run_complete
 from src.benchmark.models import Sequence
-from src.benchmark.sequence_runner import SequenceResult, SequenceRunner
+from src.benchmark.sequence_runner import SequenceResult, SequenceRunner, _runs_root
 from src.benchmark.swebenchcl_loader import SWEBenchCLLoader
 from src.config.loader import load_config
 from src.errors import UsageLimitError
@@ -426,12 +427,24 @@ class ExperimentRunner:
                 # Execute run
                 result = self._execute_run(run_config, sequence)
 
-                # Save result
-                self._save_run_result(run_config, result)
-
-                # Update counters
-                completed_runs += 1
-                total_cost_usd += result.total_cost_usd
+                # Gate completion on the sentinel written by Task 5b's
+                # validate_run_complete path.  A returned run_sequence() with
+                # no RUN_COMPLETED.json is a partial/aborted unit; counting it
+                # as complete produced the "144 complete / 28 partial" phantom.
+                run_dir = _runs_root() / run_config.run_id
+                if is_run_complete(run_dir):
+                    # Save result and count only truly complete runs.
+                    self._save_run_result(run_config, result)
+                    completed_runs += 1
+                    total_cost_usd += result.total_cost_usd
+                else:
+                    failed_runs += 1
+                    failed_run_ids.append(run_config.run_id)
+                    logger.warning(
+                        f"Run {run_config.run_id} returned but RUN_COMPLETED.json "
+                        f"is absent in {run_dir} — marking as incomplete/failed, "
+                        f"eligible for reconcile."
+                    )
 
                 # Log progress
                 logger.info(
@@ -600,12 +613,20 @@ class ExperimentRunner:
                 # Execute run
                 result = self._execute_run(run_config, sequence)
 
-                # Save result
-                self._save_run_result(run_config, result)
-
-                # Update counters
-                completed_runs += 1
-                total_cost_usd += result.total_cost_usd
+                # Gate on sentinel — same logic as run_full_experiment.
+                run_dir = _runs_root() / run_config.run_id
+                if is_run_complete(run_dir):
+                    self._save_run_result(run_config, result)
+                    completed_runs += 1
+                    total_cost_usd += result.total_cost_usd
+                else:
+                    failed_runs += 1
+                    failed_run_ids.append(run_config.run_id)
+                    logger.warning(
+                        f"Pilot run {run_config.run_id} returned but "
+                        f"RUN_COMPLETED.json is absent in {run_dir} — "
+                        f"marking as incomplete/failed, eligible for reconcile."
+                    )
 
                 # Log progress
                 logger.info(
@@ -722,9 +743,20 @@ class ExperimentRunner:
                     if s.sequence_name == run_config.sequence_name
                 )
                 result = self._execute_run(run_config, sequence)
-                self._save_run_result(run_config, result)
-                completed_runs += 1
-                total_cost_usd += result.total_cost_usd
+                # Gate on sentinel — same logic as run_full_experiment.
+                run_dir = _runs_root() / run_config.run_id
+                if is_run_complete(run_dir):
+                    self._save_run_result(run_config, result)
+                    completed_runs += 1
+                    total_cost_usd += result.total_cost_usd
+                else:
+                    failed_runs += 1
+                    failed_run_ids.append(run_config.run_id)
+                    logger.warning(
+                        f"Condition run {run_config.run_id} returned but "
+                        f"RUN_COMPLETED.json is absent in {run_dir} — "
+                        f"marking as incomplete/failed, eligible for reconcile."
+                    )
             except Exception as e:
                 failed_runs += 1
                 failed_run_ids.append(run_config.run_id)
