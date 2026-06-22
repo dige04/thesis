@@ -1,16 +1,19 @@
 [Unit]
-Description=Thesis matrix shard %i (kimi-k2.7-code agent + deepseek-v4-flash aux)
-After=thesis-tunnel.service network-online.target
-Wants=thesis-tunnel.service
+Description=Thesis matrix shard %i (deepseek-v4-flash, all-go)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/root/thesis
-# .env (LLM routing) is loaded by python-dotenv from the working dir. RUNS_ROOT
-# is needed by the shell in run_matrix_shard.sh (partial-clear before re-run).
-Environment=RUNS_ROOT=runs_k27
-# One pass over this shard's units (skips done via results/raw markers); on exit
-# systemd restarts it -> a resumable continuous loop. Args: SHARD NUM_SHARDS CONC.
+# .env (LLM routing) is loaded by python-dotenv from the working dir.
+# RUNS_ROOT is needed by run_matrix_shard.sh to locate run dirs.
+# AGENT_TOOL_MODE is passed through to the runner (default: fixed).
+Environment=RUNS_ROOT=runs
+Environment=AGENT_TOOL_MODE=fixed
+# One pass over this shard's units (skips done via RUN_COMPLETED.json sentinel);
+# on exit systemd restarts it -> a resumable continuous loop.
+# Args: SHARD NUM_SHARDS CONC
 ExecStart=/bin/bash /root/thesis/scripts/run_matrix_shard.sh %i 5 2
 Restart=always
 RestartSec=60

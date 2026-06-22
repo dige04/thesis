@@ -1,15 +1,19 @@
-"""Run ONE memory policy over the pilot sequences (Spike-Week pilot, real config).
+"""Run ONE memory policy over ONE sequence (matrix runner, real config).
 
-The pilot is 6 policies x 2 sequences x 1 seed = 12 runs. experiment_runner's
-pilot mode runs all 6 policies sequentially; to parallelize across policies on
-the droplet we launch one process per policy (see scripts/run_pilot.sh, capped at
-3 concurrent). This uses the REAL config (max_records, CLS thresholds, container
-backend, swebench namespace) — NOT the validation overrides.
+One process per (policy, seed, sequence) unit.  The shard runner
+``scripts/run_matrix_shard.sh`` launches one process per unit in this form:
+
+    .venv/bin/python -m scripts.run_pilot_policy \
+        --policy type_aware_decay --seed 1 \
+        --sequences django_django_sequence \
+        --run-id type_aware_decay_django_django_sequence_seed1
+
+``--run-id`` MUST be supplied by the shell so the run directory matches the
+manifest entry (``results/manifest/runs_144.json``).  When omitted the old
+``pilot_`` prefix is used for backward-compatibility with legacy one-off runs.
 
 Memory is per-sequence: a fresh policy + fresh MemoryStore per sequence (memory
 accumulates WITHIN a sequence, never across repos).
-
-Usage:  .venv/bin/python -m scripts.run_pilot_policy --policy type_aware_decay --seed 1
 """
 
 from __future__ import annotations
@@ -60,6 +64,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--sequences", default=DEFAULT_SEQUENCES)
     p.add_argument("--curriculum", default="data/SWE-Bench-CL-Curriculum.json")
+    p.add_argument(
+        "--run-id",
+        default=None,
+        help=(
+            "Explicit run_id (must match the manifest entry).  "
+            "Defaults to pilot_{policy}_{seq}_seed{seed} for legacy compatibility."
+        ),
+    )
     args = p.parse_args(argv)
 
     config = load_config()
@@ -76,7 +88,12 @@ def main(argv: list[str] | None = None) -> int:
             continue
         # Fresh policy + store per sequence (memory does not cross repos).
         policy = build_policy(args.policy, args.seed, max_records)
-        run_id = f"pilot_{args.policy}_{seq_name}_seed{args.seed}"
+        # run_id: prefer explicit --run-id (manifest-aligned); fall back to
+        # legacy pilot_ prefix for one-off / backward-compatible invocations.
+        if args.run_id is not None:
+            run_id = args.run_id
+        else:
+            run_id = f"pilot_{args.policy}_{seq_name}_seed{args.seed}"
         logger.info("=== PILOT %s on %s (%d tasks) ===", args.policy, seq_name, sequence.task_count)
         runner = SequenceRunner(run_id=run_id, policy=policy, config=config)
         result = runner.run_sequence(sequence=sequence, seed=args.seed)
