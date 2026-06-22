@@ -21,8 +21,9 @@ Frozen Invariants:
 """
 
 import logging
+import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,16 @@ from src.metrics.retrieval_quality import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _runs_root() -> Path:
+    """Root directory for run outputs (default ``runs``).
+
+    Overridable via the ``RUNS_ROOT`` env var so a run on a different model/
+    provider (e.g. the MiniMax M3 matrix -> ``runs_m3``) writes to a fresh tree
+    and never mixes with prior runs on the same host.
+    """
+    return Path(os.environ.get("RUNS_ROOT", "runs"))
 
 
 @dataclass
@@ -80,6 +91,11 @@ class SequenceResult:
     total_cost_usd: float
     error_message: str | None
     run_id: str
+    # C8: tasks that raised a non-fatal error and produced NO TaskResult row —
+    # tracked separately so a matrix with silently missing rows is not counted as
+    # complete (THESIS_REVIEW blocker #10). Defaults keep existing constructors valid.
+    errored_tasks: int = 0
+    error_task_ids: list[str] = field(default_factory=list)
 
 
 class SequenceRunner:
@@ -127,8 +143,8 @@ class SequenceRunner:
         self.policy = policy
         self.config = config
 
-        # Setup run directory
-        self.run_dir = Path("runs") / run_id
+        # Setup run directory (RUNS_ROOT-overridable; isolates the M3 matrix)
+        self.run_dir = _runs_root() / run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize memory store
@@ -234,6 +250,10 @@ class SequenceRunner:
                 sequence_name=sequence.sequence_name,
                 seed=seed,
             )
+            # E1: the runner now surfaces every v5 §1582 cost-axis call type
+            # (agent + reflection + classifier + CLS consolidation + embedding),
+            # so total_tokens is the COMPLETE Pareto cost axis for this run.
+            self.cost_tracker.mark_pareto_cost_complete()
         except Exception as e:  # cost tracking is auxiliary, never fatal
             logger.warning(f"cost_tracker.start_run failed: {e}")
 
@@ -244,6 +264,8 @@ class SequenceRunner:
         timeout_tasks = 0
         total_cost_usd = 0.0
         error_message = None
+        errored_tasks = 0
+        error_task_ids: list[str] = []
 
         try:
             # Execute each task in sequence
@@ -290,11 +312,14 @@ class SequenceRunner:
                     raise
 
                 except Exception as e:
-                    # Other errors are logged but don't fail the sequence
+                    # Non-fatal task error: NO TaskResult row was written, so this
+                    # task did NOT complete. Track it separately (C8) rather than
+                    # inflating completed_tasks/failed_tasks — otherwise the run looks
+                    # complete while rows are silently missing (review blocker #10).
                     error_message = f"Task {task.task_id} failed with error: {e}"
                     logger.error(error_message, exc_info=True)
-                    failed_tasks += 1
-                    completed_tasks += 1
+                    errored_tasks += 1
+                    error_task_ids.append(task.task_id)
 
         except RepositoryCheckoutError:
             # Re-raise repository errors to fail the sequence
@@ -343,6 +368,8 @@ class SequenceRunner:
             total_cost_usd=total_cost_usd,
             error_message=error_message,
             run_id=self.run_id,
+            errored_tasks=errored_tasks,
+            error_task_ids=error_task_ids,
         )
 
         logger.info(
@@ -430,9 +457,9 @@ class SequenceRunner:
 
             # Record the agent LLM call for cost_summary.json (v5 §1570 Pareto
             # cost axis = total tokens). Reflection/classifier/consolidation/
-            # embedding tokens are not yet surfaced by their components to the
-            # runner (see follow-up note in cost_tracker call_type buckets);
-            # the agent call is the dominant token cost. Never fatal.
+            # embedding tokens are surfaced separately below (E1) via
+            # _track_memory_phase_costs, making total_tokens the COMPLETE cost
+            # axis (pareto_cost_complete=True). Never fatal.
             try:
                 self.cost_tracker.track_llm_call(
                     call_type="agent",
@@ -448,38 +475,31 @@ class SequenceRunner:
             logger.debug(f"Evaluating patch for {task.task_id}")
             eval_result = self._evaluate_patch(task, agent_result["patch"], task_env)
 
-            # Step 6: Reflect and write memory
+            # Step 6: Reflect and write memory. The usage_sink collects the
+            # reflection + classifier LLM token usage for cost telemetry (E1).
             logger.debug(f"Reflecting and writing memory for {task.task_id}")
+            memory_usage_sink: list[dict[str, Any]] = []
             memory_record = self._reflect_and_write(
                 task=task,
                 agent_result=agent_result,
                 eval_result=eval_result,
                 retrieved_memories=retrieved_memories,
+                usage_sink=memory_usage_sink,
             )
 
-            # Step 7: Maintain policy (prune/consolidate), capturing the archive
-            # delta so pruned IDs reach the after-task snapshot, the memory
-            # event log, and the task result (mandatory logging, v5 §11).
+            # Step 7: Maintain policy (prune/consolidate). C6: distinguishes
+            # consolidation from pruning and emits the correct memory events so
+            # consolidation is reconstructable from the mandatory log (v5 §11).
             logger.debug(f"Running policy maintenance for {task.task_id}")
-            archived_before = set(
-                self.memory_store.archived_memory_ids_at_step(task.sequence_index)
-            )
-            self.policy.maintain(self.memory_store)
-            archived_after = set(
-                self.memory_store.archived_memory_ids_at_step(task.sequence_index)
-            )
-            pruned_memory_ids = sorted(archived_after - archived_before)
-            consolidated_memory_ids: list[str] = []
+            maintenance = self._run_policy_maintenance(task)
+            pruned_memory_ids = maintenance["pruned_memory_ids"]
+            consolidated_memory_ids = maintenance["consolidated_memory_ids"]
 
-            # Emit an archive event per newly-pruned memory.
-            for pruned_id in pruned_memory_ids:
-                self.memory_event_logger.log_archive(
-                    memory_id=pruned_id,
-                    step=task.sequence_index,
-                    task_id=task.task_id,
-                    repo=task.repo,
-                    reason=self.policy.name,
-                )
+            # E1: aggregate the memory-phase token cost (reflection + classifier
+            # from the sink, CLS consolidation drained from the policy, and all
+            # embeddings drained from the store) into cost_summary.json. This is
+            # what makes total_tokens a COMPLETE Pareto axis. Never fatal.
+            self._track_memory_phase_costs(task.task_id, memory_usage_sink)
 
             # Step 8: Generate "after_task" memory snapshot (with prune delta)
             logger.debug(f"Generating after_task snapshot for {task.task_id}")
@@ -488,7 +508,7 @@ class SequenceRunner:
                 step=task.sequence_index,
                 boundary="after_task",
                 active_records=self.memory_store.active_records(),
-                archived_this_step=pruned_memory_ids,
+                archived_this_step=maintenance["archived_delta"],
                 current_step=task.sequence_index,
             )
 
@@ -520,6 +540,129 @@ class SequenceRunner:
         finally:
             # Always cleanup task environment
             task_env.cleanup()
+
+    def _run_policy_maintenance(self, task: Task) -> dict[str, list[str]]:
+        """Run policy maintenance and emit the correct memory events (C6).
+
+        Distinguishes pruning from consolidation: a memory archived because it was
+        folded into a summary is a CONSOLIDATION, not a prune, and is logged via
+        ``log_consolidate`` with the source->summary ``replacement_id`` rather than
+        ``log_archive``. The source->summary link is reconstructed from each newly
+        created consolidated record's ``source_memory_ids`` (persisted on the
+        record), so no schema migration is needed and consolidation is fully
+        reconstructable from ``memory_events.jsonl`` alone.
+
+        Returns a dict with:
+            - ``archived_delta``: every memory newly archived this step (prunes +
+              consolidation sources) — what left the active set, for the snapshot.
+            - ``pruned_memory_ids``: memories removed by pruning only.
+            - ``consolidated_memory_ids``: source memories folded into summaries.
+        """
+        step = task.sequence_index
+        archived_before = set(self.memory_store.archived_memory_ids_at_step(step))
+        consolidated_before = {
+            r.memory_id
+            for r in self.memory_store.active_records()
+            if r.is_consolidated
+        }
+
+        self.policy.maintain(self.memory_store)
+
+        archived_delta = sorted(
+            set(self.memory_store.archived_memory_ids_at_step(step)) - archived_before
+        )
+
+        # New consolidated summaries created this step → source->summary map.
+        new_summaries = [
+            r
+            for r in self.memory_store.active_records()
+            if r.is_consolidated and r.memory_id not in consolidated_before
+        ]
+        source_to_summary = {
+            src_id: summary.memory_id
+            for summary in new_summaries
+            for src_id in (summary.source_memory_ids or [])
+        }
+
+        pruned_memory_ids = [m for m in archived_delta if m not in source_to_summary]
+        consolidated_memory_ids = [m for m in archived_delta if m in source_to_summary]
+
+        for pruned_id in pruned_memory_ids:
+            self.memory_event_logger.log_archive(
+                memory_id=pruned_id,
+                step=step,
+                task_id=task.task_id,
+                repo=task.repo,
+                reason=self.policy.name,
+            )
+        for source_id in consolidated_memory_ids:
+            self.memory_event_logger.log_consolidate(
+                memory_id=source_id,
+                replacement_id=source_to_summary[source_id],
+                step=step,
+                task_id=task.task_id,
+                repo=task.repo,
+                metadata={"policy": self.policy.name},
+            )
+
+        return {
+            "archived_delta": archived_delta,
+            "pruned_memory_ids": pruned_memory_ids,
+            "consolidated_memory_ids": consolidated_memory_ids,
+        }
+
+    def _track_memory_phase_costs(
+        self, task_id: str, usage_sink: list[dict[str, Any]] | None
+    ) -> None:
+        """Aggregate memory-phase token cost into the CostTracker (E1).
+
+        Surfaces every non-agent v5 §1582 cost-axis call type so total_tokens is
+        a COMPLETE Pareto cost axis:
+          - reflection + classifier LLM calls (from the per-task usage_sink),
+          - CLS consolidation LLM calls (drained from the policy, if it
+            consolidates),
+          - all embedding calls — write, consolidation, retrieval query —
+            drained from the store (single _generate_embedding choke point).
+
+        Cost tracking is auxiliary and must never break a run, so the whole body
+        is wrapped and only logged on failure.
+        """
+        try:
+            # Reflection + classifier usage routed through the per-task sink.
+            for entry in usage_sink or []:
+                self.cost_tracker.track_llm_call(
+                    call_type=entry.get("call_type", "reflection"),
+                    model=entry.get("model", "unknown"),
+                    prompt_tokens=int(entry.get("prompt_tokens", 0) or 0),
+                    completion_tokens=int(entry.get("completion_tokens", 0) or 0),
+                    task_id=task_id,
+                )
+
+            # CLS consolidation usage (only the CLS policy emits these).
+            drain_consolidation = getattr(
+                self.policy, "drain_consolidation_usage", None
+            )
+            if callable(drain_consolidation):
+                for entry in drain_consolidation():
+                    self.cost_tracker.track_llm_call(
+                        call_type=entry.get("call_type", "consolidation"),
+                        model=entry.get("model", "unknown"),
+                        prompt_tokens=int(entry.get("prompt_tokens", 0) or 0),
+                        completion_tokens=int(entry.get("completion_tokens", 0) or 0),
+                        task_id=task_id,
+                    )
+
+            # Embedding usage (write + consolidation + retrieval query).
+            for entry in self.memory_store.drain_embedding_usage():
+                self.cost_tracker.track_embedding_call(
+                    model=entry.get("model", "unknown"),
+                    tokens=int(entry.get("tokens", 0) or 0),
+                    task_id=task_id,
+                )
+        except Exception as e:
+            logger.warning(
+                f"cost_tracker memory-phase tracking failed for {task_id}: {e}"
+            )
 
     def _retrieve_memories(self, task: Task) -> list[dict[str, Any]]:
         """Retrieve relevant memories for a task.
@@ -554,7 +697,20 @@ class SequenceRunner:
             all_available = self.memory_store.active_records()
             quality_metrics = compute_retrieval_quality(
                 task=task,
-                retrieved_memories=retrieved,
+                # C7: convert policy (score, record) tuples to the dict shape
+                # compute_retrieval_quality expects (it calls .get) — passing the
+                # raw tuples crashed every memory-enabled pilot run with
+                # AttributeError ('tuple' object has no attribute 'get').
+                retrieved_memories=[
+                    {
+                        "memory_id": rec.memory_id,
+                        "repo": rec.repo,
+                        "sequence_index": rec.sequence_index,
+                        "memory_type": rec.memory_type,
+                        "outcome": rec.outcome,
+                    }
+                    for _, rec in retrieved
+                ],
                 all_available_memories=[
                     {
                         "memory_id": rec.memory_id,
@@ -587,7 +743,7 @@ class SequenceRunner:
         self,
         task: Task,
         task_env: TaskEnvironment,
-        retrieved_memories: list[dict[str, Any]],
+        retrieved_memories: list[tuple[float, Any]],
     ) -> dict[str, Any]:
         """Execute coding agent on a task.
 
@@ -631,8 +787,10 @@ class SequenceRunner:
             "sequence_index": task.sequence_index,
         }
 
-        # Execute agent
-        result = agent.solve_task(task_dict)
+        # Execute agent. C4: pass the single authoritative retrieval so the agent
+        # uses exactly the memories the runner retrieved and logged — no second,
+        # divergent retrieval (and no duplicated embedding query) inside solve_task.
+        result = agent.solve_task(task_dict, retrieved_memories=retrieved_memories)
 
         return result
 
@@ -742,6 +900,7 @@ class SequenceRunner:
         agent_result: dict[str, Any],
         eval_result: dict[str, Any],
         retrieved_memories: list[tuple[float, Any]],
+        usage_sink: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
         """Run reflection step and write memory record.
 
@@ -750,6 +909,8 @@ class SequenceRunner:
             agent_result: Agent execution results
             eval_result: Evaluation results
             retrieved_memories: Retrieved memories used
+            usage_sink: Optional list collecting the reflection + classifier LLM
+                token usage for cost telemetry (E1).
 
         Returns:
             Memory record dictionary if successful, None if reflection failed
@@ -786,6 +947,7 @@ class SequenceRunner:
                 sequence_index=task.sequence_index,
                 model=self.config.get("reflection", {}).get("model", "gpt-4o-mini"),
                 temperature=self.config.get("reflection", {}).get("temperature", 0.0),
+                usage_sink=usage_sink,
             )
 
             if memory_record:
@@ -878,7 +1040,10 @@ class SequenceRunner:
             total_tokens=agent_result.get("total_tokens", 0),
             estimated_cost_usd=agent_result.get("estimated_cost_usd", 0.0),
             task_api_cost=agent_result.get("estimated_cost_usd", 0.0),
-            consolidation_llm_cost=0.0,  # TODO: Track consolidation cost separately
+            # Authoritative per-call-type token accounting (incl. consolidation)
+            # lives in cost_summary.json (E1, pareto_cost_complete=True). This
+            # per-task USD field stays 0.0 under the D3 tokens cost metric.
+            consolidation_llm_cost=0.0,
             # Execution metrics
             wall_time_seconds=task_wall_time,
             tool_calls=agent_result.get("tool_calls", 0),

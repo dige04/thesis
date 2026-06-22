@@ -38,6 +38,8 @@ Tools:
 - run_command(command)  # sparingly
 - run_tests(test_command), get_patch(), finish
 
+edit_file takes a STANDARD unified diff (with `@@` hunk headers and exact context lines, as `git apply` expects). If edit_file reports it could not apply your diff, do NOT retry the same diff — switch to write_file with the full new file contents.
+
 Paths may be repo-relative (e.g. "src/pkg/mod.py") or absolute ("/testbed/..."). Make MINIMAL changes — modify only what the issue requires. Respond with tool calls, not prose.
 """
 

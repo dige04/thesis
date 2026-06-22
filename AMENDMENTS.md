@@ -84,8 +84,23 @@ is collected; (c) held **constant across all conditions × seeds**; (d) disclose
   separately under §19.
 - **Touches:** v5 §0.1 #30 (H1b lock). Disclose.
 
-## A5 — Anchor-probe scope (PENDING — advisor decision before the matrix)
-- **Date raised:** 2026-06-17 (not yet decided)
+## A5 — Anchor-probe scope (RESOLVED 2026-06-22 → option (c)-with-positive-evidence)
+- **DECISION (2026-06-22):** option **(c)**: report CL-F1 as resolve-rate (proxy) as the
+  primary CL metric; full ~1,900-re-eval anchor-probe **declined**. Backed by a targeted live
+  discrimination sub-study (`scripts/run_anchor_probe_discrimination.py`, deepseek-v4-flash on
+  sfo-4, 42 re-evals): a retrieval-aware pre-flight found cells where Full's retrieved top-k
+  differs from recency_prune (NOT retrieval-blind); on the 5 own-record-forgotten cells Full
+  re-solved 14/15 vs recency 9/15, with a clean existence proof (a2: 3/3 vs 0/3, mechanism
+  confirmed). So the stability instrument is NOT measurement-blind, but (i) the signal is
+  **backward-retention only** — forward/interdependence cells were floor → no E7 support; (ii)
+  the natural regime rarely exercises it (→ gate-3 stability≈1.000); (iii) the full probe runs
+  the FIXED §14.2 anchors (not retrieval-selected) → would dilute the signal and reproduce the
+  saturated aggregate at great cost. Report this as a construct-validity sub-study + a
+  measurement-validity entry in Threats to Validity; efficiency claim lives on the footprint axis
+  (A4/H1b). NO p-value (cells selection-maximized → significance invalid). Full rationale +
+  data: `docs/a5-anchor-probe-decision.md`, `results/anchor_probe_discrimination/`. Touches v5
+  Invariant #29 (anchor-probe = PRIMARY CL-Stability) — demoted, disclosed.
+- **Date raised:** 2026-06-17 (resolved 2026-06-22)
 - **Context:** the gate-3 linchpin E2 run found **anchor-probe stability saturated
   at 1.000** (zero detected forgetting on the 5-anchor sample) → CL-F1 reduces to
   a function of plasticity. At full-matrix scale the anchor-probe is ~1,900 live

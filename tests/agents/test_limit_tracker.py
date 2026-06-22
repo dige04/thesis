@@ -29,18 +29,20 @@ class TestLimitTrackerFrozenInvariants:
         with pytest.raises(ValueError, match="FROZEN INVARIANT VIOLATION"):
             LimitTracker(max_steps=25)
 
-    def test_temperature_zero_validation(self):
-        """Test that temperature=0 is enforced (FROZEN INVARIANT)."""
-        # Should not raise
+    def test_temperature_validation(self):
+        """Temperature held CONSTANT; 0 or 1 valid (amended 2026-06-14 for Kimi)."""
+        # Should not raise: 0 (determinism providers) or 1 (Kimi reasoning models)
         validate_temperature(0)
         validate_temperature(0.0)
+        validate_temperature(1)
+        validate_temperature(1.0)
 
-        # Should raise
-        with pytest.raises(ValueError, match="FROZEN INVARIANT VIOLATION"):
+        # Should raise: anything else
+        with pytest.raises(ValueError, match="must be 0 or 1"):
             validate_temperature(0.1)
 
-        with pytest.raises(ValueError, match="FROZEN INVARIANT VIOLATION"):
-            validate_temperature(1.0)
+        with pytest.raises(ValueError, match="must be 0 or 1"):
+            validate_temperature(2.0)
 
 
 class TestLimitTrackerStepLimit:

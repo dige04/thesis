@@ -19,6 +19,7 @@ import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import faiss
 import numpy as np
@@ -28,6 +29,7 @@ from src.config.llm_factory import embedding_api_key, embedding_base_url
 
 from .embedding_utils import (
     construct_embedding_text,
+    count_tokens,
     verify_embedding_size,
 )
 from .record import MemoryRecord
@@ -86,6 +88,12 @@ class MemoryStore:
         self.policy_name = policy_name
         self.embedding_dim = embedding_dim
         self.embedding_model = embedding_model
+
+        # Per-embedding token usage buffer for cost telemetry (E1). Every
+        # _generate_embedding call (write, consolidation, retrieval query — all
+        # route through it) appends {"model", "tokens"}. The SequenceRunner
+        # drains it per task into the CostTracker; see drain_embedding_usage().
+        self._embedding_usage: list[dict[str, Any]] = []
 
         # Setup directory structure
         self.run_dir = Path("runs") / run_id
@@ -260,6 +268,12 @@ class MemoryStore:
             input=text
         )
 
+        # Record token usage for cost telemetry (E1). Prefer the provider's
+        # usage (OpenAI reports total/prompt_tokens for embeddings); the local
+        # Ollama embedder may omit it, so fall back to a real tiktoken count of
+        # the embedded text — always a positive int, never a Mock leak.
+        self._record_embedding_usage(response, text)
+
         # Extract embedding vector
         embedding = np.array(response.data[0].embedding, dtype=np.float32)
 
@@ -269,6 +283,31 @@ class MemoryStore:
             embedding = embedding / norm
 
         return embedding
+
+    def _record_embedding_usage(self, response: Any, text: str) -> None:
+        """Append this embedding call's token count to the usage buffer (E1)."""
+        tokens = 0
+        usage = getattr(response, "usage", None)
+        for attr in ("total_tokens", "prompt_tokens"):
+            value = getattr(usage, attr, None)
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                tokens = value
+                break
+        if tokens <= 0:
+            tokens = count_tokens(text)
+        self._embedding_usage.append(
+            {"model": self.embedding_model, "tokens": tokens}
+        )
+
+    def drain_embedding_usage(self) -> list[dict[str, Any]]:
+        """Return and clear the accumulated per-embedding usage records (E1).
+
+        The SequenceRunner calls this once per task to attribute every embedding
+        call (write + consolidation + retrieval query) to the CostTracker.
+        """
+        drained = self._embedding_usage
+        self._embedding_usage = []
+        return drained
 
     def add(self, record: MemoryRecord) -> None:
         """Add a new memory record to the store.

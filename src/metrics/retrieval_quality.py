@@ -155,6 +155,19 @@ def _get_relevant_memory_ids(
 
     Returns:
         Set of relevant memory IDs
+
+    NOTE (C7b / review defect #7 — ADVISOR SIGN-OFF PENDING, do NOT silently
+    change): the default criterion is ``same_repo=True`` with every other flag
+    off. Because the main experiment is same-repo-retrieval-only (Invariant #16),
+    that marks EVERY available past memory as "relevant" → the candidate pool ==
+    the relevant set, so precision@k/recall@k are trivial and uninformative. A
+    valid manipulation check needs a pre-declared structural relevance criterion
+    (e.g. touched-file overlap between the task and the memory) or a blinded
+    manually-labeled sample; precision/recall claims must be reserved for that.
+    This is a frozen-decision-adjacent methodology choice and is therefore
+    surfaced for the advisor rather than picked here. The cross-condition
+    retrieval-overlap manipulation check (v5 §11.5) is implemented separately and
+    needs no relevance label: see ``src/analysis/retrieval_overlap.py``.
     """
     relevant_ids = set()
 

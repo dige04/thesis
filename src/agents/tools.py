@@ -453,7 +453,17 @@ class AgentTools:
             raise
 
     def edit_file(self, path: str, diff: str) -> None:
-        """Apply simplified diff-style edits to a file."""
+        """Apply a unified diff to a file via ``git apply`` (robust; fails loudly).
+
+        The model emits standard unified diffs (``diff --git``/``@@`` headers). We
+        apply them with ``git apply`` (with ``--recount``/``--3way`` fallbacks for
+        line-number drift) rather than a hand-rolled parser. The previous parser had
+        no hunk positioning and mis-handled ``+++``/``---``/``@@`` header lines —
+        it wrote diff headers INTO the file and silently produced empty/garbage
+        patches (the smoke empty-patch bug). On failure we raise with the git error
+        so the agent sees it (the ReAct loop surfaces tool errors as observations)
+        and can retry or fall back to ``write_file`` — instead of corrupting silently.
+        """
         args = {"path": path, "diff_length": len(diff)}
 
         if not self.backend.exists(path):
@@ -461,41 +471,32 @@ class AgentTools:
             self.tracker.record_call("edit_file", args, None, error)
             raise FileNotFoundError(error)
 
+        if not diff.endswith("\n"):
+            diff += "\n"
+
+        patch_file = ".agent_edit.patch"
+        self.backend.write_text(patch_file, diff)
         try:
-            lines = self.backend.read_text(path).splitlines(keepends=True)
-            new_lines = self._apply_diff(lines, diff)
-            self.backend.write_text(path, "".join(new_lines))
-            self.tracker.record_call("edit_file", args, "success")
-        except Exception as e:
-            self.tracker.record_call("edit_file", args, None, str(e))
-            raise
-
-    def _apply_diff(self, lines: list[str], diff: str) -> list[str]:
-        """
-        Apply a simplified diff to a list of lines.
-
-        - Lines starting with ' ' are context (kept).
-        - Lines starting with '-' are removed.
-        - Lines starting with '+' are added.
-        """
-        diff_lines = diff.split("\n")
-        result = []
-        line_idx = 0
-
-        for diff_line in diff_lines:
-            if not diff_line:
-                continue
-            if diff_line.startswith(" "):
-                if line_idx < len(lines):
-                    result.append(lines[line_idx])
-                    line_idx += 1
-            elif diff_line.startswith("-"):
-                line_idx += 1
-            elif diff_line.startswith("+"):
-                result.append(diff_line[1:] + "\n")
-
-        result.extend(lines[line_idx:])
-        return result
+            last_err = ""
+            for cmd in (
+                f"git apply --whitespace=nowarn {patch_file}",
+                f"git apply --recount --whitespace=nowarn {patch_file}",
+                f"git apply --3way --whitespace=nowarn {patch_file}",
+            ):
+                res = self.backend.run(cmd, 60)
+                if res.get("return_code") == 0:
+                    self.tracker.record_call("edit_file", args, "success")
+                    return
+                last_err = (res.get("stderr") or res.get("stdout") or "").strip()
+            error = (
+                f"Could not apply the diff to {path}: {last_err[:300]} "
+                "Emit a valid unified diff (correct '@@' hunk header + exact context "
+                "lines), or use write_file with the full new file contents instead."
+            )
+            self.tracker.record_call("edit_file", args, None, error)
+            raise ValueError(error)
+        finally:
+            self.backend.run(f"rm -f {patch_file}", 10)
 
     def search_code(self, query: str, file_pattern: str = "*") -> list[dict[str, Any]]:
         """Search for code patterns in the repository using grep."""

@@ -26,6 +26,38 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _as_int(value: Any) -> int:
+    """Coerce a usage field to a non-negative int, or 0 if it isn't numeric.
+
+    Provider responses (or test Mocks) may carry a ``usage`` whose token fields
+    are absent, ``None``, or a Mock attribute. Cost tracking is auxiliary and
+    must never raise, so anything non-numeric is reported as 0 rather than
+    propagated. ``bool`` is an ``int`` subclass but is never a token count.
+    """
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, float):
+        return max(0, int(value))
+    return 0
+
+
+def usage_from_chat_response(response: Any) -> tuple[int, int]:
+    """Best-effort ``(prompt_tokens, completion_tokens)`` from an OpenAI-compatible
+    chat-completions response.
+
+    Returns ``(0, 0)`` when ``usage`` is missing or non-numeric (a provider that
+    omits usage, or a unit-test Mock) so callers can surface usage unconditionally
+    without guarding every call site. E1 (complete cost telemetry).
+    """
+    usage = getattr(response, "usage", None)
+    return (
+        _as_int(getattr(usage, "prompt_tokens", None)),
+        _as_int(getattr(usage, "completion_tokens", None)),
+    )
+
+
 # OpenAI pricing (as of implementation date)
 # Source: https://openai.com/api/pricing/
 PRICING = {
@@ -236,11 +268,12 @@ class RunCostSummary:
     start_time: str | None = None
     end_time: str | None = None
     # Provenance: True only when ALL v5 §1582 cost-axis call types (agent +
-    # reflection + classifier + consolidation + embedding) are tracked. The
-    # runner currently records the agent call only (reflection/classifier/
-    # consolidation/embedding token surfacing is a pending follow-up), so this
-    # stays False — downstream Pareto/H1b/H3 analysis MUST NOT treat total_tokens
-    # as the complete cost axis while this is False. Mirrors cl_f1_source honesty.
+    # reflection + classifier + consolidation + embedding) are tracked.
+    # Defaults False (honest for a bare tracker). The SequenceRunner surfaces
+    # every call type (E1) and flips this to True via
+    # CostTracker.mark_pareto_cost_complete() once a run starts; downstream
+    # Pareto/H1b/H3 analysis MUST NOT treat total_tokens as the complete cost
+    # axis while this is False. Mirrors cl_f1_source honesty.
     pareto_cost_complete: bool = False
     task_costs: list[TaskCostSummary] = field(default_factory=list)
 
@@ -361,6 +394,22 @@ class CostTracker:
             f"Started cost tracking for run: policy={policy}, "
             f"sequence={sequence_name}, seed={seed}"
         )
+
+    def mark_pareto_cost_complete(self, value: bool = True) -> None:
+        """Declare that this run tracks every v5 §1582 cost-axis call type.
+
+        Set by the SequenceRunner after E1 wiring (agent + reflection +
+        classifier + CLS consolidation + embedding usage are all surfaced into
+        this tracker), making ``total_tokens`` a valid complete cost axis for the
+        Pareto / H1b / H3 analysis. No-op (with a warning) if the run hasn't
+        started — ``start_run`` must be called first.
+        """
+        if not self.run_summary:
+            logger.warning(
+                "mark_pareto_cost_complete called before start_run; ignored."
+            )
+            return
+        self.run_summary.pareto_cost_complete = value
 
     def track_llm_call(
         self,

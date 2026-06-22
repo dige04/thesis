@@ -34,6 +34,26 @@ Top-level wiring (new CLI / `make anchor-probe`, called after each sequence comp
 - Call `build_anchor_probe_record(...)` with the real `restore_memory_fn` / `solve_and_eval_fn`.
 - `write_anchor_probe(run_dir, record)`.
 
+## LOCKED DESIGN (2026-06-17 — feasibility confirmed against gate-3 `memory.db`)
+
+**Key finding: no re-embedding of stored records needed.** `memory_records` persists
+`sequence_index`, `is_archived`, `archived_at_step`, and `embedding_vector_id`; the
+vectors live in `memory.faiss` keyed by that id. So memory-state-after-`p` is
+reconstructable from the run's own `memory.db` + `memory.faiss` (Ollama/nomic is
+needed only to embed the anchor's *query* at retrieval time).
+
+`restore_memory_fn(run_dir, p)` (the only genuinely new code):
+1. Copy `runs/<run>/memory/{memory.db,memory.faiss}` → a temp run dir `runs/_ap_tmp_<...>/memory/`.
+2. On the temp DB, set archived-state-as-of-`p`:
+   `UPDATE memory_records SET is_archived = CASE WHEN sequence_index <= :p AND (archived_at_step IS NULL OR archived_at_step > :p) THEN 0 ELSE 1 END;`
+   (records created after `p` → excluded; records archived after `p` → active again; records archived ≤`p` → stay archived.)
+3. `MemoryStore(run_id="_ap_tmp_<...>", policy_name=..., embedding_dim=768, embedding_model="nomic-embed-text-v2-moe")` — loads the temp DB + FAISS; `active_records()` now returns the active-at-`p` set. **`shared_retrieve` runs unchanged → Invariant #5 preserved exactly.**
+
+`solve_and_eval_fn` — **reuse `sequence_runner`'s proven path, do not reimplement**:
+`shared_retrieve(anchor_task, restored_store, top_k, budget)` → `CodingAgent(memory_store=restored_store, policy, config, task_env).solve_task(task_dict, retrieved_memories=...)` → `SWEBenchEvaluator.evaluate_patch(task, patch, work_dir)` → `1 if passed else 0`. Construct `task_env` (ContainerBackend, x86_64 swebench image) exactly as `sequence_runner._execute_agent` does.
+
+Index map (unchanged): anchor position `i` (1-indexed) → `sequence.tasks[i-1]`; probe `p` uses `archived_at_step`/`sequence_index` ≤ `p` (so the snapshot files aren't even needed — the DB is authoritative).
+
 ## Cost & verification
 - **Budget:** ≤ 20 re-evals/run × 144 runs ≈ **2,880 extra agent runs** — fold into the §22.1 projection.
 - **Acceptance:** on one real completed run, produce `anchor_probe.json`; confirm `aggregate_sequence_results` flips that cell's `cl_f1_source` to `"anchor_probe"` and `cl_f1` is no longer the resolved-rate proxy. Add one integration test using a real (or recorded) run dir as a fixture.

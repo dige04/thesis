@@ -46,17 +46,20 @@ class TestLimitTrackerFrozenValues:
 
 
 class TestTemperatureInvariant:
-    """Frozen decision #26: temperature=0 for all LLM calls."""
+    """Frozen decision #26, amended 2026-06-14: temperature held CONSTANT across all
+    conditions; value is 0 OR 1 (1 for Kimi reasoning models, which reject 0)."""
 
-    def test_temperature_zero_ok(self):
-        validate_temperature(0)  # must not raise
+    def test_temperature_0_or_1_ok(self):
+        validate_temperature(0)  # determinism providers
         validate_temperature(0.0)
+        validate_temperature(1)  # reasoning providers (Kimi) — 2026-06-14 amendment
+        validate_temperature(1.0)
 
-    def test_temperature_must_be_zero(self):
-        with pytest.raises(ValueError, match="temperature must be 0"):
+    def test_temperature_other_values_rejected(self):
+        with pytest.raises(ValueError, match="must be 0 or 1"):
             validate_temperature(0.5)
-        with pytest.raises(ValueError, match="temperature must be 0"):
-            validate_temperature(1.0)
+        with pytest.raises(ValueError, match="must be 0 or 1"):
+            validate_temperature(2.0)
 
 
 class TestLimitTrackerBoundaries:
@@ -141,8 +144,9 @@ class TestCodingAgentConstructorInvariants:
         with pytest.raises(ValueError, match="max_steps must be 20"):
             _make_agent(_agent_config(max_steps=25))
 
-    def test_constructor_rejects_non_zero_temperature(self):
-        with pytest.raises(ValueError, match="temperature must be 0"):
+    def test_constructor_rejects_invalid_temperature(self):
+        # 0.5 is neither 0 (determinism) nor 1 (Kimi reasoning) — still invalid.
+        with pytest.raises(ValueError, match="must be 0 or 1"):
             _make_agent(_agent_config(temperature=0.5))
 
 

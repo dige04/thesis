@@ -237,20 +237,25 @@ class LimitTracker:
 
 def validate_temperature(temperature: float) -> None:
     """
-    Validate that temperature is set to 0 (FROZEN INVARIANT).
+    Validate that temperature is a legitimate frozen value (0 or 1).
 
-    Temperature=0 is required for all LLM calls to ensure reproducibility
-    across the 144 experimental runs. This is a frozen invariant from
-    THESIS_FINAL_v5.md §0.1.
+    AMENDMENT 2026-06-14 (advisor-approved; disclose in Methods): the original
+    frozen invariant was temperature=0 for reproducibility. The active provider
+    (Kimi For Coding via CLIProxyAPI) serves reasoning models that ONLY accept
+    temperature=1, so the experiment runs at 1. The invariant's real purpose —
+    temperature held CONSTANT across all 6 conditions x 3 seeds — is preserved by
+    sourcing one config value; only the constant changed (0 -> 1). temperature=0
+    remains valid for determinism-capable providers (keeps the code reversible).
 
     Args:
         temperature: Temperature value to validate
 
     Raises:
-        ValueError: If temperature is not exactly 0
+        ValueError: If temperature is not exactly 0 or 1
     """
-    if temperature != 0:
+    if temperature not in (0, 1):
         raise ValueError(
-            f"FROZEN INVARIANT VIOLATION: temperature must be 0 for reproducibility, got {temperature}. "
-            "This is a frozen invariant from THESIS_FINAL_v5.md §0.1."
+            f"FROZEN INVARIANT: temperature must be 0 or 1 (held constant across "
+            f"conditions), got {temperature}. 0=determinism providers, 1=reasoning "
+            "providers (Kimi). See THESIS_FINAL_v5.md §0.1 + the 2026-06-14 amendment."
         )

@@ -46,6 +46,9 @@ def is_usage_limit_error(exc: BaseException) -> bool:
     name_markers = (
         "gousagelimiterror",
         "insufficient_quota",
+        "insufficient_balance",  # 0G router (M3 free tier is balance-metered)
+        "insufficient balance",
+        "payment_error",
         "usage limit reached",
         "weekly usage limit",
     )
@@ -54,6 +57,11 @@ def is_usage_limit_error(exc: BaseException) -> bool:
     status = getattr(exc, "status_code", None)
     if status is None:
         status = getattr(getattr(exc, "response", None), "status_code", None)
+    # 402 Payment Required is a billing/balance wall (e.g. 0G insufficient_balance):
+    # ALWAYS fatal. Never let it silently fail tasks as resolved=0 — that is the
+    # exact corruption UsageLimitError exists to prevent.
+    if status == 402:
+        return True
     return status == 429 and ("usage limit" in text or "quota" in text)
 
 

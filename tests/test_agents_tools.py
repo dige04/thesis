@@ -103,15 +103,22 @@ def test_write_file(temp_repo):
 
 
 def test_edit_file(temp_repo):
-    """Test editing files with diff."""
+    """Test editing files with a standard unified diff (applied via git apply)."""
     tools = AgentTools(str(temp_repo))
 
-    # Simple edit
-    diff = "-print('hello')\n+print('goodbye')\n"
+    # Standard unified diff (the format the model emits and git apply accepts).
+    diff = (
+        "--- a/test.py\n"
+        "+++ b/test.py\n"
+        "@@ -1 +1 @@\n"
+        "-print('hello')\n"
+        "+print('goodbye')\n"
+    )
     tools.edit_file("test.py", diff)
 
     content = tools.read_file("test.py")
     assert "goodbye" in content
+    assert "hello" not in content  # the old line was actually removed, not appended
 
     # Try to edit non-existent file (this also gets tracked)
     with pytest.raises(FileNotFoundError):

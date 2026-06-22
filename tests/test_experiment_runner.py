@@ -29,6 +29,7 @@ from src.benchmark.experiment_runner import (
 )
 from src.benchmark.models import Sequence, Task
 from src.benchmark.sequence_runner import SequenceResult
+from src.errors import UsageLimitError
 from src.memory.policies.cls_consolidation import CLSConsolidationPolicy
 from src.memory.policies.full_memory import FullMemoryPolicy
 from src.memory.policies.no_memory import NoMemoryPolicy
@@ -669,3 +670,50 @@ class TestFrozenInvariants:
         # Verify different seeds produce different RNG states
         assert policy1.seed != policy2.seed
         assert policy1.rng.random() != policy2.rng.random()
+
+
+class TestUsageLimitFailClosed:
+    """C5 (THESIS_REVIEW): provider quota must ABORT the matrix, not continue it.
+
+    Before the fix, the matrix loop's generic ``except Exception`` swallowed
+    UsageLimitError, incremented failed_runs, and marched through all 144 runs —
+    producing an apparently-complete but invalid 0-resolved matrix.
+    """
+
+    def test_run_full_experiment_aborts_on_usage_limit(
+        self, mock_config, mock_curriculum_file, monkeypatch
+    ):
+        runner = ExperimentRunner(
+            config=mock_config,
+            curriculum_path=mock_curriculum_file,
+        )
+
+        calls = {"n": 0}
+
+        def _raise(run_config, sequence):
+            calls["n"] += 1
+            raise UsageLimitError("429 weekly usage limit reached")
+
+        monkeypatch.setattr(runner, "_execute_run", _raise)
+
+        with pytest.raises(UsageLimitError):
+            runner.run_full_experiment()
+
+        # Aborted on the FIRST quota error — did not iterate the rest of the matrix.
+        assert calls["n"] == 1
+
+    def test_run_pilot_aborts_on_usage_limit(
+        self, mock_config, mock_curriculum_file, monkeypatch
+    ):
+        runner = ExperimentRunner(
+            config=mock_config,
+            curriculum_path=mock_curriculum_file,
+        )
+
+        def _raise(run_config, sequence):
+            raise UsageLimitError("429 weekly usage limit reached")
+
+        monkeypatch.setattr(runner, "_execute_run", _raise)
+
+        with pytest.raises(UsageLimitError):
+            runner.run_pilot_experiment(num_sequences=2)

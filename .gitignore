@@ -29,6 +29,8 @@ MANIFEST
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
 .venv
 venv/
 env/
@@ -74,10 +76,16 @@ coverage.xml
 # ─────────────────────────────────────────────────────────────────
 # Per-run logs and memory state. 144 runs × per-task logs adds up fast.
 runs/
+runs_k27/
+runs_k27_merged/
+runs_legacy_merged/
 
 # Raw aggregated results. Plots and final tables in results/ committed manually.
 results/raw/
 results/cache/
+# Fabricated dress-rehearsal data — regenerated deterministically by
+# scripts/simulate/generate_synthetic_runs.py (NOT a measurement, do not commit).
+results/simulated/
 
 # Vector indices and metadata stores
 *.faiss

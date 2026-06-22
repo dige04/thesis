@@ -37,6 +37,7 @@ from src.benchmark.models import Sequence
 from src.benchmark.sequence_runner import SequenceResult, SequenceRunner
 from src.benchmark.swebenchcl_loader import SWEBenchCLLoader
 from src.config.loader import load_config
+from src.errors import UsageLimitError
 from src.memory.policies.base import MemoryPolicy
 from src.memory.policies.cls_consolidation import CLSConsolidationPolicy
 from src.memory.policies.full_memory import FullMemoryPolicy
@@ -439,6 +440,17 @@ class ExperimentRunner:
                     f"total cost=${total_cost_usd:.2f}"
                 )
 
+            except UsageLimitError:
+                # Provider quota is FATAL — abort the WHOLE experiment. Otherwise
+                # the sequence runner's correct re-raise is undone here and the
+                # matrix marches on producing invalid 0-resolved runs. Resume after
+                # quota/billing resets. (THESIS_REVIEW C5 — fail closed.)
+                logger.error(
+                    f"ABORTING experiment — provider usage limit during run "
+                    f"{run_config.run_id}. Matrix is resumable after quota resets."
+                )
+                raise
+
             except Exception as e:
                 # Log failure but continue
                 failed_runs += 1
@@ -601,6 +613,15 @@ class ExperimentRunner:
                     f"{failed_runs} failed, "
                     f"total cost=${total_cost_usd:.2f}"
                 )
+
+            except UsageLimitError:
+                # Provider quota is FATAL — abort the whole pilot (see full-run
+                # rationale above). THESIS_REVIEW C5 — fail closed.
+                logger.error(
+                    f"ABORTING pilot — provider usage limit during run "
+                    f"{run_config.run_id}. Resumable after quota resets."
+                )
+                raise
 
             except Exception as e:
                 # Log failure but continue
