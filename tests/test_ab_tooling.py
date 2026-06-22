@@ -571,3 +571,132 @@ class TestAbGateStop:
         assert result["gate"] == "STOP", (
             f"Expected STOP for token inflation, got: {result['gate']} | metrics: {result.get('metrics')}"
         )
+
+
+# ===========================================================================
+# PART 5: ab_gate tool_mode provenance check (item 3 — Task 5e final-review)
+# ===========================================================================
+
+
+class TestAbGateToolModeProvenance:
+    def test_blocked_when_task_row_tool_mode_mismatches_run_id(self, tmp_path):
+        """Task rows with tool_mode != the mode implied by run_id → BLOCKED.
+
+        This guards against fixed-data written into a legacy-labelled dir
+        (or the reverse) which would silently corrupt the A/B comparison.
+        """
+        from scripts.ab_gate import ab_gate
+        from scripts.ab_schedule import ab_schedule
+
+        runs_root = tmp_path / "runs"
+        schedule = ab_schedule(seed=20260622)
+
+        # Build all 36 runs normally, then overwrite one fixed run's task rows
+        # with tool_mode="legacy" — simulating fixed data in a legacy dir.
+        first_fixed_cell = next(c for c in schedule if c["tool_mode"] == "fixed")
+
+        for cell in schedule:
+            recorded_mode = cell["tool_mode"]
+            if cell["run_id"] == first_fixed_cell["run_id"]:
+                # Inject wrong tool_mode in the task rows
+                recorded_mode = "legacy"
+            _build_run_dir(
+                root=runs_root,
+                run_id=cell["run_id"],
+                policy=cell["policy"],
+                seed=cell["seed"],
+                sequence=cell["sequence_name"],
+                tool_mode=recorded_mode,  # row's recorded mode differs from run_id
+                write_completed_sentinel=True,
+            )
+            # Fix the sentinel's tool_mode back to match run_id (sentinel honest)
+            sentinel_path = runs_root / cell["run_id"] / "RUN_COMPLETED.json"
+            sentinel_path.write_text(
+                json.dumps({"tool_mode": cell["tool_mode"], "task_count": len(TASK_IDS)})
+            )
+
+        result = ab_gate(runs_root=runs_root, results_dir=tmp_path / "results")
+        assert result["gate"] == "BLOCKED", (
+            f"Expected BLOCKED for tool_mode mismatch, got: {result['gate']}\n"
+            f"reasons: {result.get('reasons')}"
+        )
+        assert any("tool_mode" in r.lower() or "mismatch" in r.lower() for r in result.get("reasons", [])), (
+            f"Expected a tool_mode/mismatch reason, got: {result.get('reasons')}"
+        )
+
+    def test_not_blocked_when_all_rows_match_mode(self, tmp_path):
+        """All rows have correct tool_mode → not blocked for this reason."""
+        from scripts.ab_gate import ab_gate
+
+        runs_root = tmp_path / "runs"
+        _build_full_ab_fixture(root=runs_root)
+        result = ab_gate(runs_root=runs_root, results_dir=tmp_path / "results")
+        # Should not be blocked for tool_mode mismatch (may still be GO or STOP for other reasons)
+        reasons = result.get("reasons", [])
+        assert not any("tool_mode" in r.lower() and "mismatch" in r.lower() for r in reasons), (
+            f"Got unexpected tool_mode mismatch reason: {reasons}"
+        )
+
+    def test_not_blocked_when_tool_mode_field_absent_from_rows(self, tmp_path):
+        """Rows without a tool_mode field are skipped (legacy data may lack it)."""
+        from scripts.ab_gate import ab_gate
+        from scripts.ab_schedule import ab_schedule
+
+        runs_root = tmp_path / "runs"
+        schedule = ab_schedule(seed=20260622)
+
+        # Build all runs with task rows that have NO tool_mode field
+        for cell in schedule:
+            run_dir = runs_root / cell["run_id"]
+            run_dir.mkdir(parents=True)
+            with open(run_dir / "task_results.jsonl", "w") as f:
+                for tid in TASK_IDS:
+                    row = {
+                        "task_id": tid,
+                        "resolved": 0,
+                        "prompt_tokens": 1000,
+                        "total_tokens": 1200,
+                        "policy": cell["policy"],
+                        "seed": cell["seed"],
+                        # tool_mode intentionally absent
+                    }
+                    f.write(json.dumps(row) + "\n")
+            # Fill in required artifacts
+            traj_dir = run_dir / "trajectories"
+            traj_dir.mkdir()
+            for tid in TASK_IDS:
+                traj = {
+                    "task_id": tid,
+                    "steps": [
+                        {
+                            "step": 1,
+                            "action": "edit_file",
+                            "action_input": {"path": "src/mod.py"},
+                            "observation_summary": "Edited src/mod.py",
+                        }
+                    ],
+                }
+                (traj_dir / f"{tid}.json").write_text(json.dumps(traj))
+            patches_dir = run_dir / "patches"
+            patches_dir.mkdir()
+            for tid in TASK_IDS:
+                (patches_dir / f"{tid}.patch").write_text("")
+            snapshot_dir = run_dir / "memory" / "snapshots"
+            snapshot_dir.mkdir(parents=True)
+            for k in range(len(TASK_IDS)):
+                (snapshot_dir / f"before_task_{k}.json").write_text("{}")
+                (snapshot_dir / f"after_task_{k}.json").write_text("{}")
+            mem_dir = run_dir / "memory"
+            (mem_dir / "memory.db").write_text("")
+            (mem_dir / "memory.faiss").write_bytes(b"")
+            (run_dir / "memory_events.jsonl").write_text("")
+            (run_dir / "cost_summary.json").write_text("{}")
+            (run_dir / "RUN_COMPLETED.json").write_text(
+                json.dumps({"tool_mode": cell["tool_mode"], "task_count": len(TASK_IDS)})
+            )
+
+        result = ab_gate(runs_root=runs_root, results_dir=tmp_path / "results")
+        reasons = result.get("reasons", [])
+        assert not any("tool_mode" in r.lower() and "mismatch" in r.lower() for r in reasons), (
+            f"Should not flag rows without tool_mode field, got: {reasons}"
+        )

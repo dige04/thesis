@@ -319,3 +319,38 @@ def test_validate_rejects_missing_cost_summary(tmp_path):
     ok, missing = validate_run_complete(run_dir, MANIFEST_ENTRY)
     assert ok is False
     assert any("cost_summary" in m for m in missing), missing
+
+
+# ---------------------------------------------------------------------------
+# 15. archive_prior_attempt: NEVER archives a dir that has RUN_COMPLETED.json
+# ---------------------------------------------------------------------------
+
+def test_archive_does_not_touch_completed_run(tmp_path):
+    """A dir with RUN_COMPLETED.json must NEVER be archived (data loss guard)."""
+    run_dir = tmp_path / "run_done"
+    run_dir.mkdir()
+    # Write both COMPLETED and FAILED (belt-and-suspenders check — COMPLETED wins)
+    (run_dir / "RUN_COMPLETED.json").write_text(json.dumps({"task_count": 2}))
+    (run_dir / "RUN_FAILED.json").write_text(json.dumps({"error_type": "err"}))
+    (run_dir / "task_results.jsonl").write_text("")
+
+    archive_prior_attempt(run_dir)
+
+    # Original dir must still exist — not moved
+    assert run_dir.exists(), "archive_prior_attempt moved a COMPLETED run — data loss!"
+    assert not (tmp_path / "run_done.attempt1").exists(), (
+        "archive_prior_attempt created an attempt dir for a COMPLETED run"
+    )
+
+
+def test_archive_does_not_touch_completed_run_no_failed_marker(tmp_path):
+    """RUN_COMPLETED.json alone (no RUN_FAILED.json) is enough to protect the dir."""
+    run_dir = tmp_path / "run_clean"
+    run_dir.mkdir()
+    (run_dir / "RUN_COMPLETED.json").write_text(json.dumps({"task_count": 3}))
+    (run_dir / "task_results.jsonl").write_text("")
+
+    archive_prior_attempt(run_dir)
+
+    assert run_dir.exists(), "archive_prior_attempt moved a COMPLETED run"
+    assert not (tmp_path / "run_clean.attempt1").exists()

@@ -362,6 +362,9 @@ class TaskResultLogger:
             # Task metadata
             "task_difficulty",
             "error_message",
+            # Termination reason and tool mode (Task 5c / A/B experiment)
+            "termination_reason",
+            "tool_mode",
         }
 
         missing_fields = required_fields - set(result_dict.keys())

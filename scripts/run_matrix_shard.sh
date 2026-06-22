@@ -34,6 +34,15 @@ if [ ! -f "$MANIFEST" ]; then
   echo "ERROR: manifest not found at $MANIFEST" >&2; exit 1
 fi
 
+# Guard: if SHARD >= NUM there is no work for this instance.
+# Under Restart=always systemd would restart endlessly on exit 0.
+# Instead, park (sleep infinity) so the unit stays active but does nothing,
+# avoiding a restart-spin when fleet size is reduced.
+if [ "$SHARD" -ge "$NUM" ]; then
+  echo "SHARD $SHARD >= NUM $NUM — no units assigned, parking." >&2
+  exec sleep infinity
+fi
+
 # ---------------------------------------------------------------------------
 # Extract this shard's unit list from the manifest using Python
 # (avoids jq dependency on VPS droplets).
@@ -65,13 +74,25 @@ run_unit() {
   IFS='|' read -r _idx run_id pol seed seq <<< "$entry"
 
   # Done-check: delegate to unit_status.py (RUN_COMPLETED.json sentinel).
+  # Fail-closed: if status is not exactly one of complete|failed|incomplete
+  # (e.g. empty on a transient import error), skip this pass with a warning
+  # rather than falling through to archive/re-run.
   local status
   status=$(.venv/bin/python scripts/unit_status.py "$run_id" "$RUNS_ROOT" 2>/dev/null)
 
-  if [ "$status" = "complete" ]; then
-    echo "SKIP(done) $run_id"
-    return 0
-  fi
+  case "$status" in
+    complete)
+      echo "SKIP(done) $run_id"
+      return 0
+      ;;
+    failed|incomplete)
+      : # fall through to archive + run
+      ;;
+    *)
+      echo "WARN: unit_status.py returned unexpected value $(printf '%q' "$status") for $run_id — skipping this pass" >&2
+      return 0
+      ;;
+  esac
 
   # Archive any prior failed/partial attempt before starting fresh.
   # archive_prior_attempt is a no-op for a clean empty dir.

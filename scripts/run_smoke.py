@@ -225,7 +225,9 @@ def run_smoke(
     os.environ["AGENT_TOOL_MODE"] = "fixed"
 
     # ── runs_root ─────────────────────────────────────────────────────────────
-    _root = Path(runs_root) if runs_root else Path(os.environ.get("RUNS_ROOT", "runs"))
+    # Use a dedicated runs_smoke/ root so smoke dirs are never mixed into the
+    # production runs/ directory (which would corrupt run-count reconciliation).
+    _root = Path(runs_root) if runs_root else Path(os.environ.get("RUNS_ROOT", "runs_smoke"))
     _root.mkdir(parents=True, exist_ok=True)
 
     # ── imports (deferred so offline tests don't trigger network imports) ─────
@@ -346,17 +348,15 @@ def run_smoke(
         trajectory = agent_result.get("trajectory", [])
         eval_result = evaluate_smoke_trajectory(trajectory, agent_result, task_meta)
 
-        # Write RUN_COMPLETED.json if all checks pass
+        # Write RUN_COMPLETED.json if all checks pass (via canonical writer so
+        # is_run_complete() recognises it and scans of runs/ can't miscount).
         if eval_result["passed"]:
-            sentinel = run_dir / _RUN_COMPLETED
-            sentinel.write_text(json.dumps({
-                "task_id": task_id,
-                "run_id": run_id,
-                "passed": True,
-                "checks": eval_result["checks"],
-                "wall_time_seconds": elapsed,
-                "tool_mode": agent_result.get("tool_mode", "fixed"),
-            }, indent=2))
+            from src.benchmark.completion import write_completed
+            write_completed(
+                run_dir=run_dir,
+                tool_mode=agent_result.get("tool_mode", "fixed"),
+                task_count=1,
+            )
             logger.info(f"[smoke] {task_id}: PASS ({elapsed:.1f}s)")
         else:
             logger.warning(

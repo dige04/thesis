@@ -11,10 +11,14 @@ WorkingDirectory=/root/thesis
 # AGENT_TOOL_MODE is passed through to the runner (default: fixed).
 Environment=RUNS_ROOT=runs
 Environment=AGENT_TOOL_MODE=fixed
+# NUM: total number of shards in the fleet (override to match actual fleet size,
+# e.g. `systemctl set-environment NUM=10` or edit EnvironmentFile).
+# Default is 10; raise/lower to match the droplet count.
+Environment=NUM=10
 # One pass over this shard's units (skips done via RUN_COMPLETED.json sentinel);
 # on exit systemd restarts it -> a resumable continuous loop.
 # Args: SHARD NUM_SHARDS CONC
-ExecStart=/bin/bash /root/thesis/scripts/run_matrix_shard.sh %i 5 2
+ExecStart=/bin/bash /root/thesis/scripts/run_matrix_shard.sh %i ${NUM} 2
 Restart=always
 RestartSec=60
 

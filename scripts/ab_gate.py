@@ -268,6 +268,7 @@ def ab_gate(runs_root: Path | str, results_dir: Path | str) -> dict[str, Any]:
     edit_path_index_failures = 0
 
     dup_issues: list[str] = []
+    tool_mode_mismatch_issues: list[str] = []
 
     for cell in schedule:
         run_dir = runs_root / cell["run_id"]
@@ -280,6 +281,21 @@ def ab_gate(runs_root: Path | str, results_dir: Path | str) -> dict[str, Any]:
             from collections import Counter
             dup = [t for t, cnt in Counter(task_ids_in_run).items() if cnt > 1]
             dup_issues.append(f"Duplicate task_ids in {cell['run_id']}: {dup[:3]}")
+
+        # Tool-mode provenance check: every task row's recorded tool_mode must
+        # match the tool_mode implied by the run_id in the schedule.  A mismatch
+        # means fixed-mode data was written into a legacy-labelled dir (or vice
+        # versa), which would silently corrupt the A/B comparison.
+        row_mismatches = [
+            r.get("task_id")
+            for r in rows
+            if r.get("tool_mode") is not None and r.get("tool_mode") != mode
+        ]
+        if row_mismatches:
+            tool_mode_mismatch_issues.append(
+                f"tool_mode mismatch in {cell['run_id']!r} (expected {mode!r}): "
+                f"task rows with wrong tool_mode: {sorted(row_mismatches)[:5]}"
+            )
 
         for row in rows:
             pt = row.get("prompt_tokens", 0) or 0
@@ -309,6 +325,16 @@ def ab_gate(runs_root: Path | str, results_dir: Path | str) -> dict[str, Any]:
             "gate": "BLOCKED",
             "reason": dup_issues[0],
             "reasons": dup_issues,
+            "metrics": {},
+            "reported_deltas": {},
+            "range_correctness_note": range_note,
+        }
+
+    if tool_mode_mismatch_issues:
+        return {
+            "gate": "BLOCKED",
+            "reason": tool_mode_mismatch_issues[0],
+            "reasons": tool_mode_mismatch_issues,
             "metrics": {},
             "reported_deltas": {},
             "range_correctness_note": range_note,

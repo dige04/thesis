@@ -289,9 +289,10 @@ def archive_prior_attempt(run_dir: Path | str) -> None:
     has_completed = (run_dir / "RUN_COMPLETED.json").exists()
     has_results = (run_dir / "task_results.jsonl").exists()
 
-    # A fresh empty dir (or a successfully completed run) → no archival needed.
+    # A successfully completed run must never be archived — it contains good data.
+    # A fresh empty dir (no markers, no results) → nothing to archive.
     # Only archive if: has a FAILED marker, OR has prior data but no COMPLETED.
-    if not has_failed and not has_results:
+    if has_completed or (not has_failed and not has_results):
         return
 
     # Find the next free attempt slot

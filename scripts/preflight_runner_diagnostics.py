@@ -48,11 +48,16 @@ TOOL_SCHEMAS: dict[str, set[str]] = {
 # Helpers
 # ---------------------------------------------------------------------------
 
-def policy_seq_from_dir(name: str) -> tuple[str, str, int]:
+def policy_seq_from_dir(name: str) -> tuple[str, int]:
     """
-    Returns (policy, sequence_name, seed) by consulting the manifest.
-    We match by removing 'pilot_' prefix and parsing seed suffix, then
-    split off the policy (longest known policy prefix).
+    Returns (policy_sequence_name, seed) parsed from a run directory name.
+
+    Strips an optional 'pilot_' prefix, then extracts the trailing '_seed<N>'
+    suffix.  The remainder (everything before the seed suffix) is the combined
+    policy+sequence string, e.g. 'no_memory_django_django_sequence'.
+
+    Returns:
+        (policy_sequence_name, seed)  — a 2-tuple of (str, int).
     """
     name_no_pilot = name.removeprefix("pilot_")
     m = re.search(r"_seed(\d+)$", name_no_pilot)

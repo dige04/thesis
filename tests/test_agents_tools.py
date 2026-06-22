@@ -384,6 +384,100 @@ def test_edit_file_path_traversal_rejected(git_repo):
 
 
 # ---------------------------------------------------------------------------
+# Item 8a (final-review): legacy mode edit_file skips cross-file/path guard
+# ---------------------------------------------------------------------------
+
+def test_legacy_edit_file_does_not_enforce_cross_file_guard(git_repo, monkeypatch):
+    """AGENT_TOOL_MODE=legacy must apply the diff raw without the cross-file
+    security guard (Task 5c A/B invariant: legacy reproduces pre-fix behavior).
+
+    The fixed-mode test (test_edit_file_cross_file_rejected) proves the guard
+    fires under fixed mode.  This test proves it does NOT fire in legacy mode —
+    i.e. a diff touching other.py while path='m.py' succeeds (or at worst fails
+    only at git-apply, not at the guard).
+    """
+    monkeypatch.setenv("AGENT_TOOL_MODE", "legacy")
+    tools = AgentTools(str(git_repo))
+
+    # Build a diff that ONLY touches other.py (m.py is unchanged).
+    # In fixed mode this raises ValueError("Security: diff touches ...").
+    # In legacy mode the path guard is skipped and git apply is attempted.
+    diff = (
+        "--- a/other.py\n"
+        "+++ b/other.py\n"
+        "@@ -1 +1 @@\n"
+        "-y = 2\n"
+        "+y = 77\n"
+    )
+
+    # In legacy mode: no ValueError from the security guard.
+    # The diff may succeed (git apply succeeds) or fail (git apply error for
+    # another reason), but the *guard path* must NOT fire.
+    # We assert no ValueError matching the security-guard message pattern.
+    try:
+        tools.edit_file("m.py", diff)
+        # If git apply succeeded, other.py should be changed
+        assert (git_repo / "other.py").read_text() == "y = 77\n"
+    except ValueError as exc:
+        msg = str(exc)
+        # Must NOT be the security guard raising; only git-apply failures OK
+        assert "Security" not in msg and "diff touches" not in msg, (
+            f"Legacy mode raised a security guard ValueError: {msg!r}"
+        )
+    except Exception:
+        # git-apply failures (e.g. RuntimeError) are acceptable in legacy mode
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Item 8b (final-review): read_file pagination continuity — next_start == last+1
+# ---------------------------------------------------------------------------
+
+def test_read_file_pagination_no_skipped_lines(tmp_path):
+    """Two successive ranged reads of a >400-line file must be contiguous:
+    the second read's start == first read's last_line_shown + 1 (no skipped lines).
+
+    This validates the continuation hint embedded in the read_file output:
+        Call read_file(path, {last+1}, {e}) to continue.
+    """
+    import re
+    from src.agents.tools import AgentTools, MAX_READ_LINES
+
+    # Create a file longer than 2 × MAX_READ_LINES so two ranged reads needed
+    n_lines = MAX_READ_LINES * 2 + 50
+    content = "\n".join(f"line{i}" for i in range(1, n_lines + 1))
+    (tmp_path / "big.py").write_text(content)
+
+    tools = AgentTools(working_dir=str(tmp_path))
+
+    # First read: ask for the whole file
+    out1 = tools.read_file("big.py", 1, n_lines)
+
+    # Extract the highest line number shown in out1
+    line_numbers = [int(x) for x in re.findall(r"(?m)^(\d+)\t", out1)]
+    assert line_numbers, "No numbered lines found in first read output"
+    last_shown = max(line_numbers)
+
+    # The continuation hint must reference last_shown + 1 as next start
+    expected_next = last_shown + 1
+    assert f"read_file(path, {expected_next}," in out1, (
+        f"Continuation hint missing or wrong: expected next_start={expected_next}, "
+        f"last_shown={last_shown}.\nOutput: {out1[:500]}"
+    )
+
+    # Second read: start at the hinted next_start
+    out2 = tools.read_file("big.py", expected_next, n_lines)
+    line_numbers2 = [int(x) for x in re.findall(r"(?m)^(\d+)\t", out2)]
+    assert line_numbers2, "No numbered lines found in second read output"
+
+    first_in_second = min(line_numbers2)
+    assert first_in_second == expected_next, (
+        f"Second read started at line {first_in_second}, expected {expected_next} "
+        f"(no skipped lines). Gap = {first_in_second - expected_next}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Task 3: _TOOL_SCHEMAS — read_file range params; no get_patch advertisement
 # ---------------------------------------------------------------------------
 
