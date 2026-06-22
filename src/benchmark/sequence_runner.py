@@ -147,7 +147,8 @@ class SequenceRunner:
         self.run_dir = _runs_root() / run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize memory store
+        # Initialize memory store — pass run_dir so memory.db/.faiss/snapshots
+        # all land under self.run_dir (which respects RUNS_ROOT via _runs_root()).
         self.memory_store = MemoryStore(
             run_id=run_id,
             policy_name=policy.name,
@@ -155,6 +156,7 @@ class SequenceRunner:
             embedding_model=config.get("memory", {}).get(
                 "embedding_model", "text-embedding-3-small"
             ),
+            run_dir=self.run_dir,
         )
 
         # Initialize evaluator. ``namespace`` controls image source: "" builds
@@ -856,6 +858,7 @@ class SequenceRunner:
             task_id=task.task_id,
             policy=self.policy.name,
             seed=seed,
+            run_dir=self.run_dir,  # unify: trajectories land under the same root as task_results/memory
         )
         for i, step in enumerate(agent_result.get("trajectory", []), start=1):
             traj_logger.log_step(

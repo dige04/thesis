@@ -69,7 +69,8 @@ class MemoryStore:
         run_id: str,
         policy_name: str,
         embedding_dim: int = 1536,  # text-embedding-3-small dimension
-        embedding_model: str = "text-embedding-3-small"
+        embedding_model: str = "text-embedding-3-small",
+        run_dir: "Path | str | None" = None,
     ):
         """Initialize SQLite + FAISS storage for a run.
 
@@ -78,11 +79,15 @@ class MemoryStore:
             policy_name: Name of the memory policy being used
             embedding_dim: Dimension of embedding vectors (default: 1536 for text-embedding-3-small)
             embedding_model: Name of the OpenAI embedding model to use
+            run_dir: Full path to the per-run directory.  When provided, all
+                artifacts (memory.db, memory.faiss, snapshots/) are written
+                there.  When omitted the legacy default ``Path("runs")/run_id``
+                is used so existing callers remain unaffected.
 
         Notes:
-            - Creates SQLite database at runs/{run_id}/memory.db
-            - Creates FAISS index at runs/{run_id}/memory.faiss
-            - Initializes snapshot directory at runs/{run_id}/memory/snapshots/
+            - Creates SQLite database at <run_dir>/memory/memory.db
+            - Creates FAISS index at <run_dir>/memory/memory.faiss
+            - Initializes snapshot directory at <run_dir>/memory/snapshots/
         """
         self.run_id = run_id
         self.policy_name = policy_name
@@ -95,8 +100,11 @@ class MemoryStore:
         # drains it per task into the CostTracker; see drain_embedding_usage().
         self._embedding_usage: list[dict[str, Any]] = []
 
-        # Setup directory structure
-        self.run_dir = Path("runs") / run_id
+        # Setup directory structure.
+        # When a run_dir is explicitly supplied (e.g. from SequenceRunner which
+        # respects RUNS_ROOT), use it verbatim so all artifacts land in one
+        # place.  Fall back to the legacy relative default for back-compat.
+        self.run_dir = Path(run_dir) if run_dir is not None else Path("runs") / run_id
         self.memory_dir = self.run_dir / "memory"
         self.snapshot_dir = self.memory_dir / "snapshots"
 

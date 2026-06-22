@@ -113,6 +113,7 @@ class TrajectoryLogger:
         policy: str,
         seed: int,
         base_dir: Path | str = "runs",
+        run_dir: "Path | str | None" = None,
     ):
         """
         Initialize trajectory logger.
@@ -122,13 +123,25 @@ class TrajectoryLogger:
             task_id: Task identifier (e.g., "django__django-12345")
             policy: Memory policy name (e.g., "type_aware_decay")
             seed: Random seed for this run
-            base_dir: Base directory for runs (default: "runs")
+            base_dir: Base directory for runs (default: "runs").  Used when
+                ``run_dir`` is not supplied; the final per-run directory is
+                computed as ``base_dir / run_id``.
+            run_dir: Full path to the *per-run* directory.  When provided, the
+                trajectory is written to ``run_dir / "trajectories"`` directly
+                — ``run_id`` is NOT appended again.  This allows the caller to
+                pass ``self.run_dir`` (which already includes ``run_id``) and
+                guarantees all artifacts land under a single root even when
+                RUNS_ROOT differs from the default ``"runs"``.
         """
         self.run_id = run_id
         self.task_id = task_id
         self.policy = policy
         self.seed = seed
         self.base_dir = Path(base_dir)
+
+        # When run_dir is injected, use it verbatim (full per-run path).
+        # Otherwise fall back to base_dir / run_id (legacy behaviour).
+        self._run_dir: Path | None = Path(run_dir) if run_dir is not None else None
 
         # Accumulate steps in memory
         self.steps: list[TrajectoryStep] = []
@@ -209,8 +222,13 @@ class TrajectoryLogger:
                 f"Trajectory already saved for task {self.task_id}"
             )
 
-        # Construct output path
-        output_dir = self.base_dir / self.run_id / "trajectories"
+        # Construct output path.
+        # If a full run_dir was injected, use it directly (no run_id appended).
+        # Otherwise use the legacy base_dir / run_id form.
+        if self._run_dir is not None:
+            output_dir = self._run_dir / "trajectories"
+        else:
+            output_dir = self.base_dir / self.run_id / "trajectories"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         output_path = output_dir / f"{self.task_id}.json"
