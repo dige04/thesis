@@ -37,18 +37,29 @@ from src.errors import UsageLimitError, is_usage_limit_error
 from src.model_output import strip_reasoning
 
 from .limit_tracker import LimitTracker, validate_temperature
-from .prompts import build_prompt_context
-from .tools import AgentTools, ContainerSession
+from .prompts import build_prompt_context, get_system_prompt
+from .tools import AgentTools, ContainerSession, tool_mode, _LEGACY_OBS_CAP
 
 logger = logging.getLogger(__name__)
 
 # Max characters of a tool observation fed back to the model / stored in the
 # trajectory (keeps context bounded; trajectory stores action summaries +
 # observations only — NO chain-of-thought, per v5 §11.3).
+# Fixed mode: 12000, tail-preserving.  Legacy mode: 4000, plain head-truncation.
 _MAX_OBS = 12000
 
 
-def _truncate_obs(text: str, limit: int = _MAX_OBS) -> str:
+def _truncate_obs(text: str, limit: int = _MAX_OBS, mode: str | None = None) -> str:
+    """Truncate observation text to fit within context budget.
+
+    mode=="legacy"  → plain head-truncation at 4000 chars (pre-task-3 behavior).
+    mode=="fixed"   → tail-preserving at 12000 chars (default; post-task-3 behavior).
+    mode==None      → resolved from AGENT_TOOL_MODE env var.
+    """
+    resolved = mode if mode in ("legacy", "fixed") else tool_mode()
+    if resolved == "legacy":
+        return text[:_LEGACY_OBS_CAP]
+    # fixed: tail-preserving
     if len(text) <= limit:
         return text
     tmpl = "\n...[{} chars omitted]...\n"
@@ -58,6 +69,7 @@ def _truncate_obs(text: str, limit: int = _MAX_OBS) -> str:
     tail = budget - head
     omitted = len(text) - head - tail
     return (text[:head] + tmpl.format(omitted) + (text[len(text) - tail:] if tail else ""))[:limit]
+
 
 # Appended to the v5 §4.5 prompt (which build_prompt_context already produces).
 _TOOL_USE_SUFFIX = (
@@ -82,28 +94,51 @@ def _tool(name: str, description: str, properties: dict[str, Any], required: lis
     }
 
 
-# OpenAI-compatible tool schemas for the v5 §4.3 tools (+ finish).
-_TOOL_SCHEMAS: list[dict[str, Any]] = [
-    _tool("read_file", "Read a file's contents. Pass start_line/end_line (1-indexed, "
-          "inclusive) to read a range; lines are shown as `N<TAB>text`. Output is bounded; "
-          "follow the 'call read_file(...) to continue' hint to page.",
-          {"path": {"type": "string"},
-           "start_line": {"type": "integer"}, "end_line": {"type": "integer"}}, ["path"]),
-    _tool("write_file", "Write (overwrite/create) a file.",
-          {"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]),
-    _tool("edit_file", "Apply a standard unified diff to a file via `git apply` "
-          "(include the `@@ -a,b +c,d @@` hunk header and exact surrounding context "
-          "lines). If it reports the diff could not be applied, fix the diff or use "
-          "write_file with the full new file contents.",
-          {"path": {"type": "string"}, "diff": {"type": "string"}}, ["path", "diff"]),
-    _tool("search_code", "Regex-search the repository.",
-          {"query": {"type": "string"}, "file_pattern": {"type": "string"}}, ["query"]),
-    _tool("list_files", "List files under a directory (glob pattern).",
-          {"path": {"type": "string"}, "pattern": {"type": "string"}}, []),
-    _tool("run_command", "Run a shell command in the repo.", {"command": {"type": "string"}}, ["command"]),
-    _tool("run_tests", "Run a test command in the repo.", {"test_command": {"type": "string"}}, ["test_command"]),
-    _tool("finish", "Signal that the patch is complete.", {}, []),
-]
+def build_tool_schemas(mode: str | None = None) -> list[dict[str, Any]]:
+    """Build the OpenAI-compatible tool schema list for the given mode.
+
+    mode=="legacy"  → read_file schema has only {path} (no start_line/end_line).
+    mode=="fixed"   → read_file schema includes start_line and end_line.
+    mode==None      → resolved from AGENT_TOOL_MODE env var.
+
+    All other tools are identical between modes.
+    """
+    resolved = mode if mode in ("legacy", "fixed") else tool_mode()
+    if resolved == "legacy":
+        read_file_schema = _tool(
+            "read_file", "Read a file's contents.",
+            {"path": {"type": "string"}}, ["path"],
+        )
+    else:
+        read_file_schema = _tool(
+            "read_file", "Read a file's contents. Pass start_line/end_line (1-indexed, "
+            "inclusive) to read a range; lines are shown as `N<TAB>text`. Output is bounded; "
+            "follow the 'call read_file(...) to continue' hint to page.",
+            {"path": {"type": "string"},
+             "start_line": {"type": "integer"}, "end_line": {"type": "integer"}}, ["path"],
+        )
+    return [
+        read_file_schema,
+        _tool("write_file", "Write (overwrite/create) a file.",
+              {"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]),
+        _tool("edit_file", "Apply a standard unified diff to a file via `git apply` "
+              "(include the `@@ -a,b +c,d @@` hunk header and exact surrounding context "
+              "lines). If it reports the diff could not be applied, fix the diff or use "
+              "write_file with the full new file contents.",
+              {"path": {"type": "string"}, "diff": {"type": "string"}}, ["path", "diff"]),
+        _tool("search_code", "Regex-search the repository.",
+              {"query": {"type": "string"}, "file_pattern": {"type": "string"}}, ["query"]),
+        _tool("list_files", "List files under a directory (glob pattern).",
+              {"path": {"type": "string"}, "pattern": {"type": "string"}}, []),
+        _tool("run_command", "Run a shell command in the repo.", {"command": {"type": "string"}}, ["command"]),
+        _tool("run_tests", "Run a test command in the repo.", {"test_command": {"type": "string"}}, ["test_command"]),
+        _tool("finish", "Signal that the patch is complete.", {}, []),
+    ]
+
+
+# Module-level alias: fixed-mode schemas (default for all 144 production runs).
+# Existing callers that import _TOOL_SCHEMAS directly continue to work unchanged.
+_TOOL_SCHEMAS: list[dict[str, Any]] = build_tool_schemas("fixed")
 
 
 @dataclass
@@ -235,6 +270,10 @@ class CodingAgent:
                 f"FROZEN INVARIANT VIOLATION: max_steps must be 20, got {self.max_steps}"
             )
         validate_temperature(self.temperature)
+
+        # Resolve tool-behavior mode once at construction time so all tool calls
+        # in this run are consistent (A/B variant flag — Task 5c).
+        self.resolved_tool_mode = tool_mode()
 
         # Build the LangGraph
         self.graph = self._build_graph()
@@ -831,6 +870,8 @@ class CodingAgent:
             "estimated_cost_usd": 0.0,  # flat-rate Ollama; cost tracked as tokens (D3)
             "limit_status": state.limit_tracker.get_status(),
             "termination_reason": state.termination_reason,
+            # A/B variant flag (Task 5c): records which tool-behavior mode was active.
+            "tool_mode": self.resolved_tool_mode,
         }
 
     def _make_tools(self, state: AgentState) -> tuple[AgentTools, ContainerSession | None]:
@@ -888,7 +929,7 @@ class CodingAgent:
                 create_kwargs: dict[str, Any] = {
                     "model": model,
                     "messages": messages,
-                    "tools": _TOOL_SCHEMAS,
+                    "tools": build_tool_schemas(self.resolved_tool_mode),
                     "temperature": self.temperature,  # A2: temp=1 (Kimi/reasoning models)
                 }
                 if self.reasoning_effort:
@@ -955,9 +996,13 @@ class CodingAgent:
                 state.trajectory.append({
                     "action": name,
                     "action_input": args,
-                    "observation_summary": _truncate_obs(observation),
+                    "observation_summary": _truncate_obs(observation, mode=self.resolved_tool_mode),
                 })
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": _truncate_obs(observation)})
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": _truncate_obs(observation, mode=self.resolved_tool_mode),
+                })
 
             if stop:
                 break

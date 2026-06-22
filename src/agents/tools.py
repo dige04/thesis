@@ -39,6 +39,20 @@ from typing import Any
 MAX_READ_LINES: int = 400
 MAX_READ_CHARS: int = 12000
 
+# Legacy obs cap (pre-task-3 head-truncation)
+_LEGACY_OBS_CAP: int = 4000
+
+
+def tool_mode() -> str:
+    """Return the active tool-behavior mode from the environment.
+
+    AGENT_TOOL_MODE=legacy  → reproduce pre-fix behavior (Task 5c, A/B comparison).
+    AGENT_TOOL_MODE=fixed   → new behavior (default; used in all 144 production runs).
+    Any other / absent      → "fixed".
+    """
+    raw = os.environ.get("AGENT_TOOL_MODE", "fixed").strip().lower()
+    return "legacy" if raw == "legacy" else "fixed"
+
 
 @dataclass
 class ToolCallTracker:
@@ -547,10 +561,15 @@ class AgentTools:
                   end_line: int | None = None) -> str:
         """Read the contents of a file (relative to the repo root).
 
-        Supports optional line ranges with line-number prefixes and a hard
-        budget cap (MAX_READ_LINES / MAX_READ_CHARS).  When the output would
-        exceed the budget a continuation hint is appended so the caller knows
-        which range to request next.
+        **fixed mode** (default): supports optional line ranges with
+        line-number prefixes and a hard budget cap (MAX_READ_LINES /
+        MAX_READ_CHARS).  When the output would exceed the budget a
+        continuation hint is appended so the caller knows which range to
+        request next.
+
+        **legacy mode** (AGENT_TOOL_MODE=legacy): ignores start_line /
+        end_line, returns the raw whole-file content with no line numbering
+        and no budget cap — exactly the pre-task-1 behavior.
         """
         args = {"path": path, "start_line": start_line, "end_line": end_line}
         if not self.backend.exists(path):
@@ -563,6 +582,13 @@ class AgentTools:
             content = self.backend.read_text(path)
         except Exception as ex:
             self.tracker.record_call("read_file", args, None, str(ex)); raise
+
+        # ── legacy: raw whole-file, no numbering, ignore range args ──────────
+        if tool_mode() == "legacy":
+            self.tracker.record_call("read_file", args, len(content))
+            return content
+
+        # ── fixed: ranged + numbered + budget ────────────────────────────────
         lines = content.splitlines(); n = len(lines)
         self.tracker.record_call("read_file", args, len(content))
         s = max(1, int(start_line)) if start_line else 1
@@ -631,36 +657,38 @@ class AgentTools:
         if not diff.endswith("\n"):
             diff += "\n"
 
-        # ── 2. normalise container-root / absolute path headers ──────────────
-        # Resolve repo_root from whichever attribute the backend exposes.
-        repo_root: str | None = None
-        raw_root = getattr(self.backend, "working_dir", None) or getattr(self.backend, "repo_dir", None)
-        if raw_root is not None:
-            repo_root = str(raw_root).rstrip("/")
-        diff = _normalize_diff_paths(diff, repo_root)
+        if tool_mode() == "fixed":
+            # ── 2. normalise container-root / absolute path headers ───────────
+            # Resolve repo_root from whichever attribute the backend exposes.
+            repo_root: str | None = None
+            raw_root = getattr(self.backend, "working_dir", None) or getattr(self.backend, "repo_dir", None)
+            if raw_root is not None:
+                repo_root = str(raw_root).rstrip("/")
+            diff = _normalize_diff_paths(diff, repo_root)
 
-        # ── 3. security validation — before any disk write ───────────────────
-        touched = _collect_diff_paths(diff)
-        for p in touched:
-            # Reject path traversal attempts
-            if ".." in p.split("/"):
-                error = (
-                    f"Security: diff path '{p}' contains a '..' traversal component "
-                    f"and is not allowed. Only edits to '{path}' are permitted."
-                )
-                self.tracker.record_call("edit_file", args, None, error)
-                raise ValueError(error)
-            # Reject edits to any file other than ``path``
-            if p != path:
-                error = (
-                    f"Security: diff touches '{p}' but path='{path}'. "
-                    f"The diff must only modify '{path}'. Use a separate edit_file "
-                    f"call for each file, or use write_file for a full rewrite."
-                )
-                self.tracker.record_call("edit_file", args, None, error)
-                raise ValueError(error)
+            # ── 3. security validation — before any disk write ────────────────
+            touched = _collect_diff_paths(diff)
+            for p in touched:
+                # Reject path traversal attempts
+                if ".." in p.split("/"):
+                    error = (
+                        f"Security: diff path '{p}' contains a '..' traversal component "
+                        f"and is not allowed. Only edits to '{path}' are permitted."
+                    )
+                    self.tracker.record_call("edit_file", args, None, error)
+                    raise ValueError(error)
+                # Reject edits to any file other than ``path``
+                if p != path:
+                    error = (
+                        f"Security: diff touches '{p}' but path='{path}'. "
+                        f"The diff must only modify '{path}'. Use a separate edit_file "
+                        f"call for each file, or use write_file for a full rewrite."
+                    )
+                    self.tracker.record_call("edit_file", args, None, error)
+                    raise ValueError(error)
+        # legacy: skip normalize + guard — apply raw diff directly
 
-        # ── 4. apply the (now-normalised) patch ──────────────────────────────
+        # ── 4. apply the (now-normalised or raw) patch ────────────────────────
         patch_file = ".agent_edit.patch"
         self.backend.write_text(patch_file, diff)
         try:
