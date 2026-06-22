@@ -304,3 +304,80 @@ def test_read_file_invalid_and_oob(tmp_path):
     f = tmp_path/"s.py"; f.write_text("a\nb\nc"); t=AgentTools(working_dir=str(tmp_path))
     assert "invalid range" in t.read_file("s.py",3,1).lower()
     assert "past end" in t.read_file("s.py",99).lower()
+
+
+# ---------------------------------------------------------------------------
+# edit_file path normalisation + security guard tests (Task 2b)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def git_repo(tmp_path):
+    """Minimal git repo with m.py committed — mirrors temp_repo for edit_file tests."""
+    repo = tmp_path
+    os.system(f"cd {repo} && git init -q")
+    os.system(f"cd {repo} && git config user.email 'test@test.com'")
+    os.system(f"cd {repo} && git config user.name 'Test User'")
+    (repo / "m.py").write_text("x = 1\n")
+    (repo / "other.py").write_text("y = 2\n")
+    os.system(f"cd {repo} && git add -A && git commit -q -m 'init'")
+    return repo
+
+
+def test_edit_file_testbed_git_prefix_applies(git_repo):
+    """diff --git a/testbed/m.py b/testbed/m.py headers should be normalised and applied."""
+    tools = AgentTools(str(git_repo))
+    diff = (
+        "diff --git a/testbed/m.py b/testbed/m.py\n"
+        "--- a/testbed/m.py\n"
+        "+++ b/testbed/m.py\n"
+        "@@ -1 +1 @@\n"
+        "-x = 1\n"
+        "+x = 99\n"
+    )
+    tools.edit_file("m.py", diff)
+    assert (git_repo / "m.py").read_text() == "x = 99\n"
+
+
+def test_edit_file_absolute_testbed_path_applies(git_repo):
+    """--- /testbed/m.py / +++ /testbed/m.py headers (absolute) should be normalised and applied."""
+    tools = AgentTools(str(git_repo))
+    diff = (
+        "diff --git a/testbed/m.py b/testbed/m.py\n"
+        "--- /testbed/m.py\n"
+        "+++ /testbed/m.py\n"
+        "@@ -1 +1 @@\n"
+        "-x = 1\n"
+        "+x = 42\n"
+    )
+    tools.edit_file("m.py", diff)
+    assert (git_repo / "m.py").read_text() == "x = 42\n"
+
+
+def test_edit_file_cross_file_rejected(git_repo):
+    """A diff touching other.py while path='m.py' must raise ValueError; m.py unchanged."""
+    tools = AgentTools(str(git_repo))
+    diff = (
+        "--- a/other.py\n"
+        "+++ b/other.py\n"
+        "@@ -1 +1 @@\n"
+        "-y = 2\n"
+        "+y = 99\n"
+    )
+    with pytest.raises(ValueError, match=r"(?i)(path|other\.py|security|not allowed)"):
+        tools.edit_file("m.py", diff)
+    # m.py must be untouched
+    assert (git_repo / "m.py").read_text() == "x = 1\n"
+
+
+def test_edit_file_path_traversal_rejected(git_repo):
+    """A diff path containing .. must be rejected."""
+    tools = AgentTools(str(git_repo))
+    diff = (
+        "--- a/../escape.py\n"
+        "+++ b/../escape.py\n"
+        "@@ -1 +1 @@\n"
+        "-z = 0\n"
+        "+z = 1\n"
+    )
+    with pytest.raises(ValueError, match=r"(?i)(traversal|escape|path|\.\.)"):
+        tools.edit_file("m.py", diff)

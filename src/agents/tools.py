@@ -27,6 +27,7 @@ Tool call tracking is implemented for behavioral metrics (Requirement 29).
 """
 
 import os
+import re
 import shlex
 import subprocess
 from abc import ABC, abstractmethod
@@ -390,6 +391,124 @@ class ContainerSession:
         self.stop()
 
 
+def _normalize_diff_paths(diff: str, repo_root: str | None) -> str:
+    """Rewrite diff path headers so that ``git apply -p1`` can apply them.
+
+    The model running inside a container sees absolute paths like
+    ``/testbed/sympy/core/basic.py`` and emits them verbatim in the
+    ``diff --git``, ``---``, and ``+++`` lines.  ``git apply`` (running on the
+    host or inside the container's repo) expects ``a/<relpath>``/``b/<relpath>``
+    for ``-p1``.  This function strips all known container-root prefixes and
+    re-anchors to the ``a/``/``b/`` form.
+
+    Prefixes stripped (in order):
+      1. Leading ``/`` (absolute path → relative)
+      2. ``testbed/`` (default container working dir)
+      3. ``<repo_root>/`` (backend-resolved absolute working directory, if provided)
+      4. ``a/`` or ``b/`` (``git diff`` prefix — will be re-added cleanly)
+
+    ``/dev/null`` tokens are preserved verbatim (pure add / pure delete diffs).
+    """
+
+    def _strip_path(token: str) -> str:
+        """Strip known prefixes and return a repo-relative path."""
+        if token in ("/dev/null", "dev/null"):
+            return token
+        p = token
+        # 1. Strip leading slash
+        if p.startswith("/"):
+            p = p[1:]
+        # 2. Strip a/ or b/ git diff prefix (must happen early so subsequent
+        #    checks see the bare path, e.g. "a/testbed/m.py" → "testbed/m.py")
+        if p.startswith(("a/", "b/")):
+            p = p[2:]
+        # 3. Strip "testbed/" container prefix
+        if p.startswith("testbed/"):
+            p = p[len("testbed/"):]
+        # 4. Strip repo_root prefix (absolute, e.g. "home/user/repo/m.py")
+        if repo_root:
+            root = repo_root.strip("/") + "/"
+            if p.startswith(root):
+                p = p[len(root):]
+        return p
+
+    def _reanchor(prefix: str, token: str) -> str:
+        """Return ``prefix/<relpath>`` preserving /dev/null verbatim."""
+        rel = _strip_path(token)
+        if rel in ("/dev/null", "dev/null"):
+            return "/dev/null"
+        return f"{prefix}/{rel}"
+
+    lines = diff.split("\n")
+    out: list[str] = []
+    for line in lines:
+        # diff --git a/... b/...
+        m = re.match(r"^(diff --git )(\S+) (\S+)$", line)
+        if m:
+            out.append(m.group(1) + _reanchor("a", m.group(2)) + " " + _reanchor("b", m.group(3)))
+            continue
+        # --- a/... or --- /testbed/... or --- /dev/null
+        m = re.match(r"^(--- )(\S+)$", line)
+        if m:
+            out.append(m.group(1) + _reanchor("a", m.group(2)))
+            continue
+        # +++ b/... or +++ /testbed/... or +++ /dev/null
+        m = re.match(r"^(\+\+\+ )(\S+)$", line)
+        if m:
+            out.append(m.group(1) + _reanchor("b", m.group(2)))
+            continue
+        # rename from / rename to headers (optional whitespace form)
+        m = re.match(r"^(rename from )(\S+)$", line)
+        if m:
+            out.append(m.group(1) + _strip_path(m.group(2)))
+            continue
+        m = re.match(r"^(rename to )(\S+)$", line)
+        if m:
+            out.append(m.group(1) + _strip_path(m.group(2)))
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _collect_diff_paths(diff: str) -> list[str]:
+    """Return the set of normalised file paths referenced in a (already-normalised) diff.
+
+    Prefers ``diff --git a/<p> b/<p>`` lines (canonical, authoritative). When no
+    such header exists (plain unified diff without ``diff --git``), falls back to
+    ``---`` / ``+++`` lines.  ``/dev/null`` is excluded (pure add/delete is fine
+    — only one side is a real file).
+    """
+    paths: list[str] = []
+    has_git_header = False
+
+    for line in diff.split("\n"):
+        m = re.match(r"^diff --git (\S+) (\S+)$", line)
+        if m:
+            has_git_header = True
+            for token in (m.group(1), m.group(2)):
+                if token == "/dev/null":
+                    continue
+                # strip a/ or b/
+                p = token[2:] if token.startswith(("a/", "b/")) else token
+                if p not in paths:
+                    paths.append(p)
+
+    if not has_git_header:
+        # Fall back to --- / +++ lines for plain unified diffs
+        for line in diff.split("\n"):
+            m = re.match(r"^(?:---|\+\+\+) (\S+)", line)
+            if m:
+                token = m.group(1)
+                if token == "/dev/null":
+                    continue
+                # strip a/ or b/ (already normalised by _normalize_diff_paths)
+                p = token[2:] if token.startswith(("a/", "b/")) else token
+                if p not in paths:
+                    paths.append(p)
+
+    return paths
+
+
 class AgentTools:
     """
     Collection of tools available to the coding agent.
@@ -492,9 +611,18 @@ class AgentTools:
         patches (the smoke empty-patch bug). On failure we raise with the git error
         so the agent sees it (the ReAct loop surfaces tool errors as observations)
         and can retry or fall back to ``write_file`` — instead of corrupting silently.
+
+        Security contract (Task 2b):
+        - ``path`` is the SOLE authority for what may change.
+        - diff headers are normalised (strip ``/testbed/`` and repo-root prefixes)
+          so ``git apply -p1`` can apply them cleanly.
+        - If the diff touches any file other than ``path``, contains ``..``, or
+          would resolve outside the repo root, a ``ValueError`` is raised BEFORE
+          touching disk.
         """
         args = {"path": path, "diff_length": len(diff)}
 
+        # ── 1. existence check first (keeps existing test_edit_file behaviour) ──
         if not self.backend.exists(path):
             error = f"File not found: {path}"
             self.tracker.record_call("edit_file", args, None, error)
@@ -503,6 +631,36 @@ class AgentTools:
         if not diff.endswith("\n"):
             diff += "\n"
 
+        # ── 2. normalise container-root / absolute path headers ──────────────
+        # Resolve repo_root from whichever attribute the backend exposes.
+        repo_root: str | None = None
+        raw_root = getattr(self.backend, "working_dir", None) or getattr(self.backend, "repo_dir", None)
+        if raw_root is not None:
+            repo_root = str(raw_root).rstrip("/")
+        diff = _normalize_diff_paths(diff, repo_root)
+
+        # ── 3. security validation — before any disk write ───────────────────
+        touched = _collect_diff_paths(diff)
+        for p in touched:
+            # Reject path traversal attempts
+            if ".." in p.split("/"):
+                error = (
+                    f"Security: diff path '{p}' contains a '..' traversal component "
+                    f"and is not allowed. Only edits to '{path}' are permitted."
+                )
+                self.tracker.record_call("edit_file", args, None, error)
+                raise ValueError(error)
+            # Reject edits to any file other than ``path``
+            if p != path:
+                error = (
+                    f"Security: diff touches '{p}' but path='{path}'. "
+                    f"The diff must only modify '{path}'. Use a separate edit_file "
+                    f"call for each file, or use write_file for a full rewrite."
+                )
+                self.tracker.record_call("edit_file", args, None, error)
+                raise ValueError(error)
+
+        # ── 4. apply the (now-normalised) patch ──────────────────────────────
         patch_file = ".agent_edit.patch"
         self.backend.write_text(patch_file, diff)
         try:
@@ -511,6 +669,7 @@ class AgentTools:
                 f"git apply --whitespace=nowarn {patch_file}",
                 f"git apply --recount --whitespace=nowarn {patch_file}",
                 f"git apply --3way --whitespace=nowarn {patch_file}",
+                f"git apply -p0 --whitespace=nowarn {patch_file}",
             ):
                 res = self.backend.run(cmd, 60)
                 if res.get("return_code") == 0:
