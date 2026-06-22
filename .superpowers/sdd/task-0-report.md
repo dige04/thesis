@@ -88,3 +88,32 @@ All three output files written. Numbers match the pre-stated expectations (144/2
 3. **`finish` never called** in any trajectory — all 144 runs appear to have exhausted the 20-step budget or ended without explicit finish. This reduces the diagnostic value of `timeout` flag interpretation.
 
 These three defects (truncation, pagination-ignored, diff-format) are the signal this task was designed to surface; they inform the instrument fixes in Task 1+.
+
+## Post-review cleanup (branch `rerun/instrument-fix`)
+
+Three quality issues flagged by reviewer, fixed without changing any output values.
+
+### Fix 1 — Double-parse of curriculum (Important)
+
+`select_smoke_tasks()` re-opened `CURRICULUM_FILE` to build `task_seq_map`, even though the already-loaded `curriculum` dict was passed in. Fix: updated `load_curriculum()` to inject `sequence_name` into each task record via `task_with_seq.setdefault("sequence_name", seq["sequence_name"])`, then replaced the `with open(CURRICULUM_FILE)` block in `select_smoke_tasks()` with a direct dict lookup: `curriculum[c["task_id"]].get("sequence_name")`.
+
+### Fix 2 — `n_dirs` semantics / `dir_missing_jsonl` issue label (Important)
+
+A run dir that exists but has no `task_results.jsonl` was already counted as incomplete, but the `issue` string was `"no_task_results_file"` — semantically imprecise. Renamed to `"dir_missing_jsonl"` for clarity. No numeric counts changed (the dir is still counted in `n_dirs`, still counted in `n_incomplete`). In practice, zero units hit this branch in the current dataset (all 28 incomplete units have issue `"missing_rows"`), so the rename has no effect on any reported number.
+
+### Fix 3 — Dead code removal (Minor)
+
+Removed the unused `parse_run_dir_name()` function (original lines 51–65). Its return-type annotation was also wrong (`tuple[str, str, int]` but it actually returned `(str, int)`). `policy_seq_from_dir()` is the function actually used throughout the script.
+
+### Confirmation run
+
+Command: `.venv/bin/python -m scripts.preflight_runner_diagnostics`
+
+All output values UNCHANGED:
+- `n_dirs` = 144
+- `n_complete` = 116
+- `n_incomplete` = 28
+- `n_missing_rows` = 239
+- `n_rows_found` = 4,675
+- ambiguous trajectories = 103
+- smoke tasks = 3 (sympy__sympy-13091, matplotlib__matplotlib-13989, pydata__xarray-3993)

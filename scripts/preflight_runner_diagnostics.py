@@ -48,23 +48,6 @@ TOOL_SCHEMAS: dict[str, set[str]] = {
 # Helpers
 # ---------------------------------------------------------------------------
 
-def parse_run_dir_name(name: str) -> tuple[str, str, int]:
-    """
-    'pilot_{policy}_{sequence_name}_seed{seed}' → (policy, sequence_name, seed).
-
-    The policy portion never contains 'seed' as a substring, but the sequence name
-    may contain underscores. We rely on the known policy names from the manifest.
-    """
-    name = name.removeprefix("pilot_")
-    # seed is always at the very end as _seed{N}
-    m = re.search(r"_seed(\d+)$", name)
-    if not m:
-        raise ValueError(f"Cannot parse seed from: {name!r}")
-    seed = int(m.group(1))
-    without_seed = name[: m.start()]
-    return without_seed, seed  # type: ignore[return-value]  # actually (str_with_policy_seq, seed)
-
-
 def policy_seq_from_dir(name: str) -> tuple[str, str, int]:
     """
     Returns (policy, sequence_name, seed) by consulting the manifest.
@@ -87,13 +70,15 @@ def load_manifest() -> tuple[dict, list[dict]]:
 
 
 def load_curriculum() -> dict[str, dict]:
-    """Returns task_id → task dict (with gold_patch, repo, etc.)."""
+    """Returns task_id → task dict (with gold_patch, repo, sequence_name, etc.)."""
     with open(CURRICULUM_FILE) as f:
         data = json.load(f)
     result: dict[str, dict] = {}
     for seq in data["sequences"]:
         for task in seq["tasks"]:
-            result[task["task_id"]] = task
+            task_with_seq = dict(task)
+            task_with_seq.setdefault("sequence_name", seq["sequence_name"])
+            result[task["task_id"]] = task_with_seq
     return result
 
 
@@ -138,7 +123,7 @@ def check_completeness(manifest_runs: list[dict]) -> dict:
             missing_rows_total += task_count
             incomplete_units.append({
                 "run_id": run_id,
-                "issue": "no_task_results_file",
+                "issue": "dir_missing_jsonl",
                 "n_manifest_tasks": task_count,
                 "n_found_rows": 0,
                 "missing_task_ids": run["task_ids"],
@@ -490,16 +475,10 @@ def select_smoke_tasks(curriculum: dict[str, dict], n: int = 3) -> dict:
     # Sort by hunk start descending to pick most convincing first
     candidates.sort(key=lambda c: c["approx_hunk_start_line"], reverse=True)
 
-    # Label sequence_name from curriculum
-    # Build reverse map task_id -> sequence
-    with open(CURRICULUM_FILE) as f:
-        data = json.load(f)
-    task_seq_map: dict[str, str] = {}
-    for seq in data["sequences"]:
-        for task in seq["tasks"]:
-            task_seq_map[task["task_id"]] = seq["sequence_name"]
+    # Label sequence_name from the already-loaded curriculum dict
+    # (load_curriculum injects sequence_name into each task record)
     for c in candidates:
-        c["sequence_name"] = task_seq_map.get(c["task_id"])
+        c["sequence_name"] = curriculum[c["task_id"]].get("sequence_name")
 
     chosen = candidates[:max(n, 3)]
 
