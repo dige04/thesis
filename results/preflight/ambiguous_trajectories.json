@@ -1,0 +1,1458 @@
+[
+  {
+    "key": {
+      "policy_seq": "full_memory_pytest-dev_pytest_sequence",
+      "seed": 1,
+      "task_id": "pytest-dev__pytest-6202"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-6202.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-6202.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-6202.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-6202.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-6202.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-6202.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-6202.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-6202.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-6202.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_pytest-dev_pytest_sequence",
+      "seed": 1,
+      "task_id": "pytest-dev__pytest-5262"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_full_memory_pytest-dev_pytest_sequence_seed1/trajectories/pytest-dev__pytest-5262.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_pytest-dev_pytest_sequence",
+      "seed": 2,
+      "task_id": "pytest-dev__pytest-6202"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_pytest-dev_pytest_sequence_seed2/trajectories/pytest-dev__pytest-6202.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_recency_prune_pytest-dev_pytest_sequence_seed2/trajectories/pytest-dev__pytest-6202.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_pytest-dev_pytest_sequence",
+      "seed": 2,
+      "task_id": "pytest-dev__pytest-7521"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_pytest-dev_pytest_sequence_seed2/trajectories/pytest-dev__pytest-7521.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_recency_prune_pytest-dev_pytest_sequence_seed2/trajectories/pytest-dev__pytest-7521.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-6461"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-6461.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-6461.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-4075"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4075.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4075.json"
+    ],
+    "canonical_tool_calls": 21,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-2905"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-2905.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-2905.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-4687"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4687.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4687.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-4966"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4966.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4966.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-3305"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-3305.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-3305.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-6599"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-6599.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_cls_consolidation_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-6599.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-7236"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_full_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-7236.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_full_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-7236.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-5262"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_full_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_full_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-5262.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_matplotlib_matplotlib_sequence",
+      "seed": 3,
+      "task_id": "matplotlib__matplotlib-20676"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_cls_consolidation_matplotlib_matplotlib_sequence_seed3/trajectories/matplotlib__matplotlib-20676.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_cls_consolidation_matplotlib_matplotlib_sequence_seed3/trajectories/matplotlib__matplotlib-20676.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-9591"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-9591.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-9591.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-11445"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-11445.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-11445.json"
+    ],
+    "canonical_tool_calls": 17,
+    "n_step_matching": 0,
+    "reason": "no_step_match"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-7985"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-7985.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-7985.json"
+    ],
+    "canonical_tool_calls": 22,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-7462"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-7462.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-7462.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-8056"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-8056.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-8056.json"
+    ],
+    "canonical_tool_calls": 22,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-9258"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-9258.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-9258.json"
+    ],
+    "canonical_tool_calls": 26,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-9281"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-9281.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-9281.json"
+    ],
+    "canonical_tool_calls": 22,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-10323"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-10323.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-10323.json"
+    ],
+    "canonical_tool_calls": 21,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-7889"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-7889.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-7889.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-8269"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-8269.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_random_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-8269.json"
+    ],
+    "canonical_tool_calls": 21,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-14894"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-14894.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-14894.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-12585"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-12585.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-12585.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-10844"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-10844.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-10844.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-13439"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-13439.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-13439.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-14629"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-14629.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-14629.json"
+    ],
+    "canonical_tool_calls": 21,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-9288"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-9288.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-9288.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-13135"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-13135.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-13135.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-12973"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-12973.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-12973.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-14983"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-14983.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-14983.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-14087"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-14087.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-14087.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-15100"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-15100.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-15100.json"
+    ],
+    "canonical_tool_calls": 10,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-26323"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-26323.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-26323.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-14053"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-14053.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-14053.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_scikit-learn_scikit-learn_sequence",
+      "seed": 3,
+      "task_id": "scikit-learn__scikit-learn-13124"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-0/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-13124.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_recency_prune_scikit-learn_scikit-learn_sequence_seed3/trajectories/scikit-learn__scikit-learn-13124.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "no_memory_django_django_sequence",
+      "seed": 3,
+      "task_id": "django__django-9296"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_no_memory_django_django_sequence_seed3/trajectories/django__django-9296.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_no_memory_django_django_sequence_seed3/trajectories/django__django-9296.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 2,
+      "task_id": "astropy__astropy-14598"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-14598.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-14598.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 2,
+      "task_id": "astropy__astropy-14096"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-14096.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-14096.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 2,
+      "task_id": "astropy__astropy-14995"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-14995.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-14995.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 2,
+      "task_id": "astropy__astropy-7166"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-7166.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-7166.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 2,
+      "task_id": "astropy__astropy-13579"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-13579.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-13579.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 2,
+      "task_id": "astropy__astropy-14508"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-14508.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-14508.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 2,
+      "task_id": "astropy__astropy-7606"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-7606.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-7606.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 2,
+      "task_id": "astropy__astropy-7671"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-7671.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_type_aware_decay_astropy_astropy_sequence_seed2/trajectories/astropy__astropy-7671.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_astropy_astropy_sequence",
+      "seed": 1,
+      "task_id": "astropy__astropy-7336"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_cls_consolidation_astropy_astropy_sequence_seed1/trajectories/astropy__astropy-7336.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_cls_consolidation_astropy_astropy_sequence_seed1/trajectories/astropy__astropy-7336.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_astropy_astropy_sequence",
+      "seed": 1,
+      "task_id": "astropy__astropy-8707"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_cls_consolidation_astropy_astropy_sequence_seed1/trajectories/astropy__astropy-8707.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_cls_consolidation_astropy_astropy_sequence_seed1/trajectories/astropy__astropy-8707.json"
+    ],
+    "canonical_tool_calls": 25,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-16450"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-16450.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-16450.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-12096"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-12096.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-12096.json"
+    ],
+    "canonical_tool_calls": 21,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-13480"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-13480.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-13480.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-13615"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-13615.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-13615.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-19783"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-19783.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-19783.json"
+    ],
+    "canonical_tool_calls": 22,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-15349"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-15349.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-15349.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-18189"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-18189.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-18189.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-19040"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-19040.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-19040.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-16766"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-16766.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-16766.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-24562"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-24562.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-24562.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-13647"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-13647.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-13647.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-16886"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-16886.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-16886.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-20428"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-20428.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-20428.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "full_memory_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-20916"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-20916.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_full_memory_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-20916.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-2905"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_random_prune_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-2905.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_random_prune_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-2905.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-4687"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_random_prune_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4687.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_random_prune_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4687.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-4629"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_random_prune_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4629.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_random_prune_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4629.json"
+    ],
+    "canonical_tool_calls": 15,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-4966"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_random_prune_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4966.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_random_prune_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4966.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-4356"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-1/pilot_random_prune_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4356.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_random_prune_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4356.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_sympy_sympy_sequence",
+      "seed": 3,
+      "task_id": "sympy__sympy-12096"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_recency_prune_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-12096.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_recency_prune_sympy_sympy_sequence_seed3/trajectories/sympy__sympy-12096.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "no_memory_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-6197"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-6197.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-6197.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "no_memory_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-8399"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-8399.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-8399.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "no_memory_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-5840"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-5840.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-5840.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "no_memory_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-7432"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-7432.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-7432.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "no_memory_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-7982"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-7982.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-7982.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "no_memory_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-7490"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-7490.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-7490.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "no_memory_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-6202"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-6202.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-6202.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "no_memory_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-5809"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-5809.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-7/pilot_no_memory_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-5809.json"
+    ],
+    "canonical_tool_calls": 8,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-6461"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-6461.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-6461.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-7233"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-7233.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-7233.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-4075"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4075.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4075.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-2905"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-2905.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-2905.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-4356"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4356.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-4356.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-3305"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-3305.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-3305.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-3095"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-3095.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-3095.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_pydata_xarray_sequence",
+      "seed": 2,
+      "task_id": "pydata__xarray-6599"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-2/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-6599.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_type_aware_decay_pydata_xarray_sequence_seed2/trajectories/pydata__xarray-6599.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-7432"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_random_prune_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-7432.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_random_prune_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-7432.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "random_prune_pytest-dev_pytest_sequence",
+      "seed": 3,
+      "task_id": "pytest-dev__pytest-5262"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_random_prune_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-5/pilot_random_prune_pytest-dev_pytest_sequence_seed3/trajectories/pytest-dev__pytest-5262.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 3,
+      "task_id": "pydata__xarray-3151"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_cls_consolidation_pydata_xarray_sequence_seed3/trajectories/pydata__xarray-3151.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_cls_consolidation_pydata_xarray_sequence_seed3/trajectories/pydata__xarray-3151.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 3,
+      "task_id": "pydata__xarray-6461"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_cls_consolidation_pydata_xarray_sequence_seed3/trajectories/pydata__xarray-6461.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_cls_consolidation_pydata_xarray_sequence_seed3/trajectories/pydata__xarray-6461.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 3,
+      "task_id": "pydata__xarray-2905"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_cls_consolidation_pydata_xarray_sequence_seed3/trajectories/pydata__xarray-2905.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_cls_consolidation_pydata_xarray_sequence_seed3/trajectories/pydata__xarray-2905.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pydata_xarray_sequence",
+      "seed": 3,
+      "task_id": "pydata__xarray-3305"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_cls_consolidation_pydata_xarray_sequence_seed3/trajectories/pydata__xarray-3305.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_cls_consolidation_pydata_xarray_sequence_seed3/trajectories/pydata__xarray-3305.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-7462"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_recency_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-7462.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_recency_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-7462.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "recency_prune_sphinx-doc_sphinx_sequence",
+      "seed": 3,
+      "task_id": "sphinx-doc__sphinx-7440"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-3/pilot_recency_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-7440.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-6/pilot_recency_prune_sphinx-doc_sphinx_sequence_seed3/trajectories/sphinx-doc__sphinx-7440.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 3,
+      "task_id": "astropy__astropy-7336"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-7336.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-7336.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 3,
+      "task_id": "astropy__astropy-14096"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-14096.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-14096.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 3,
+      "task_id": "astropy__astropy-13236"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-13236.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-13236.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 3,
+      "task_id": "astropy__astropy-13453"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-13453.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-13453.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 3,
+      "task_id": "astropy__astropy-14508"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-14508.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-14508.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 3,
+      "task_id": "astropy__astropy-13977"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-13977.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-13977.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 3,
+      "task_id": "astropy__astropy-7671"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-7671.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-7671.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 3,
+      "task_id": "astropy__astropy-8872"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-8872.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-8872.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "type_aware_decay_astropy_astropy_sequence",
+      "seed": 3,
+      "task_id": "astropy__astropy-14309"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-14309.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_type_aware_decay_astropy_astropy_sequence_seed3/trajectories/astropy__astropy-14309.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  },
+  {
+    "key": {
+      "policy_seq": "cls_consolidation_pytest-dev_pytest_sequence",
+      "seed": 2,
+      "task_id": "pytest-dev__pytest-5262"
+    },
+    "candidate_files": [
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-4/pilot_cls_consolidation_pytest-dev_pytest_sequence_seed2/trajectories/pytest-dev__pytest-5262.json",
+      "/Users/leodinh/Documents/personal/thesis/runs_legacy_merged/sfo-8/pilot_cls_consolidation_pytest-dev_pytest_sequence_seed2/trajectories/pytest-dev__pytest-5262.json"
+    ],
+    "canonical_tool_calls": 20,
+    "n_step_matching": 2,
+    "reason": "ambiguous_step_count"
+  }
+]
