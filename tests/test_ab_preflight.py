@@ -212,6 +212,26 @@ def test_amended_gate_blocked_unpaired_task_ids(tmp_path):
     assert r["gate"] == "BLOCKED" and "task_ids" in r["reason"]
 
 
+def test_amended_gate_blocked_task_row_tool_mode_mismatch(tmp_path):
+    """A run whose RUN_COMPLETED.tool_mode is CORRECT but whose task_results rows
+    carry the WRONG tool_mode must BLOCK — data from the other mode was written
+    into this dir. Codex 2026-06-24 reproduction: sentinel check alone returned GO.
+    """
+    _make_tree(tmp_path)
+    rid = next(c["run_id"] for c in ab_schedule(20260622) if c["tool_mode"] == "fixed")
+    # sentinel stays "fixed"; rewrite the task rows to "legacy".
+    p = tmp_path / rid / "task_results.jsonl"
+    rows = [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
+    for r in rows:
+        r["tool_mode"] = "legacy"
+    p.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    # sentinel must still be the correct mode (proves the gap is row-level)
+    sent = json.loads((tmp_path / rid / "RUN_COMPLETED.json").read_text())
+    assert sent["tool_mode"] == "fixed"
+    r = ab_gate_amended(tmp_path, expected_sha=SHA)
+    assert r["gate"] == "BLOCKED" and "tool_mode" in r["reason"]
+
+
 def test_amended_gate_stop_on_instrument_failure(tmp_path):
     # fixed arm has a false-security (instrument) failure
     _make_tree(tmp_path, fixed_obs=(OBS_OK, OBS_INSTRUMENT), legacy_obs=(OBS_OK,))

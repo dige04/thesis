@@ -162,6 +162,21 @@ def ab_gate_amended(
             prov.append(f"{c['run_id']}: tool_mode {sent.get('tool_mode')!r} != expected {c['tool_mode']!r}")
         if expected_config_hash and sent.get("config_hash") != expected_config_hash:
             prov.append(f"{c['run_id']}: config_hash {sent.get('config_hash')!r} != {expected_config_hash!r}")
+        # Row-level provenance: every task_results row's recorded tool_mode must
+        # match the cell's expected mode. A CORRECT sentinel with WRONG rows means
+        # data from the other mode was written into this run dir (Codex 2026-06-24
+        # reproduction) — the sentinel check alone does not catch it.
+        row_modes = {
+            r.get("tool_mode")
+            for r in _load_task_results(rd)
+            if r.get("tool_mode") is not None
+        }
+        bad_rows = sorted(m for m in row_modes if m != c["tool_mode"])
+        if bad_rows:
+            prov.append(
+                f"{c['run_id']}: task_results rows have tool_mode {bad_rows} != "
+                f"expected {c['tool_mode']!r}"
+            )
     if prov:
         return _blocked(prov, note)
 

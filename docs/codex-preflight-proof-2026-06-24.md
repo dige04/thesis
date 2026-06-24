@@ -689,3 +689,20 @@ index 0000000..daa0838
 +if __name__ == "__main__":
 +    main()
 ```
+
+## Codex blocker #2 (2026-06-24 final review) — RESOLVED
+
+Gap: amended gate validated `RUN_COMPLETED.tool_mode` but NOT per-row
+`task_results.jsonl.tool_mode`. A correct sentinel + wrong rows returned GO.
+
+Fix: `ab_gate_amended.py` Phase-1 provenance now also BLOCKS if any task row's
+`tool_mode` != the cell's expected mode. Regression test added.
+
+Reproduction (corrupt one fixed run: sentinel stays 'fixed', rows -> 'legacy'):
+```json
+{ "sentinel_tool_mode": "fixed", "corrupted_row_tool_mode": "legacy",
+  "expected": "BLOCKED", "actual_gate": "BLOCKED",
+  "reason": "...: task_results rows have tool_mode [legacy] != expected fixed" }
+```
+
+New test: `test_amended_gate_blocked_task_row_tool_mode_mismatch`. Targeted suite now **50 passed**.
