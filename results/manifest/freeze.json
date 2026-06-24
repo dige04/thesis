@@ -1,5 +1,5 @@
 {
-  "experiment_sha": "2133b471e07d687dac8ac2ff77b15138c2d48629",
+  "experiment_sha": "cceb3253d7b7cfeae16123af30197a8271e1d84a",
   "branch": "rerun/instrument-fix",
   "baseline_sha": "3abd01c57fc1490cd739f106325ba91931ff325f",
   "config_hash": "2e7f341cc35d31c2",
@@ -11,6 +11,10 @@
   "n_runs": 144,
   "n_task_rows_expected": 4914,
   "phase_A_complete": true,
-  "suite": "1137 passed, 2 skipped (network smoke = Task 4b)",
-  "note": "Code frozen after Phase A + final opus review + fixes. Phase B (smoke, A/B, 144-rerun) executes this SHA only; set EXPERIMENT_SHA=experiment_sha so RUN_COMPLETED/RUN_FAILED sentinels record provenance. No code commits past this point."
+  "suite": "1143 passed, 2 skipped",
+  "prior_experiment_sha": "2133b471e07d687dac8ac2ff77b15138c2d48629",
+  "prior_gate_result": "STOP (results/manifest/ab_gate_STOP_2133b47.json)",
+  "hotfix": "cceb325 edit_file path-arg normalization (docs/ab-gate-findings-2026-06-24.md)",
+  "amended_gate": "docs/amended-gate-2026-06-24.md (PRE-RUN; Codex 2026-06-24)",
+  "note": "REFREEZE after post-gate hotfix. Original A/B gate at 2133b47 STOPped (preserved). Phase B re-validation executes THIS SHA (cceb325); set EXPERIMENT_SHA=cceb325... A/B re-run is gated by the AMENDED criteria (instrument-attributable==0, no false rejects, inflation<=1.5x, complete pairing, model-rate fixed<=legacy). 144 only on amended-GO. Thesis must say original gate STOPped + amended after root-cause; never that it passed."
 }

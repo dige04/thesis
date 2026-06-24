@@ -1,0 +1,26 @@
+{
+  "gate": "STOP",
+  "metrics": {
+    "total_edit_file_calls": 567,
+    "failed_edit_file_calls": 172,
+    "edit_failure_ratio": 0.3034,
+    "edit_path_index_failures": 82,
+    "fixed_prompt_tokens_median": 178238,
+    "legacy_prompt_tokens_median": 175831,
+    "fixed_total_tokens_median": 182904,
+    "legacy_total_tokens_median": 178824,
+    "prompt_inflation_ratio": 1.014,
+    "total_inflation_ratio": 1.023
+  },
+  "reported_deltas": {
+    "resolved_delta": 0.1525,
+    "fixed_resolve_rate": 0.5817,
+    "legacy_resolve_rate": 0.4292,
+    "note": "Resolve-rate delta is informational; it is not a gate criterion."
+  },
+  "reasons": [
+    "edit path/index failures == 82 (must be 0)",
+    "edit failure ratio 0.303 > 0.15 threshold"
+  ],
+  "range_correctness_note": "Range correctness (read_file start_line/end_line) is verified by tests/test_agents_tools.py -k read_file \u2014 not re-derived from LLM runs."
+}

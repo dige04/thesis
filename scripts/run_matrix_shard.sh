@@ -44,21 +44,12 @@ if [ "$SHARD" -ge "$NUM" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Extract this shard's unit list from the manifest using Python
-# (avoids jq dependency on VPS droplets).
-# Emits one line per unit:  <global_index>|<run_id>|<policy>|<seed>|<seq_name>
+# Extract this shard's unit list via scripts/shard_units.py — the single source
+# of truth for sharding + per-unit tool_mode (unit-tested).
+# Emits one line per unit:  <idx>|<run_id>|<policy>|<seed>|<seq_name>|<tool_mode>
+# Worker-field manifests (A/B) shard by the row's "worker"; else modulo by index.
 # ---------------------------------------------------------------------------
-mapfile -t units < <(
-  .venv/bin/python - "$MANIFEST" "$SHARD" "$NUM" <<'PYEOF'
-import json, sys
-manifest_path, shard, num = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-with open(manifest_path) as f:
-    data = json.load(f)
-for i, r in enumerate(data["runs"]):
-    if i % num == shard:
-        print(f"{i}|{r['run_id']}|{r['policy']}|{r['seed']}|{r['sequence_name']}")
-PYEOF
-)
+mapfile -t units < <(.venv/bin/python scripts/shard_units.py "$MANIFEST" "$SHARD" "$NUM")
 
 mkdir -p "$RUNS_ROOT"
 echo "SHARD $SHARD/$NUM : ${#units[@]} units, conc=$CONC, RUNS_ROOT=$RUNS_ROOT, AGENT_TOOL_MODE=$AGENT_TOOL_MODE $(date -u +%H:%M:%S)"
@@ -71,7 +62,14 @@ echo "SHARD $SHARD/$NUM : ${#units[@]} units, conc=$CONC, RUNS_ROOT=$RUNS_ROOT, 
 # ---------------------------------------------------------------------------
 run_unit() {
   local entry="$1"
-  IFS='|' read -r _idx run_id pol seed seq <<< "$entry"
+  IFS='|' read -r _idx run_id pol seed seq mode <<< "$entry"
+
+  # Per-unit tool_mode: the manifest row is authoritative. Fall back to the
+  # global AGENT_TOOL_MODE env (default "fixed") only when the row omits it
+  # (e.g. the all-fixed 144 manifest). NEVER let a mixed A/B manifest run a
+  # whole shard in one global mode.
+  local eff_mode="${mode:-}"
+  [ -z "$eff_mode" ] && eff_mode="${AGENT_TOOL_MODE:-fixed}"
 
   # Done-check: delegate to unit_status.py (RUN_COMPLETED.json sentinel).
   # Fail-closed: if status is not exactly one of complete|failed|incomplete
@@ -103,12 +101,13 @@ from src.benchmark.completion import archive_prior_attempt
 archive_prior_attempt(Path(sys.argv[2]) / sys.argv[1])
 PYEOF
 
-  echo "START $run_id (status=$status) $(date -u +%H:%M:%S)"
-  .venv/bin/python -u -m scripts.run_pilot_policy \
+  echo "START $run_id (status=$status mode=$eff_mode) $(date -u +%H:%M:%S)"
+  AGENT_TOOL_MODE="$eff_mode" .venv/bin/python -u -m scripts.run_pilot_policy \
       --policy    "$pol"  \
       --seed      "$seed" \
       --sequences "$seq"  \
       --run-id    "$run_id" \
+      --tool-mode "$eff_mode" \
       > "${RUNS_ROOT}/unit_${run_id}.log" 2>&1
   local exit_code=$?
   echo "DONE  $run_id EXIT=$exit_code $(date -u +%H:%M:%S)"

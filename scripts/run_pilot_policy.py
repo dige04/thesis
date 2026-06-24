@@ -22,6 +22,7 @@ import argparse
 import dataclasses
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -72,7 +73,24 @@ def main(argv: list[str] | None = None) -> int:
             "Defaults to pilot_{policy}_{seq}_seed{seed} for legacy compatibility."
         ),
     )
+    p.add_argument(
+        "--tool-mode",
+        default=None,
+        choices=["legacy", "fixed"],
+        help=(
+            "Explicit AGENT_TOOL_MODE for this unit (legacy|fixed). Set BEFORE the "
+            "runner builds tools, so tool_mode() and the RUN_COMPLETED/RUN_FAILED "
+            "sentinels record it. Overrides the AGENT_TOOL_MODE env; if omitted the "
+            "env (default 'fixed') is used. Required for mixed-mode A/B units."
+        ),
+    )
     args = p.parse_args(argv)
+
+    # Pin tool_mode up-front (explicit arg wins) so provenance is recorded
+    # consistently: tools.py::tool_mode() and completion.py sentinels both read
+    # AGENT_TOOL_MODE. This is the per-unit seam the A/B runner relies on.
+    if args.tool_mode is not None:
+        os.environ["AGENT_TOOL_MODE"] = args.tool_mode
 
     config = load_config()
     max_records = config.get("memory", {}).get("max_records", 100)
