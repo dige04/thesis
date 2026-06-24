@@ -405,6 +405,42 @@ class ContainerSession:
         self.stop()
 
 
+def _strip_container_prefix(token: str, repo_root: str | None = None) -> str:
+    """Strip git-diff and container-root prefixes, returning a repo-relative path.
+
+    Handles, in order: the git ``a/``|``b/`` diff prefix (stripped ONCE), any
+    leading slashes (absolute → relative — this also re-exposes a prefix hidden
+    behind ``a/``), the ``testbed/`` container working-dir prefix, and an explicit
+    ``repo_root``.
+
+    The ordering and the ``lstrip("/")`` fix the 2026-06-24 A/B normalize gap:
+    ``a//testbed/x`` (git ``a/`` prefix + absolute ``/testbed/...`` path → double
+    slash) previously survived because the leading slash was stripped BEFORE
+    ``a/``, so after removing ``a/`` the path was ``/testbed/x`` and the
+    ``testbed/`` check (no leading slash expected) never fired. ``/dev/null`` is
+    preserved verbatim (pure add / pure delete diffs).
+    """
+    if token in ("/dev/null", "dev/null"):
+        return token
+    p = token
+    # 1. git diff prefix a/ or b/ — stripped ONCE (it is the -p1 prefix; do not
+    #    iterate, or a real leading directory literally named 'a'/'b' is lost).
+    if p.startswith(("a/", "b/")):
+        p = p[2:]
+    # 2. leading slash(es): absolute → relative; also handles 'a//testbed/...'
+    #    where stripping 'a/' re-exposed a leading '/'.
+    p = p.lstrip("/")
+    # 3. container working-dir prefix
+    if p.startswith("testbed/"):
+        p = p[len("testbed/"):]
+    # 4. backend-resolved repo root (absolute working dir, e.g. 'home/user/repo/')
+    if repo_root:
+        root = repo_root.strip("/") + "/"
+        if root != "/" and p.startswith(root):
+            p = p[len(root):]
+    return p
+
+
 def _normalize_diff_paths(diff: str, repo_root: str | None) -> str:
     """Rewrite diff path headers so that ``git apply -p1`` can apply them.
 
@@ -412,39 +448,22 @@ def _normalize_diff_paths(diff: str, repo_root: str | None) -> str:
     ``/testbed/sympy/core/basic.py`` and emits them verbatim in the
     ``diff --git``, ``---``, and ``+++`` lines.  ``git apply`` (running on the
     host or inside the container's repo) expects ``a/<relpath>``/``b/<relpath>``
-    for ``-p1``.  This function strips all known container-root prefixes and
-    re-anchors to the ``a/``/``b/`` form.
+    for ``-p1``.  This function delegates per-token stripping to
+    :func:`_strip_container_prefix` and re-anchors to the ``a/``/``b/`` form.
 
-    Prefixes stripped (in order):
-      1. Leading ``/`` (absolute path → relative)
-      2. ``testbed/`` (default container working dir)
-      3. ``<repo_root>/`` (backend-resolved absolute working directory, if provided)
-      4. ``a/`` or ``b/`` (``git diff`` prefix — will be re-added cleanly)
+    Per-token strip order (see ``_strip_container_prefix``):
+      1. ``a/`` or ``b/`` (``git diff`` prefix — stripped ONCE, re-added cleanly)
+      2. leading ``/`` (absolute → relative; also re-exposes a prefix hidden
+         behind ``a/``, e.g. ``a//testbed/x``)
+      3. ``testbed/`` (default container working dir)
+      4. ``<repo_root>/`` (backend-resolved absolute working directory, if provided)
 
     ``/dev/null`` tokens are preserved verbatim (pure add / pure delete diffs).
     """
 
     def _strip_path(token: str) -> str:
-        """Strip known prefixes and return a repo-relative path."""
-        if token in ("/dev/null", "dev/null"):
-            return token
-        p = token
-        # 1. Strip leading slash
-        if p.startswith("/"):
-            p = p[1:]
-        # 2. Strip a/ or b/ git diff prefix (must happen early so subsequent
-        #    checks see the bare path, e.g. "a/testbed/m.py" → "testbed/m.py")
-        if p.startswith(("a/", "b/")):
-            p = p[2:]
-        # 3. Strip "testbed/" container prefix
-        if p.startswith("testbed/"):
-            p = p[len("testbed/"):]
-        # 4. Strip repo_root prefix (absolute, e.g. "home/user/repo/m.py")
-        if repo_root:
-            root = repo_root.strip("/") + "/"
-            if p.startswith(root):
-                p = p[len(root):]
-        return p
+        """Strip known prefixes and return a repo-relative path (module helper)."""
+        return _strip_container_prefix(token, repo_root)
 
     def _reanchor(prefix: str, token: str) -> str:
         """Return ``prefix/<relpath>`` preserving /dev/null verbatim."""
@@ -648,7 +667,32 @@ class AgentTools:
         """
         args = {"path": path, "diff_length": len(diff)}
 
-        # ── 1. existence check first (keeps existing test_edit_file behaviour) ──
+        # ── 0. (fixed mode) normalise the path ARG up-front ───────────────────
+        # The model usually passes the absolute container path ('/testbed/src/x.py')
+        # while the diff headers are relative ('a/src/x.py'). Normalising path here
+        # (BEFORE the existence check and the security comparison) ensures all three
+        # — exists(), the `p != path` guard, and git apply — see the same
+        # repo-relative path. Without this, the guard compared the normalised diff
+        # path against the RAW absolute arg → 77/78 false rejections in the
+        # 2026-06-24 A/B. `args` keeps the original path for logging fidelity.
+        repo_root: str | None = None
+        if tool_mode() == "fixed":
+            raw_root = getattr(self.backend, "working_dir", None) or getattr(self.backend, "repo_dir", None)
+            if raw_root is not None:
+                repo_root = str(raw_root).rstrip("/")
+            path = _strip_container_prefix(path, repo_root)
+            # Reject a traversal in the path arg itself (defence in depth: the
+            # diff-path guard below also checks, but `path` is the authority for
+            # what may change, so guard it directly, before the existence check).
+            if ".." in path.split("/"):
+                error = (
+                    f"Security: path '{path}' contains a '..' traversal component "
+                    f"and is not allowed."
+                )
+                self.tracker.record_call("edit_file", args, None, error)
+                raise ValueError(error)
+
+        # ── 1. existence check (on the normalised path in fixed mode) ──────────
         if not self.backend.exists(path):
             error = f"File not found: {path}"
             self.tracker.record_call("edit_file", args, None, error)
@@ -659,11 +703,6 @@ class AgentTools:
 
         if tool_mode() == "fixed":
             # ── 2. normalise container-root / absolute path headers ───────────
-            # Resolve repo_root from whichever attribute the backend exposes.
-            repo_root: str | None = None
-            raw_root = getattr(self.backend, "working_dir", None) or getattr(self.backend, "repo_dir", None)
-            if raw_root is not None:
-                repo_root = str(raw_root).rstrip("/")
             diff = _normalize_diff_paths(diff, repo_root)
 
             # ── 3. security validation — before any disk write ────────────────

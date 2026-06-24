@@ -353,6 +353,112 @@ def test_edit_file_absolute_testbed_path_applies(git_repo):
     assert (git_repo / "m.py").read_text() == "x = 42\n"
 
 
+def test_edit_file_absolute_path_arg_applies(git_repo):
+    """path='/testbed/m.py' (absolute container path) + relative diff headers must
+    normalise BOTH sides and apply.
+
+    Regression for the 2026-06-24 A/B STOP: 77/78 'security rejections' were false
+    because the guard compared the NORMALISED diff path ('m.py') against the RAW
+    absolute `path` arg ('/testbed/m.py') → false 'diff touches m.py but
+    path=/testbed/m.py'. The LLM legitimately passes the absolute container path."""
+    tools = AgentTools(str(git_repo))
+    diff = (
+        "--- a/m.py\n"
+        "+++ b/m.py\n"
+        "@@ -1 +1 @@\n"
+        "-x = 1\n"
+        "+x = 7\n"
+    )
+    tools.edit_file("/testbed/m.py", diff)
+    assert (git_repo / "m.py").read_text() == "x = 7\n"
+
+
+def test_edit_file_double_slash_testbed_applies(git_repo):
+    """diff headers '--- a//testbed/m.py' (git 'a/' prefix + absolute '/testbed/...'
+    path → double slash) must normalise and apply.
+
+    Regression for the 2026-06-24 A/B normalize gap: `_strip_path` stripped 'a/'
+    then failed to re-strip the now-exposed leading '/' before the 'testbed/'
+    check, so 'a//testbed/m.py' survived → git apply 'b/testbed/...: No such file'."""
+    tools = AgentTools(str(git_repo))
+    diff = (
+        "--- a//testbed/m.py\n"
+        "+++ b//testbed/m.py\n"
+        "@@ -1 +1 @@\n"
+        "-x = 1\n"
+        "+x = 5\n"
+    )
+    tools.edit_file("/testbed/m.py", diff)
+    assert (git_repo / "m.py").read_text() == "x = 5\n"
+
+
+def test_edit_file_cross_file_rejected_with_abs_path_arg(git_repo):
+    """Even with an absolute path arg, a diff touching a DIFFERENT file must still
+    be rejected — the fix must not over-permit after normalising both sides."""
+    tools = AgentTools(str(git_repo))
+    diff = (
+        "--- a/other.py\n"
+        "+++ b/other.py\n"
+        "@@ -1 +1 @@\n"
+        "-y = 2\n"
+        "+y = 9\n"
+    )
+    with pytest.raises(ValueError, match=r"(?i)(security|other\.py|path)"):
+        tools.edit_file("/testbed/m.py", diff)
+    assert (git_repo / "m.py").read_text() == "x = 1\n"
+
+
+def test_edit_file_double_slash_testbed_git_header_applies(git_repo):
+    """'diff --git a//testbed/m.py b//testbed/m.py' (git-header double-slash form)
+    must normalise and apply — covers the `diff --git` path of the a//testbed gap,
+    complementing the ---/+++ form in test_edit_file_double_slash_testbed_applies.
+    (Codex 2026-06-24 review item.)"""
+    tools = AgentTools(str(git_repo))
+    diff = (
+        "diff --git a//testbed/m.py b//testbed/m.py\n"
+        "--- a//testbed/m.py\n"
+        "+++ b//testbed/m.py\n"
+        "@@ -1 +1 @@\n"
+        "-x = 1\n"
+        "+x = 3\n"
+    )
+    tools.edit_file("/testbed/m.py", diff)
+    assert (git_repo / "m.py").read_text() == "x = 3\n"
+
+
+def test_edit_file_absolute_repo_root_path_arg_applies(git_repo):
+    """path given as the absolute backend working_dir path (repo_root prefix, NOT
+    /testbed) must normalise to repo-relative and apply. (Codex 2026-06-24 review
+    item — exercises the repo_root strip branch of _strip_container_prefix.)"""
+    tools = AgentTools(str(git_repo))
+    abs_path = str(git_repo / "m.py")  # e.g. /private/tmp/.../m.py
+    diff = (
+        "--- a/m.py\n"
+        "+++ b/m.py\n"
+        "@@ -1 +1 @@\n"
+        "-x = 1\n"
+        "+x = 11\n"
+    )
+    tools.edit_file(abs_path, diff)
+    assert (git_repo / "m.py").read_text() == "x = 11\n"
+
+
+def test_edit_file_path_arg_traversal_rejected(git_repo):
+    """A path ARG containing '..' must be rejected by the path-arg guard, before
+    the existence check, regardless of the diff content. (Codex 2026-06-24 review
+    item — path arg is the authority for what may change.)"""
+    tools = AgentTools(str(git_repo))
+    diff = (
+        "--- a/../escape.py\n"
+        "+++ b/../escape.py\n"
+        "@@ -1 +1 @@\n"
+        "-z = 0\n"
+        "+z = 1\n"
+    )
+    with pytest.raises(ValueError, match=r"(?i)(traversal|\.\.|not allowed)"):
+        tools.edit_file("../escape.py", diff)
+
+
 def test_edit_file_cross_file_rejected(git_repo):
     """A diff touching other.py while path='m.py' must raise ValueError; m.py unchanged."""
     tools = AgentTools(str(git_repo))
