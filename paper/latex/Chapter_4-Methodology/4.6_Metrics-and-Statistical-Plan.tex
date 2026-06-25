@@ -31,6 +31,18 @@ footprint axis is the A4 reframing of the original H1b efficiency hypothesis: be
 retrieval depth is fixed, storage pruning cannot reduce the prompt budget, so the honest
 place to look for an efficiency win is footprint, not total-token savings.
 
+\paragraph{Interdependence metric.}
+To probe \emph{when} memory matters (E7), we define the per-sequence \emph{memory lift} as
+the gap between full-memory and no-memory resolution on sequence $j$:
+\begin{equation}
+  \label{eq:memory-lift}
+  \Delta_j = \operatorname{res}_{\mathrm{full}}(j) - \operatorname{res}_{\mathrm{none}}(j),
+\end{equation}
+where $\operatorname{res}_{p}(j)$ is the resolution rate of policy $p$ on sequence $j$. A
+positive $\Delta_j$ means memory helped on that sequence; the distribution of $\Delta_j$
+against structural interdependence is the basis of the E7 analysis
+(Section~\ref{sec:h5}).
+
 \paragraph{Inferential plan.}
 The analysis is pre-registered and effect-size-first, reporting estimation --- intervals and
 effect sizes --- ahead of dichotomous significance, in the spirit

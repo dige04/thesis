@@ -10,10 +10,11 @@ record carries a retention score that combines how old it is, how fast records o
 should decay, and how often it has been retrieved; when the store is over the cap of ten
 (A1), the lowest-scoring records are evicted. The score is the multiplicative
 Anderson--Schooler form~\cite{anderson1991} (Invariant~\#8):
-\[
+\begin{equation}
+  \label{eq:type-decay}
   \mathrm{score} = \mathrm{base}\times\mathrm{age}^{-d(\mathrm{type})}
   \times(1+\mathrm{retrieval\_count})^{0.5}.
-\]
+\end{equation}
 Age pulls the score down, retrieval pulls it back up (the square root giving diminishing
 returns), and the per-type exponent $d(\mathrm{type})$ sets how quickly each kind of record
 ages. The exponent is keyed to the five-type taxonomy --- \texttt{architectural},

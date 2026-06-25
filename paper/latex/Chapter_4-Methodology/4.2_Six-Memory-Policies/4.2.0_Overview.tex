@@ -53,7 +53,28 @@ Table~\ref{tab:policies} summarises the six.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\textwidth]{task-lifecycle.png}
+\begin{tikzpicture}[
+  font=\footnotesize,
+  lstep/.style={draw, rounded corners=2pt, align=center, minimum height=11mm,
+               text width=18mm, inner sep=3pt, thick, draw=cAgent},
+  forget/.style={lstep, draw=cPolicy, line width=1pt},
+  flow/.style={-{Stealth[length=2mm]}, thick},
+  node distance=6mm,
+]
+  \node[lstep]                  (retr)  {Retrieve\\\scriptsize cosine top-$k$};
+  \node[lstep, right=of retr]   (solve) {Solve\\\scriptsize ReAct attempt};
+  \node[lstep, right=of solve]  (refl)  {Reflect};
+  \node[lstep, right=of refl]   (clf)   {Classify\\\scriptsize 5-type};
+  \node[forget, right=of clf]   (maint) {Maintain\\\scriptsize policy forgets here};
+  \node[lstep, right=of maint]  (snap)  {Snapshot};
+  \draw[flow] (retr)  -- (solve);
+  \draw[flow] (solve) -- (refl);
+  \draw[flow] (refl)  -- (clf);
+  \draw[flow] (clf)   -- (maint);
+  \draw[flow] (maint) -- (snap);
+  \draw[flow, dashed, draw=cFixed] (snap.south) -- ++(0,-7mm)
+        -| node[pos=0.5, below, font=\scriptsize, text=cFixed]{next task} (retr.south);
+\end{tikzpicture}
 \caption{The shared per-task loop: \emph{retrieve} (cosine top-$k$, identical across
 policies) $\rightarrow$ \emph{solve} $\rightarrow$ \emph{reflect} $\rightarrow$
 \emph{classify} (5-type taxonomy) $\rightarrow$ \textbf{maintain} $\rightarrow$

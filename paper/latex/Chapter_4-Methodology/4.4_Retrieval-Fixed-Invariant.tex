@@ -12,7 +12,15 @@ Retrieval scoring is pure cosine similarity, identical across all six conditions
 bonuses, no penalties, no policy-specific reranking --- and it is enforced in a single
 shared code path (\texttt{retriever.py::shared\_retrieve}, Invariant~\#5). Every policy
 queries the store the same way; the only thing that differs is what is in the store to be
-found.
+found. Concretely, a query $q$ and a stored record $m$ are scored by the cosine of their
+embeddings:
+\begin{equation}
+  \label{eq:cosine}
+  \operatorname{sim}(q, m) = \frac{\mathbf{e}_q \cdot \mathbf{e}_m}
+                                  {\lVert \mathbf{e}_q \rVert \, \lVert \mathbf{e}_m \rVert},
+\end{equation}
+where $\mathbf{e}_q$ and $\mathbf{e}_m$ are the query and record embeddings; no
+policy-specific bonus or penalty ever enters this score.
 
 The retrieval parameters are likewise fixed. Each query returns the top $k=5$ records
 (Invariant~\#16), restricted to the same repository, so a sequence never pulls memories from

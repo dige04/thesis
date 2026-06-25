@@ -41,7 +41,38 @@ component.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\textwidth]{architecture.png}
+\begin{tikzpicture}[
+  font=\small,
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=9mm,
+              minimum width=22mm, inner sep=4pt, thick},
+  fixed/.style={box, draw=cFixed},
+  agent/.style={box, draw=cAgent, line width=0.6pt},
+  flow/.style={-{Stealth[length=2.2mm]}, thick},
+  hold/.style={-{Stealth[length=2.2mm]}, thick, dashed, draw=cPolicy},
+  node distance=10mm and 16mm,
+]
+  \node[box]                   (data)   {SWE-Bench-CL\\\scriptsize task sequence};
+  \node[agent, right=of data]  (agent)  {Coding Agent\\\scriptsize LangGraph ReAct, $\le$20 steps};
+  \node[fixed, right=of agent] (retr)   {Cosine Retriever\\\scriptsize fixed top-$k$, identical};
+  \node[fixed, right=of retr]  (store)  {MemoryStore\\\scriptsize FAISS index};
+  \node[box, above=of agent]   (llm)    {deepseek-v4-flash\\\scriptsize frozen, all roles};
+  \node[box, below=of agent]   (eval)   {eval\_v3 harness\\\scriptsize scores the patch};
+  \node[fixed, draw=cPolicy, line width=1pt, above=of store] (policy)
+        {Forgetting Policy\\\scriptsize 1 of 6 -- swappable};
+  \node[fixed, below=of store] (refl)   {Reflection + Classifier\\\scriptsize 5-type taxonomy};
+  \draw[flow] (data)  -- (agent);
+  \draw[flow] (agent) -- node[above,font=\scriptsize]{retrieve} (retr);
+  \draw[flow] (retr)  -- node[above,font=\scriptsize]{top-$k$} (store);
+  \draw[flow] (agent) -- node[right,font=\scriptsize]{LLM calls} (llm);
+  \draw[flow] (agent) -- node[right,font=\scriptsize]{patch} (eval);
+  \draw[flow] (refl)  -- node[right,font=\scriptsize]{store record} (store);
+  \draw[hold] (policy) -- node[right,font=\scriptsize]{maintain / forget} (store);
+  \begin{scope}[on background layer]
+    \node[draw=cFixed!60, dashed, rounded corners, inner sep=6mm,
+          label={[font=\scriptsize, text=cFixed]above:Memory subsystem (retrieval held constant)},
+          fit=(retr)(store)(policy)(refl)] {};
+  \end{scope}
+\end{tikzpicture}
 \caption{The memory-equipped coding agent. The agent interacts with a \texttt{MemoryStore}
 through a fixed cosine retriever (identical across all six conditions) over the task
 sequence; the storage/forgetting \emph{policy} is the single swappable component, one of the
