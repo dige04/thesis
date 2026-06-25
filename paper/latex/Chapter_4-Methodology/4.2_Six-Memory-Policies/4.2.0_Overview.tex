@@ -53,13 +53,11 @@ Table~\ref{tab:policies} summarises the six.
 
 \begin{figure}[htbp]
 \centering
-\begin{figurestub}{per-task memory loop (to be drawn)}
-The shared per-task loop: \emph{retrieve} (cosine top-$k$, identical across policies)
-$\rightarrow$ \emph{solve} (the agent's ReAct attempt) $\rightarrow$ \emph{reflect}
-$\rightarrow$ \emph{classify} (5-type taxonomy) $\rightarrow$ \textbf{maintain} (the only
-step that differs --- the policy forgets here) $\rightarrow$ \emph{snapshot}.
-\end{figurestub}
-\caption{The shared per-task loop; every policy is identical except at the maintenance
-step. Diagram to be drawn for the final manuscript.}
+\includegraphics[width=\textwidth]{task-lifecycle.png}
+\caption{The shared per-task loop: \emph{retrieve} (cosine top-$k$, identical across
+policies) $\rightarrow$ \emph{solve} $\rightarrow$ \emph{reflect} $\rightarrow$
+\emph{classify} (5-type taxonomy) $\rightarrow$ \textbf{maintain} $\rightarrow$
+\emph{snapshot}, then on to the next task. Every policy is identical except at the
+maintenance step, where the policy forgets --- the only policy-specific step.}
 \label{fig:task-lifecycle}
 \end{figure}

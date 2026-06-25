@@ -41,13 +41,11 @@ component.
 
 \begin{figure}[htbp]
 \centering
-\begin{figurestub}{architecture diagram (to be drawn)}
-The memory-equipped coding agent: the agent interacts with a \texttt{MemoryStore} through a
-fixed cosine retriever (identical across conditions) over a task sequence; the
-storage/forgetting \emph{policy} is the single swappable component, instantiated as one of
-the six. Retrieval, model, dataset, and agent loop are held constant.
-\end{figurestub}
-\caption{The memory-equipped agent, with the forgetting policy as the only swappable
-component. Chapter-signature architecture diagram, to be drawn for the final manuscript.}
+\includegraphics[width=\textwidth]{architecture.png}
+\caption{The memory-equipped coding agent. The agent interacts with a \texttt{MemoryStore}
+through a fixed cosine retriever (identical across all six conditions) over the task
+sequence; the storage/forgetting \emph{policy} is the single swappable component, one of the
+six. The model (\texttt{deepseek-v4-flash}), embedder, retrieval, dataset, and agent loop
+are held constant --- the memory subsystem (shaded) operates under retrieval held constant.}
 \label{fig:architecture}
 \end{figure}
