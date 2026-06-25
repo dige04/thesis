@@ -14,15 +14,16 @@ theory~\cite{mcclelland1995}: stable, repeated structure is abstracted into a co
 while one-off details fade. When no cluster qualifies, the policy falls back to Type-Aware
 Decay (Section~\ref{sec:type-decay}) at the cap of ten (A1), so it never simply overflows.
 
-The honest finding is that on SWE-Bench-CL this policy is \emph{structurally inert}. The
-same-repository memories within a sequence are diverse --- each a different issue --- and do
-not form clusters of three or more at the $0.70$ threshold, so consolidation does not fire;
-in the gate-3 validation it produced zero consolidation events on both probed sequences
-(amendment A3), reducing empirically to its Type-Aware Decay fallback. The matrix-wide
-consolidation count is reported with the H3 results
-(Section~\ref{sec:h3}) \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}. We deliberately
-did \emph{not} relax the $0.70$ threshold to force clustering: that parameter is frozen
-(Invariant~\#23), and lowering it to manufacture a positive result would merge dissimilar
-memories into incoherent summaries. H3 is therefore reported as a negative,
-not-applicable result --- itself a finding about how compressive forgetting behaves on
-genuinely heterogeneous coding experience.
+The expectation, from the mechanism, is that on SWE-Bench-CL this policy is largely
+\emph{inert}: the same-repository memories within a sequence are diverse --- each a different
+issue --- so a cluster of three or more within the $0.70$ cosine threshold rarely forms and
+consolidation seldom fires. This is a gate-3 \emph{indication}, not yet a matrix-wide finding:
+in the gate-3 validation the policy produced zero consolidation events on both probed
+sequences (amendment A3), reducing empirically to its Type-Aware Decay fallback. Whether this
+holds across the full matrix --- the matrix-wide consolidation count --- is reported with the
+H3 results (Section~\ref{sec:h3}) \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}. We
+deliberately did \emph{not} relax the $0.70$ threshold to force clustering: that parameter is
+frozen (Invariant~\#23), and lowering it to manufacture a positive result would merge
+dissimilar memories into incoherent summaries. If the matrix-wide count confirms the gate-3
+indication, H3 is reported as a negative, not-applicable result --- itself a finding about how
+compressive forgetting behaves on genuinely heterogeneous coding experience.

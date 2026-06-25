@@ -29,10 +29,11 @@ has a uniform, between-condition-neutral effect on the token-cost axis that is d
 there. Embeddings are computed by a separate local \texttt{nomic-embed-text-v2-moe} model
 (768-dimensional), also held constant across conditions.
 
-A structural property of the benchmark bounds how much any of this can matter. Within each
-sequence only a minority of tasks share gold-patch files with a predecessor --- the only
-tasks for which a stored record could be structurally relevant --- so for most tasks there
-is, by construction, nothing useful to remember (Figure~\ref{fig:interdependence}). This
+A structural property of the benchmark is expected to bound how much any of this can matter.
+Within each sequence only a minority of tasks appear to share gold-patch files with a
+predecessor --- the only tasks for which a stored record could be structurally relevant --- so
+for most tasks there is, by construction, little to remember (the exact per-sequence fractions
+are reported in Chapter~\ref{ch:results}; Figure~\ref{fig:interdependence}). This
 interdependence ceiling frames the entire memory question and is quantified in
 Chapter~\ref{ch:results}.
 

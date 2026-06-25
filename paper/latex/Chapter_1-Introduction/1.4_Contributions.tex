@@ -33,16 +33,16 @@ result points:
         the quantitative frontier is reported in
         Chapter~\ref{ch:results} \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}.
   \item \textbf{A quantification of task interdependence as the precondition for memory to
-        matter.} Only a minority of SWE-Bench-CL tasks --- on the order of one-third ---
+        matter.} Only a minority of SWE-Bench-CL tasks
         structurally depend on a predecessor (a stored record whose gold-patch files
         overlap the current task), which bounds how much any memory policy could help and
         contextualises the experience-following risk~\cite{xiong2025}; the exact figures
         are reported in Chapter~\ref{ch:results}.
   \item \textbf{An instrument-validation sub-study.} A pre-registered A/B health check of
         the agent's own tooling caught a defect in the edit/read instrumentation, drove a
-        root-caused fix, and re-validated the corrected instrument before the full matrix
-        was run (Section~\ref{sec:instrument}). The trustworthiness procedure is itself a
-        reusable methodological contribution.
+        root-caused fix, and re-validated the corrected instrument --- via a pre-registered
+        gate that must pass before the matrix is trusted (Section~\ref{sec:instrument}). The
+        trustworthiness procedure is itself a reusable methodological contribution.
   \item \textbf{A reproducible artifact.} The full 144-run matrix, the six policy
         implementations, the configuration, and the analysis pipeline are released so the
         measurement can be re-derived end to end (Appendix~\ref{ch:appendix}).

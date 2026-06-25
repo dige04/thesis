@@ -12,9 +12,9 @@
 \label{sec:instrument-results}
 
 The instrument-health procedure of Section~\ref{sec:instrument} produced a verified outcome
-\emph{before} the full matrix was run, and unlike the H1--H5 contrasts these numbers do not
-depend on the trustworthy rerun --- they are reported here as a durable methodological
-result.
+that gates the fixed-code rerun \emph{before} the matrix is trusted, and unlike the H1--H5
+contrasts these numbers do not depend on that rerun --- they are reported here as a durable
+methodological result.
 
 \paragraph{From STOP to GO.}
 On the original pre-registered gate the instrument \textbf{STOPped}: the fixed-mode arm
@@ -32,8 +32,7 @@ tool mode) all hold.
 
 \begin{table}[htbp]
   \centering
-  \caption{Amended instrument-health gate on fresh post-hotfix data
-  (\texttt{results/ab\_gate/amended\_cceb325\_result.json}). Instrument-attributable
+  \caption{Amended instrument-health gate on fresh post-hotfix data. Instrument-attributable
   failures are zero in both arms; the fixed arm's model-quality rate does not exceed the
   legacy arm's; token inflation is below $1.0\times$. Verdict: GO.}
   \label{tab:instrument}
@@ -53,6 +52,8 @@ tool mode) all hold.
     Verdict                          & \multicolumn{2}{c}{\textbf{GO}} \\
     \bottomrule
   \end{tabular}
+  \par\smallskip
+  {\footnotesize Source: \texttt{results/ab\_gate/amended\_cceb325\_result.json}.}
 \end{table}
 
 \paragraph{The fixed instrument is net-positive (informational).}

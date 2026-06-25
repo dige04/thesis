@@ -53,8 +53,8 @@ threat was the agent's own tooling: a trajectory audit found the \texttt{read\_f
 \texttt{edit\_file} instruments defective, which could have turned an instrument artefact into
 an apparent between-policy effect. This is a \emph{mitigated} threat rather than a live one
 --- the defect was root-caused, fixed (commit \texttt{cceb325}), and the corrected instrument
-was re-validated by a pre-registered, externally reviewed health gate before the matrix was
-run (Section~\ref{sec:instrument}).
+was re-validated by a pre-registered, externally reviewed health gate that must pass before
+the matrix is trusted (Section~\ref{sec:instrument}).
 
 \paragraph{External validity.}
 The results rest on a single base model (\texttt{deepseek-v4-flash}, the final link of the
@@ -63,9 +63,10 @@ retrieval only, and a fixed retrieval depth. This is a conscious scope boundary,
 scope and measurement cleanliness rather than by budget --- the move to an unlimited provider
 and a horizontal fleet removed compute as the binding constraint. We make no cross-model or
 cross-benchmark generalisation claim. A deeper boundary is intrinsic to the task
-distribution: only a minority of tasks --- on the order of one-third --- structurally depend
-on a predecessor, so any conclusion about memory's \emph{benefit} applies to that
-interdependent subset rather than to sequential coding in general, and the
+distribution: only a minority of tasks structurally depend on a predecessor (a
+benchmark-structural property; the exact fractions are reported in Chapter~\ref{ch:results}),
+so any conclusion about memory's \emph{benefit} applies to that interdependent subset rather
+than to sequential coding in general, and the
 experience-following risk~\cite{xiong2025} means an indiscriminate store can hurt the
 remainder.
 

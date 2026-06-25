@@ -13,21 +13,22 @@
 \section{Key Findings}
 
 \begin{todobox}
-Expand the beats below into prose. Open with the COUNTER-INTUITIVE LEAD, then deliver the careful negative before the win. Thread "retrieval held constant", "non-inferiority", "footprint", "not every task needs memory". All numbers stay placeholders --- the full 144-run matrix is still RUNNING.
+Expand the beats below into prose. Open with the counter-intuitive lead, then deliver the careful negative before the footprint win. Thread "retrieval held constant", "non-inferiority", "footprint", "not every task needs memory". All numbers stay placeholders, pending the 144-run rerun.
 \end{todobox}
 
-% - COUNTER-INTUITIVE LEAD: contrary to the assumption that accumulating memory
-%   improves continual performance, memory does NOT recover lost performance on CL-F1.
-% - The careful negative: with retrieval held constant, Full Memory ≈ No Memory on
-%   CL-F1 — gate-3 PRELIMINARY full−nomem = −0.097 (pytest), +0.018 (django)
-%   [RESULT: confirm on 144-run completion] — within noise, no recovery effect.
-% - The non-inferiority result: forgetting policies MATCH full-memory accumulation on
-%   CL-F1 (TOST, SESOI ±0.03) at materially lower memory footprint [RESULT: …].
-% - The robust win is the FOOTPRINT axis (A4): forgetting holds CL-F1 while pruning at
-%   cap=10 keeps the footprint bounded — the efficiency claim that survives the
-%   stability-instrument concern (forward-ref fig:pareto-footprint).
-% - Why the average benefit was always diluted: only ~⅓ of tasks structurally depend on
-%   a predecessor (mean overlap 0.30, 0.32 frac with any dependency) @xiong2025 — context
-%   accumulation can also rot rather than help [VERIFY+ADD] (Context-Rot).
-% - One-line frame: not "forgetting recovers performance" but "forgetting is non-inferior
-%   to full memory at lower footprint" — and quantifying interdependence is the contribution.
+% NEUTRAL instructions only -- no preliminary numbers (do NOT paste gate-3/old-matrix values).
+% - COUNTER-INTUITIVE LEAD: contrary to the assumption that accumulating memory improves
+%   continual performance, memory does not recover lost performance on the CL-F1 proxy.
+% - The careful negative: with retrieval held constant, Full Memory is statistically
+%   indistinguishable from No Memory on the proxy [RESULT: pending] -- state the magnitude
+%   only once the 144 lands.
+% - Non-inferiority: forgetting policies match full-memory accumulation on the proxy at
+%   materially lower footprint [RESULT: pending]. (Non-inferiority via bounded CIs + power,
+%   NOT a TOST verdict -- TOST was pre-registered but not computed.)
+% - The robust win is the FOOTPRINT axis (A4): forgetting holds the proxy while pruning keeps
+%   the footprint bounded (forward-ref fig:pareto-footprint).
+% - Why the average benefit is diluted: only a minority of tasks structurally depend on a
+%   predecessor (benchmark-structural; exact fractions pending) -- interdependence is the
+%   binding filter; cite xiong2025 for the experience-following risk.
+% - One-line frame: not "forgetting recovers performance" but "forgetting is non-inferior to
+%   full memory at lower footprint" -- and quantifying interdependence is the contribution.
