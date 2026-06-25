@@ -1,0 +1,28 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 5.3  H2: Does What You Forget Matter? ────────────────────────────────
+% PURPOSE: Isolate whether content-aware forgetting beats blind volume reduction by
+%          pitting Type-Aware Decay directly against Random Prune at the same cap.
+% MOVE: Pain → Consequence → Gap (volume control is cheap; does content selection earn
+%        its complexity?).
+% BEATS: see ordered bullets below.
+% FIGURES/TABLES: tab:main-results (Type-Aware vs Random subset).
+% CITATIONS: anderson1991 (the multiplicative decay rationale behind Type-Aware).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{H2: Does What You Forget Matter?}
+
+\begin{todobox}
+Expand the beats below into prose. The clean comparison is Type-Aware Decay vs Random Prune --- both evict to the SAME cap=10, so the only difference is WHICH items go. Keep the verdict honest whichever way it lands.
+\end{todobox}
+
+% - H2 contrast: Type-Aware Decay vs Random Prune, Wilcoxon signed-rank on N=8 sequence
+%   means with rank-biserial r_rb effect size [RESULT: …].
+% - Both policies hold footprint at cap=10; retrieval held constant — so any CL-F1 gap is
+%   attributable to content selection, not volume. The question is whether the
+%   Anderson–Schooler-style scoring (anderson1991) earns its complexity over a coin flip.
+% - tab:main-results (subset) — the Type-Aware vs Random rows of the main table [RESULT: …].
+% - Interpret: if content-aware ≈ random, volume reduction alone is the active ingredient
+%   (a tidy parsimony finding); if content-aware > random, selection matters. Report the
+%   direction and CI plainly. Full 144-run matrix RUNNING.

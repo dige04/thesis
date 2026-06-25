@@ -1,0 +1,51 @@
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage[most]{tcolorbox}
+
+\graphicspath{{../../results/plots/}{results/plots/}}
+
+\definecolor{todofill}{HTML}{FFF3CD}
+\definecolor{todotext}{HTML}{7A5200}
+\definecolor{pendingfill}{HTML}{EEF3FB}
+\definecolor{pendingline}{HTML}{B3C6E0}
+\definecolor{pendingtext}{HTML}{34568B}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=pendingtext,
+  citecolor=pendingtext,
+  urlcolor=pendingtext,
+  pdftitle={Memory Pruning and Forgetting Policies for AI Coding Agents}
+}
+
+\newtcolorbox{todobox}{
+  colback=todofill,
+  colframe=todofill,
+  coltext=todotext,
+  boxrule=0pt,
+  arc=2pt,
+  left=7pt,
+  right=7pt,
+  top=7pt,
+  bottom=7pt,
+  before upper={\textbf{TODO \textperiodcentered{}}\ },
+}
+
+\newtcolorbox{figurestub}[2][]{
+  colback=pendingfill,
+  colframe=pendingline,
+  coltext=pendingtext,
+  arc=3pt,
+  title={\textbf{[PENDING] #2}},
+  fonttitle=\normalsize,
+  #1
+}
+
+\setlength{\parindent}{1.5em}
+\setlength{\parskip}{0.25em}
+\linespread{1.08}

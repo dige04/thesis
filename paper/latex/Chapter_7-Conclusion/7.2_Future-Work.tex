@@ -1,0 +1,31 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 7.2  Future Work ─────────────────────────────────────────────────────
+% PURPOSE: Each future item traces a NAMED limitation from §6.4 to a concrete next study.
+% MOVE: Future-work-per-bottleneck (each item closes a named threat to validity).
+% BEATS: see ordered bullets below — cross-model · anchor-probe · decontamination · cross-repo.
+% FIGURES/TABLES: none.
+% CITATIONS: SWE-rebench 2505.20411 [VERIFY+ADD], SWE-MERA 2507.11059 [VERIFY+ADD].
+% SOURCE-DOC: docs/threats-to-validity.md; docs/a5-anchor-probe-decision.md; AMENDMENTS (D-0.4).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Future Work}
+
+\begin{todobox}
+Expand the beats below into prose. Each item must NAME the §6.4 limitation it addresses, then propose the concrete next study. Keep the single-model and same-repo scope honest; frame these as follow-ups, not weaknesses of the present design.
+\end{todobox}
+
+% - CROSS-MODEL PROBE (addresses single-model external validity, §6.4): the D-0.4
+%   descriptive 12-run probe — top conditions × a subset of sequences × one seed — to
+%   report transfer DIRECTION only (non-inferential), not a generalization claim.
+% - ANCHOR-PROBE SENSITIVITY TEST (addresses stability = 1.000, §6.4 construct threat):
+%   the A5 discrimination test — target anchors at INTERDEPENDENT tasks (gold-patch files
+%   overlapping a later task) on a high-overlap sequence, run Full vs aggressive-prune ≥3×,
+%   check whether stability ever discriminates before committing the full-probe budget.
+% - DECONTAMINATED BENCHMARKS (addresses contamination, §6.4 internal threat): re-run on
+%   SWE-rebench (2505.20411) [VERIFY+ADD] / SWE-MERA (2507.11059) [VERIFY+ADD] — post-cutoff,
+%   continuously-refreshed task streams — to recover interpretable ABSOLUTE solve rates.
+% - CROSS-REPO RETRIEVAL (addresses same-repo scope, §6.4 external threat): relax the
+%   same-repo-only invariant to test whether forgetting policies transfer when memory is
+%   drawn across repositories, where interdependence structure differs.

@@ -1,0 +1,29 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 5.7  Manipulation Checks ─────────────────────────────────────────────
+% PURPOSE: Prove the storage manipulation actually reaches the prompt before any outcome
+%          is interpreted — the experiment must be visible at the point of injection.
+% MOVE: Pain → Consequence → Gap (a manipulation you can't see is a confound you can't rule out).
+% BEATS: see ordered bullets below.
+% FIGURES/TABLES: none.
+% CITATIONS: none new.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Manipulation Checks}
+
+\begin{todobox}
+Expand the beats below into prose. Position this as the gate the reader must pass through before trusting 5.2-5.6: the policies really do change what lands in the prompt, and we logged enough to prove it run-by-run.
+\end{todobox}
+
+% - Retrieved-memory overlap: Jaccard of retrieved item-sets, pruning policies vs Full
+%   Memory, is < 0.9 — so pruning demonstrably changes WHICH memories reach the prompt,
+%   not merely the store [RESULT: …].
+% - No Memory vs any memory policy: retrieved-set Jaccard = 0 by construction (No Memory
+%   injects nothing) — confirms the boundary condition is clean [RESULT: …].
+% - Classifier failure rate logged and reported; failures handled identically across all
+%   six conditions so they cannot differentially bias a policy (D4) [RESULT: …].
+% - Per-run provenance recorded: model, embedder, seed, cap, policy config — so every
+%   run's manipulation is auditable after the fact.
+% - Bottom line: the manipulation is real and visible at the prompt, which is the
+%   precondition for reading 5.2-5.6 causally. Full 144-run matrix RUNNING.

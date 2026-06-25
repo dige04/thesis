@@ -1,0 +1,33 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 4.2.5  Type-Aware Decay ──────────────────────────────────────────────
+% PURPOSE: Define the content-aware forgetting policy and its frozen score formula.
+% MOVE: Cognitive-grounding ("forgetting as adaptive rational decay") + frozen-by-design.
+% BEATS: see // bullets below.
+% FIGURES/TABLES: (none new; row in six-policy summary table).
+% CITATIONS: anderson1991.
+% ─────────────────────────────────────────────────────────────────────────
+
+\subsection{Type-Aware Decay}
+
+\begin{todobox}
+Expand the beats below into prose. Ground in Anderson--Schooler rational analysis [@anderson1991]; stress that d(type) is frozen at design time, NOT calibrated.
+\end{todobox}
+
+% - Content-aware forgetting: each record gets a retention score combining age, per-type
+%   decay rate, and how often it was retrieved; the lowest-scoring record is evicted at cap.
+% - Multiplicative Anderson–Schooler score (Invariant #8):
+
+\[
+  \mathrm{score} = \mathrm{base}\times\mathrm{age}^{-d(\mathrm{type})}
+  \times(1+\mathrm{retrieval\_count})^{0.5}
+\]
+
+% - The per-type decay rate d(type) is keyed to the 5-type taxonomy
+%   {architectural, api_change, bug_fix, test_update, config} (#7) — slower decay for
+%   durable types, faster for ephemeral ones.
+% - d(type) is FROZEN at design time and is NOT calibrated from pilot data (pre-registration
+%   integrity); it is never re-tuned per type.
+% - Eviction rule: when over cap = 10 (A1), drop the lowest-score record(s) — forgetting is
+%   driven by content (type) and use, not by age alone.

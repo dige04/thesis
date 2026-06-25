@@ -1,0 +1,30 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 4.5  Agent, Benchmark, and Frozen Model ──────────────────────────────
+% PURPOSE: Pin down the three held-constant factors — the agent, the benchmark, and
+%          the generative/embedding models — and disclose the model deviation chain.
+% MOVE: Pain -> Consequence -> Gap is not needed here; straight declarative + disclosure.
+% BEATS: see ordered bullets below.
+% FIGURES/TABLES: fig:architecture (agent <-> store), tab:deviations (D6, D2).
+% CITATIONS: joshi2025.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Agent, Benchmark, and Frozen Model}
+
+\begin{todobox}
+Expand the beats below into prose. State that the model is a FIXED factor held constant across all 144 runs, so between-policy comparisons stay valid even though absolute resolution rates are not leaderboard-comparable.
+\end{todobox}
+
+% - The agent is a LangGraph ReAct coding agent with a hard cap of 20 steps per task
+%   (Invariant #3, force-fail on overrun).
+% - The benchmark is SWE-Bench-CL (joshi2025): all 8 official sequences, no reordering and
+%   no self-generated tasks (Invariant #1).
+% - The frozen generative model is MiniMax M3 (deviation D6) — a reasoning model whose
+%   `<think>` chain-of-thought is stripped before parsing and before embedding; served via
+%   the 0G router with tolerant JSON extraction and 16-key rotation.
+% - The model is a FIXED factor held constant across all conditions x seeds; the deviation
+%   chain is GPT-5.4 -> Kimi -> M3 (D1). Absolute resolution rates are therefore NOT
+%   comparable to GPT-5.4 / SWE-Bench leaderboards; between-policy contrasts remain valid.
+% - Embeddings are local nomic-embed-text-v2-moe, 768-d (deviation D2).
+% - Correctness is scored with the standard eval_v3 harness.

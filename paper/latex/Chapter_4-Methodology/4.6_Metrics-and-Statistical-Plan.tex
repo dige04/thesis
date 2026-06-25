@@ -1,0 +1,34 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 4.6  Metrics and Pre-Registered Statistical Plan ─────────────────────
+% PURPOSE: Define the outcome and cost metrics, then lay out the effect-size-first,
+%          pre-registered, non-inferiority statistical plan.
+% MOVE: Prose-hierarchy objectives — primary outcome -> cost axes -> inferential plan.
+% BEATS: see ordered bullets below.
+% FIGURES/TABLES: tab:metrics; fig:pareto-cost, fig:pareto-footprint; fig:anchor-probe.
+% CITATIONS: cumming2014, wasserstein2019, Lakens-TOSTER [VERIFY+ADD].
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Metrics and Pre-Registered Statistical Plan}
+\label{sec:metrics}
+
+\begin{todobox}
+Expand the beats below into prose. Thread "non-inferiority" and the two-axis "footprint" framing. Mark all live numbers as [RESULT: ...] --- the 144-run matrix is running.
+\end{todobox}
+
+% - Primary outcome: CL-F1, measured by anchor-probe re-evaluation (plasticity x stability;
+%   see fig:anchor-probe for the anchors x probes schedule).
+% - Cost is reported on a TWO-axis Pareto (tab:metrics): (i) token-count proxy (D3), and
+%   (ii) memory footprint + retrieval latency — the A4-reframed H1b efficiency axis, where
+%   forgetting is expected to win, NOT token-savings (fig:pareto-cost, fig:pareto-footprint).
+% - The plan is effect-size-first and pre-registered (cumming2014, wasserstein2019):
+%   lead with estimation and intervals, not bare p-values.
+% - Non-inferiority: TOST with SESOI = +/-0.03 CL-F1 (Lakens-TOSTER [VERIFY+ADD]),
+%   on the N=8 sequence-median paired difference.
+% - Confirmatory test: Wilcoxon signed-rank on N=8 sequence means, Holm correction over the
+%   5 pre-registered contrasts (Invariant #11).
+% - Effect size: rank-biserial r_rb (Invariant #12 — NOT Cohen's d, NOT Cliff's delta).
+% - Intervals: BCa bootstrap, 5000 iterations (Invariant #15).
+% - Task-level model: GLMM binomial/logit with a crossed random effect on task_id
+%   (Invariant #14). Feature analysis: PR-AUC + VIF check (Invariant #13).

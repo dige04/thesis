@@ -1,0 +1,35 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 3.3  Positioning: The Retrieval-Fixed, Controlled-Comparison Gap ─────
+% PURPOSE: Name the unoccupied wedge; close the chapter with the "In contrast" move.
+% MOVE: Per-work critique → "In contrast" close (Pivot to our positioning).
+% BEATS: prior multi-policy forgetting is conversational, retrieval not held constant ·
+%   coding-agent memory varies retrieval granularity · adaptive/when-to-retrieve work
+%   motivates interdependence · OUR wedge.
+% FIGURES/TABLES: none.
+% CITATIONS: alqithami2025; [VERIFY+ADD] Shen 2602.21611, [VERIFY+ADD] Adaptive-RAG
+%   2403.14403, [VERIFY+ADD] When-Retrieval-Succeeds-Fails 2510.09106.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Positioning: The Retrieval-Fixed, Controlled-Comparison Gap}
+
+\begin{todobox}
+Expand the beats into prose ending on the "In contrast" close. Embed a one-line critique per mention, then pivot to our wedge. Thread "retrieval held constant", "non-inferiority", "footprint", and "not every task needs memory".
+\end{todobox}
+
+% - Prior multi-policy forgetting work is conversational and does NOT hold retrieval
+%   constant (pre-empt explicitly): Alqithami (alqithami2025) sweeps six policies but
+%   confounds storage with retrieval — policy effects are not cleanly attributable.
+% - Coding-agent memory work varies retrieval granularity: Shen (2602.21611)
+%   [VERIFY+ADD] changes subtask-level retrieval alongside memory, so gains cannot be
+%   ascribed to storage alone.
+% - Adaptive / when-to-retrieve work motivates our interdependence angle: Adaptive-RAG
+%   (2403.14403) [VERIFY+ADD] routes retrieval by query difficulty;
+%   When-Retrieval-Succeeds-Fails (2510.09106) [VERIFY+ADD] shows retrieval can hurt —
+%   together they suggest "not every task needs memory" and frame our interdependence
+%   analysis (~⅓ interdependent / ~⅔ file-disjoint, [RESULT: …]).
+% - IN CONTRAST — our wedge (currently unoccupied): coding agents on SWE-Bench-CL,
+%   retrieval as a fixed control (pure cosine, identical across all six policies)
+%   isolating the storage/forgetting policy, framed as non-inferiority (not superiority)
+%   on CL-F1 with the footprint axis where forgetting can win.

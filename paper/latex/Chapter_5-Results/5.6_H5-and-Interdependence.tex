@@ -1,0 +1,32 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 5.6  H5 and Task Interdependence: When Does Memory Matter? ────────────
+% PURPOSE: Convert H5's near-null boundary into a mechanistic finding — memory matters
+%          only on the interdependent fraction of tasks, and we can measure that fraction.
+% MOVE: Counter-intuitive lead / convert near-null into mechanism — "not every task needs
+%        memory", made measurable.
+% BEATS: see ordered bullets below.
+% FIGURES/TABLES: fig:interdependence (memory-lift by position + structural overlap).
+% CITATIONS: xiong2025; Context-Rot [VERIFY+ADD]; When-Retrieval-Succeeds-Fails [VERIFY+ADD].
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{H5 and Task Interdependence: When Does Memory Matter?}
+\label{sec:h5}
+
+\begin{todobox}
+Expand the beats below into prose. The arc: H5 looks near-null on average, but the average hides structure. Decompose by interdependence to show WHERE memory pays --- turning a weak headline into the thesis's mechanistic punchline.
+\end{todobox}
+
+% - H5 boundary: pruning can HARM when it evicts rare but critical repository-specific
+%   memories; quantify the worst-case per-sequence harm [RESULT: …].
+% - Structural interdependence (PRELIMINARY, gate-3): gold-patch file-overlap mean 0.30;
+%   0.32 fraction of tasks have ANY cross-task dependency → ~⅓ interdependent,
+%   ~⅔ file-disjoint. Memory can only help the interdependent third by construction.
+% - fig:interdependence — memory-lift by position (early vs late tasks within a sequence)
+%   alongside the structural-overlap distribution [RESULT: …].
+% - This operationalizes "not every task needs memory": when ~⅔ of tasks are file-disjoint,
+%   a flat memory-helps-everywhere expectation is mis-specified; the right question is
+%   lift on the interdependent subset (xiong2025; When-Retrieval-Succeeds-Fails;
+%   Context-Rot on why irrelevant context can even hurt the disjoint two-thirds).
+% - Mark the 0.30 / 0.32 / ~⅓ figures PRELIMINARY (gate-3); full 144-run matrix RUNNING.

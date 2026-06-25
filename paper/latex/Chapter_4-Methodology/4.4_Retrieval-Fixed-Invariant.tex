@@ -1,0 +1,30 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 4.4  Retrieval as a Fixed Invariant ──────────────────────────────────
+% PURPOSE: Establish retrieval as THE central experimental control — frozen so that
+%          any between-policy difference is attributable to storage, not retrieval.
+% MOVE: Counter-intuitive lead emphasis — the most load-bearing design decision.
+% BEATS: see ordered bullets below.
+% FIGURES/TABLES: fig:architecture (cosine, fixed path).
+% CITATIONS: liu2024.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Retrieval as a Fixed Invariant}
+
+\begin{todobox}
+Expand the beats below into prose. This is the linchpin of internal validity: state plainly that "retrieval held constant" is what licenses the causal reading.
+\end{todobox}
+
+% - Retrieval scoring = pure cosine similarity, IDENTICAL across all six conditions
+%   (Invariant #5) — no bonuses, no penalties, no policy-specific reranking; enforced in
+%   `retriever.py::shared_retrieve`.
+% - top_k = 5 items returned per query; same-repo retrieval only (Invariant #16),
+%   so a sequence never pulls memories from a foreign repository.
+% - Injection order is relevance-sorted with the BEST item placed LAST (Invariant #6) —
+%   the Lost-in-the-Middle fix, motivated by liu2024's finding that models attend most to
+%   the ends of long contexts.
+% - Because retrieval is frozen byte-for-byte across conditions, the ONLY thing that
+%   varies between policies is what each chose to store and forget. Therefore any
+%   between-policy difference in CL-F1 or footprint is attributable to storage alone —
+%   this is the control that makes H1-H5 interpretable.

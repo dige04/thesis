@@ -1,0 +1,40 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 3.1  Memory Management and Forgetting in LLM Agents ──────────────────
+% PURPOSE: Survey agent-memory systems thematically; demarcate forgetting layers.
+% MOVE: Per-work critique → close-positioning (thematic, one critique per nug).
+% BEATS: store-everything bias · explicit forgetting/consolidation · KV-cache layer.
+% FIGURES/TABLES: none.
+% CITATIONS: packer2024, zhong2024, xu2025, gutierrez2024hipporag, alqithami2025,
+%   zhang2023h2o, xiao2024streamingllm; [VERIFY+ADD] LightMem 2510.18866,
+%   [VERIFY+ADD] Mem0 2504.19413.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Memory Management and Forgetting in LLM Agents}
+
+\begin{todobox}
+Expand the beats below into prose using the per-work-critique \textrightarrow{} positioning MOVE. Organize THEMATICALLY (three sub-themes); embed a one-line critique in each prior-work mention; close each theme by positioning our work. Thread "retrieval held constant" and "footprint". No fabricated numbers.
+\end{todobox}
+
+% THEME A — Agent memory systems (store-everything bias):
+% - MemGPT (packer2024): OS-style paging of context; critique — paging grows store,
+%   never proactively forgets at the application layer.
+% - MemoryBank (zhong2024): Ebbinghaus-styled decay over dialogue memory; critique —
+%   conversational, retrieval not held constant across compared variants.
+% - A-MEM (xu2025): self-organizing linked notes; critique — adds structure, still
+%   accretion-biased, no controlled forgetting comparison.
+% - HippoRAG (gutierrez2024hipporag): hippocampal-indexed retrieval; critique —
+%   improves recall, orthogonal to *whether* to retain. Close: these default to
+%   accumulation; none isolate storage from retrieval.
+% THEME B — Explicit forgetting / consolidation:
+% - Alqithami (alqithami2025): six-policy budget sweep; critique — conversational and
+%   does NOT hold retrieval constant (NOVELTY-THREAT, differentiate early).
+% - LightMem (2510.18866) [VERIFY+ADD]: sleep-time consolidation; critique — efficiency-
+%   framed, not a controlled non-inferiority test on coding.
+% - Mem0 (2504.19413) [VERIFY+ADD]: ADD/UPDATE/DELETE memory ops; critique — operations
+%   defined, policy effect on task outcome not isolated. Close: motivates our control.
+% THEME C — KV-cache eviction (DIFFERENT layer):
+% - H2O (zhang2023h2o), StreamingLLM (xiao2024streamingllm): token-level cache eviction;
+%   critique — demarcate as a token/attention layer, NOT application memory; close —
+%   our six policies act on the application store, complementary not competing.

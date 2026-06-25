@@ -1,0 +1,30 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── Appendix B  Extended Results ─────────────────────────────────────────
+% PURPOSE: Host the full-detail tables and diagnostics that would clutter Chapter 5.
+% MOVE: none (reference appendix — tables + diagnostics, not narrative).
+% BEATS: see ordered bullets below — per-sequence/per-dependency tables, GLMM spec+diagnostics, behavioral logs.
+% FIGURES/TABLES: tab:per-sequence (per-sequence / per-dependency-level breakdown);
+%   fig:footprint-time, fig:interdependence (behavioral); GLMM spec table.
+% CITATIONS: none new.
+% SOURCE-DOC: README figure/table set; grounded-facts (GLMM #14, retrieval-overlap).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Extended Results}
+
+\begin{todobox}
+Expand the beats below. This appendix is tables + diagnostics, not prose --- keep text to one-line captions/explanations. ALL numbers are [RESULT] placeholders; the full 144-run matrix is still RUNNING.
+\end{todobox}
+
+% - PER-SEQUENCE BREAKDOWN: 6 policies × 8 official sequences on CL-F1, footprint, cost,
+%   tool-calls (extends tab:main-results) [RESULT: …] — see tab:per-sequence.
+% - PER-DEPENDENCY-LEVEL BREAKDOWN: split each sequence by structural interdependence
+%   (interdependent ~⅓ vs file-disjoint ~⅔, overlap ~0.30 / ~0.32 frac) to show where memory
+%   could matter at all [RESULT: …].
+% - GLMM SPECIFICATION + DIAGNOSTICS: task-level binomial/logit, crossed random effect on
+%   task_id (Invariant #14) — full model formula, fixed/random-effect estimates, convergence
+%   and dispersion diagnostics [RESULT: …].
+% - BEHAVIORAL LOGS: retrieval-overlap across policies and forgetting curves (footprint vs
+%   task index, pruning fires at cap=10) — forward-ref fig:footprint-time, fig:interdependence
+%   [RESULT: …].

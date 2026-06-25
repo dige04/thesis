@@ -1,0 +1,29 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 4.2  The Six Memory Policies (Overview) ──────────────────────────────
+% PURPOSE: Frame the six policies as a dose-ladder and orient the reader before detail.
+% MOVE: Prose-hierarchy (boundary baselines -> heuristics -> content-aware) + table summary.
+% BEATS: see // bullets below.
+% FIGURES/TABLES: fig:task-lifecycle; tab (six-policy summary, see tab:main-results columns).
+% CITATIONS: anderson1991 (Type-Aware lineage), mcclelland1995 (CLS lineage).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{The Six Memory Policies}
+
+\begin{todobox}
+Expand the beats below into prose using the dose-ladder MOVE. Insert the six-policy summary table here and reference fig:task-lifecycle for where forgetting fires.
+\end{todobox}
+
+% - Dose-ladder framing: No Memory = 0 dose -> the four pruning/decay/consolidation
+%   policies = partial dose -> Full Memory = maximum dose. The ladder operationalizes
+%   "not every task needs memory" as a controlled gradient of retention.
+% - Two boundary baselines bracket the ladder: No Memory (floor) and Full Memory (ceiling).
+% - Four interior policies differ ONLY in WHAT they forget at the cap, not in retrieval:
+%   Random Prune, Recency Prune, Type-Aware Decay, CLS Consolidation.
+% - Summary table (six rows): policy | what it keeps/forgets | cap behavior | forgetting kind.
+% - Cap = 10 (A1) binds all four pruning policies (Random, Recency, Type-Aware, CLS);
+%   No Memory has nothing to cap, Full Memory ignores the cap by design.
+% - fig:task-lifecycle: retrieve -> solve -> reflect -> classify -> MAINTAIN
+%   [the policy forgets HERE] -> snapshot. Every policy shares this loop; only the
+%   MAINTAIN step differs.

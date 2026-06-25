@@ -1,0 +1,82 @@
+% ── 5.1  Experimental Setup and Descriptive Statistics ───────────────────
+% PURPOSE: Orient the reader before any hypothesis test — recap the run matrix and
+%          report per-policy descriptives so later inferential moves have a baseline.
+% MOVE: Pain → Consequence → Gap (set up that there IS headroom for memory to matter).
+% Numbers are grounded in paper/report/GROUNDED_FACTS.md (real 144-run matrix,
+% runs_k27_merged, deepseek-v4-flash / D8). No inferential claims here.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Experimental Setup and Descriptive Statistics}
+
+The evaluation rests on a single balanced matrix of \textbf{144 controlled runs}:
+6 memory policies $\times$ 8 official SWE-Bench-CL sequences $\times$ 3 seeds, with
+24 runs per policy and 48 runs per seed. Retrieval scoring is held constant across all
+six conditions (pure cosine, identical $k$ and context budget), so the only factor that
+varies between conditions is \emph{what each policy chooses to keep or forget}. A single
+frozen model, \texttt{deepseek-v4-flash}, serves every model role (the coding agent, the
+memory-type classifier, reflection, and CLS consolidation); because the model is a fixed
+factor across all conditions, between-policy contrasts are valid even though absolute
+resolution rates are not comparable to public SWE-Bench leaderboards. The full slate of
+model, embedder, cost-metric, and host substitutions is disclosed in
+Section~\ref{sec:deviations}.
+
+The matrix is complete and clean. Across \textbf{4{,}675} task rows there are no
+zero-task units, no container or image-pull failures, and no retrieval-index corruption
+that survived into the recorded outcomes; \textbf{1{,}472} tasks resolve, for an overall
+resolution rate of \textbf{31.5\%}. All inferential statistics in the sections that
+follow take the \emph{sequence} as the unit of analysis ($N=8$ sequence-level means per
+policy), never the individual task --- a deliberate guard against pseudo-replication.
+
+\paragraph{Descriptive picture.}
+Table~\ref{tab:descriptives} reports per-policy means over the eight sequences on the
+three outcome axes the thesis cares about: resolution rate (the CL-F1 proxy; see the
+caveat below), memory footprint carried per task, and total token cost per run. Two
+features matter before any test is run. First, the policies are tightly bunched on
+resolution rate --- a spread of roughly four percentage points separates the best pruner
+(\texttt{recency\_prune}, 0.330) from the no-memory baseline (0.287), with
+\texttt{full\_memory} (0.311) sitting inside that band rather than on top of it. Second,
+the policies differ by nearly $4\times$ on footprint: \texttt{full\_memory} carries
+$\approx$2{,}986 tokens of memory per task while the pruning policies carry
+$\approx$666--897 and \texttt{no\_memory} carries none. The tool-call budget
+($\approx$21.5 calls/task) is essentially identical across all six conditions, a first
+hint --- developed in Section~\ref{sec:h4} --- that the memory policy does not change how
+the agent behaves step to step.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Per-policy descriptive statistics, mean over the eight SWE-Bench-CL
+  sequences ($N=8$). Resolution rate is the reported CL-F1 proxy. Footprint is memory
+  tokens carried per task; total cost is tokens per run.}
+  \label{tab:descriptives}
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Policy & Resolve rate & Footprint & Total tok & Tool calls & Wall (s) \\
+           &              & (tok/task) & (M/unit)  & /task      & /task    \\
+    \midrule
+    recency\_prune     & \textbf{0.330} & 698  & 5.96 & 21.4 & 253.6 \\
+    full\_memory       & 0.311          & 2{,}986 & 5.74 & 21.5 & 246.5 \\
+    type\_aware\_decay & 0.300          & 682  & 6.06 & 21.4 & 234.6 \\
+    cls\_consolidation & 0.291          & 897  & 6.18 & 21.5 & 233.9 \\
+    random\_prune      & 0.290          & 666  & 6.06 & 21.6 & 247.6 \\
+    no\_memory         & 0.287          & 0    & 5.41 & 21.6 & 214.9 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Headroom for a memory effect.}
+At an overall resolution rate of 31.5\% the experiment sits well clear of both the floor
+(no sequence is at 0\%) and the ceiling (none is saturated near 100\%). This matters: if
+the agent solved almost everything or almost nothing regardless of memory, no
+between-policy contrast would be interpretable, because there would be no outcomes left
+for memory to move. The observed mid-range rate leaves genuine room for a memory effect
+to register --- which makes the near-null results of the following sections a finding
+about memory, not an artefact of a saturated benchmark.
+
+\paragraph{What ``CL-F1'' means here.}
+Throughout this chapter the reported CL-F1 equals the per-condition resolution rate
+($\text{mean\_cl\_f1} \equiv \text{mean\_resolved\_rate}$); the full anchor-probe
+instrumentation that would isolate the CL-specific \emph{stability} dimension was not run
+at matrix scale. The stability dimension is instead addressed through a targeted
+construct-validity sub-study (Section~\ref{sec:h5}) and disclosed in Threats to Validity
+(Section~\ref{sec:threats}). Readers should therefore read CL-F1 in this thesis as a
+resolution-rate proxy, not as a forgetting-curve measurement.

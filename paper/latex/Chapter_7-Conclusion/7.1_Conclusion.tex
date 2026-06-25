@@ -1,0 +1,30 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 7.1  Conclusion ──────────────────────────────────────────────────────
+% PURPOSE: Restate the thesis and recap the metric → trade-off in one tight pass.
+% MOVE: Restate + metric → trade-off recap (per the storytelling template).
+% BEATS: see ordered bullets below — what we measured, the result, the reframe, the contribution.
+% FIGURES/TABLES: none (cross-ref fig:pareto-footprint from Ch5/6).
+% CITATIONS: none new (xiong2025 if interdependence is cited).
+% SOURCE-DOC: README grounded-facts; docs/defense-qa.md (Q5).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Conclusion}
+
+\begin{todobox}
+Expand the beats below into prose. RESTATE the study, recap the metric \textrightarrow{} trade-off, end by naming the contribution as a template, not a new policy. Thread "retrieval held constant", "non-inferiority", "footprint", "not every task needs memory". Numbers stay placeholders --- full 144-run matrix still RUNNING.
+\end{todobox}
+
+% - RESTATE: this thesis is a controlled measurement of six forgetting policies for AI
+%   coding agents on SWE-Bench-CL, with retrieval held constant (pure cosine, identical
+%   across all six) so the storage/forgetting policy is the only moving part.
+% - METRIC → TRADE-OFF RECAP: on CL-F1, forgetting is non-inferior to full-memory
+%   accumulation [RESULT: TOST, SESOI ±0.03] at materially lower memory footprint
+%   [RESULT: …] — the footprint axis (A4) is where forgetting wins.
+% - THE REFRAME: because only ~⅓ of tasks are interdependent [RESULT: ~0.30 overlap /
+%   ~0.32 frac], memory is best understood as a DOSAGE / TARGETING question — "not every
+%   task needs memory" — rather than an always-on accumulation default.
+% - THE CONTRIBUTION: a clean, reproducible experimental TEMPLATE (retrieval-fixed
+%   isolation, No-Memory↔Full-Memory bracketing, two-axis Pareto, interdependence
+%   quantification, 144-run artifact) — NOT a new memory policy.

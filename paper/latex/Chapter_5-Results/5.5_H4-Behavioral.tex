@@ -1,0 +1,30 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 5.5  H4: Behavioral Effects of Memory Accumulation ───────────────────
+% PURPOSE: Test the analysis-paralysis mechanism — does accumulating memory change HOW
+%          the agent acts (more tool calls, more syntax errors), and does forgetting fix it?
+% MOVE: Counter-intuitive lead — more context can degrade behavior, not just cost.
+% BEATS: see ordered bullets below.
+% FIGURES/TABLES: behavioral table (tool-calls / syntax-error rate per policy).
+% CITATIONS: liu2024 (Lost-in-the-Middle); xiong2025 (long-context degradation).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{H4: Behavioral Effects of Memory Accumulation}
+\label{sec:h4}
+
+\begin{todobox}
+Expand the beats below into prose. The mechanism story: a fat context doesn't just cost more, it can make the agent dither. Tie the behavioral metrics back to the "retrieval held constant" control --- only what's stored differs.
+\end{todobox}
+
+% - H4 prediction: Full Memory induces analysis paralysis — more tool calls per task and
+%   higher syntax-error rate — and forgetting policies mitigate it.
+% - Behavioral table: tool-call frequency per task and syntax-error rate, Full Memory vs
+%   the forgetting policies, Wilcoxon on N=8 sequence means with r_rb [RESULT: …].
+% - Because retrieval is held constant (top_k=5), the agent sees the same NUMBER of items;
+%   what differs is the quality/relevance of the stored pool feeding retrieval — so any
+%   behavioral gap traces to accumulation, not injection volume.
+% - Connect to the long-context literature: degradation under bloated context
+%   (liu2024, xiong2025) predicts exactly this behavioral signature.
+% - Interpret direction and effect size plainly; if no behavioral gap, say so — the
+%   mechanism is then absent on this workload. Full 144-run matrix RUNNING.

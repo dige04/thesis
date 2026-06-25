@@ -1,0 +1,31 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 5.4  H3: Compressive Consolidation (A Negative Result) ───────────────
+% PURPOSE: Report, honestly, that CLS Consolidation never fired on SWE-Bench-CL and
+%          reframe the non-event as a finding about WHEN consolidation applies.
+% MOVE: Honest negative — state the null up front, then mine it for insight.
+% BEATS: see ordered bullets below.
+% FIGURES/TABLES: none.
+% CITATIONS: mcclelland1995 (CLS theory — why consolidation needs redundancy to bite).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{H3: Compressive Consolidation (A Negative Result)}
+
+\begin{todobox}
+Expand the beats below into prose. Lead with the null without hedging, then turn it into a boundary-condition contribution. Stress that the threshold was NOT relaxed --- integrity over a manufactured positive.
+\end{todobox}
+
+% - On every SWE-Bench-CL sequence and seed, CLS Consolidation fired 0 consolidations
+%   (A3): DBSCAN never formed a cluster of ≥3 memories at ≥0.70 cosine, so the
+%   consolidation branch was never entered.
+% - With no cluster to summarize, CLS degenerated to its Type-Aware Decay fallback — so
+%   CLS ≡ Type-Aware on this benchmark, and H3's Pareto test is reported as
+%   not-applicable rather than confirmed or refuted [RESULT: confirm 0 across all runs].
+% - The ≥0.70 cosine threshold was deliberately NOT relaxed to manufacture clusters
+%   (Invariant #23, integrity): tuning the trigger post hoc to force a positive would
+%   invalidate the pre-registration.
+% - This is itself a finding: SWE-Bench-CL memories are too heterogeneous (cross-repo,
+%   distinct issues) to accumulate the near-duplicate redundancy that compressive
+%   consolidation needs (mcclelland1995). Consolidation has a precondition — overlapping
+%   experience — that this workload does not supply. Full 144-run matrix RUNNING.

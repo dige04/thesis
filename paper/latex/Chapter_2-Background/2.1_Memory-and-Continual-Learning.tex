@@ -1,0 +1,32 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 2.1  Memory and Continual Learning in LLM Agents ─────────────────────────
+% PURPOSE: Frame the thesis within continual/sequential learning for LLM agents and
+%          demarcate external non-parametric memory (our subject) from weight-level CL.
+% MOVE: Capability ≠ applicability — agents can solve tasks, but learning ACROSS a task
+%       sequence is hindered by the absence of a principled memory policy.
+% BEATS: see bullets below.
+% FIGURES/TABLES: (none — narrative setup; forward-ref tab:metrics for CL-F1)
+% CITATIONS: joshi2025, [VERIFY+ADD] Haque 2504.01241 (weight-level forgetting — out of scope)
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Memory and Continual Learning in LLM Agents}
+
+\begin{todobox}
+Expand the beats below into prose using the Capability \ensuremath{\neq} applicability move; close by stating that this thesis studies external non-parametric memory and explicitly scopes out weight-level continual learning.
+\end{todobox}
+
+% - Continual / sequential learning in LLM agents: an agent solves a stream of tasks and
+%   should carry useful experience forward without re-training — capability is mature, but
+%   the policy governing what to carry is unprincipled @joshi2025.
+% - Task-incremental setting: tasks arrive in a fixed order (here, the 8 official
+%   SWE-Bench-CL sequences, Inv #1), no reordering; each task may depend on earlier ones.
+% - The CL-F1 metric balances plasticity (learn the new task) against stability (retain
+%   prior competence); it is the primary outcome — forward-ref tab:metrics for its definition.
+% - Two loci of "learning across tasks": parametric (weight-level) continual learning vs
+%   external non-parametric memory (retrieval over a store of stored experience).
+% - This thesis studies the LATTER — a frozen model + an external MemoryStore — so that the
+%   only thing varying across the six policies is the storage/forgetting decision.
+% - Demarcate weight-level forgetting (gradient interference, catastrophic forgetting in the
+%   weights) as explicitly OUT OF SCOPE; we never touch model weights. [VERIFY+ADD: Haque 2504.01241]

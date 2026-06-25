@@ -1,0 +1,29 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 1.1  Background and Motivation ──────────────────────────────────────────
+% PURPOSE: Motivate persistent memory for LLM coding agents on long-horizon work.
+% MOVE: Scale+stakes → traditional approach → structural limitation.
+% BEATS: agent rise · sequential SE · accrued experience · naive accumulation · open Q.
+% FIGURES/TABLES: forward-ref fig:architecture.
+% CITATIONS: joshi2025, packer2024, zhong2024, liu2024, Context-Rot [VERIFY+ADD].
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Background and Motivation}
+
+\begin{todobox}
+Expand the beats below using the Scale+stakes \textrightarrow{} traditional-approach \textrightarrow{} structural-limitation pattern. Open with "While LLM coding agents now resolve real issues, application across long task *sequences* is hindered by …". Forward-reference fig:architecture for the memory-equipped agent.
+\end{todobox}
+
+% - SCALE+STAKES: LLM coding agents have entered the SWE-bench era — autonomous
+%   issue resolution on real repositories @joshi2025.
+% - real software-engineering workflows are sequential and long-horizon: many
+%   related tasks over one codebase, not isolated one-shot prompts.
+% - agents therefore accrue experience, externalised as persistent memory across
+%   tasks @packer2024 @zhong2024.
+% - TRADITIONAL APPROACH: keep everything — naive accumulation grows context
+%   unbounded, raising token cost and risking context rot @liu2024.
+%   [VERIFY+ADD] Context-Rot (Chroma) — long-context degradation.
+% - STRUCTURAL LIMITATION → OPEN QUESTION: does retained experience actually
+%   *help* downstream coding performance, or just inflate the prompt?
+%   (see fig:architecture for where storage sits relative to retrieval).

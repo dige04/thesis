@@ -1,0 +1,30 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 2.4  Retrieval-Augmented Memory and Context Rot ──────────────────────────
+% PURPOSE: Explain dense retrieval over the memory store and why retrieval must be HELD
+%          CONSTANT across all six policies to isolate the storage/forgetting decision.
+% MOVE: Pain → Consequence → Gap — positional + long-context degradation motivates fixing
+%       retrieval so the experiment isolates STORAGE, not retrieval, effects.
+% BEATS: see bullets below.
+% FIGURES/TABLES: forward-ref fig:architecture (cosine, fixed); tab:metrics
+% CITATIONS: liu2024, du2025, cuconasu2024, [VERIFY+ADD] Context-Rot (Chroma)
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Retrieval-Augmented Memory and Context Rot}
+
+\begin{todobox}
+Expand the beats below into prose using the Pain \textrightarrow{} Consequence \textrightarrow{} Gap move; conclude with the central control: retrieval is pure cosine, identical across all six policies.
+\end{todobox}
+
+% - Dense retrieval over a memory store: each candidate is embedded and scored by cosine
+%   similarity to the query; here top_k=5, same-repo only, payload [Issue + Final Error +
+%   Final Diff] < 7500 tok (Inv #4, #16), embedder nomic-embed-text-v2-moe 768-d (D2).
+% - Lost-in-the-middle: positional effects mean items mid-context are under-used; the agent
+%   places the best-retrieved item LAST (Inv #6) to mitigate this @liu2024 @cuconasu2024.
+% - Context rot: long context degrades performance even with perfect retrieval — quality
+%   falls as irrelevant tokens accumulate @du2025 [VERIFY+ADD: Context-Rot (Chroma)].
+% - Gap → the central control: because retrieval is itself a confound, retrieval is held
+%   constant — pure cosine, identical across all 6 policies (Inv #5) — so observed
+%   differences are attributable to STORAGE/forgetting, not retrieval (recurring: "retrieval
+%   held constant"). Forward-ref fig:architecture.

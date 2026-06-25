@@ -1,0 +1,33 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 4.3  Memory Architecture ─────────────────────────────────────────────
+% PURPOSE: Describe the storage substrate every policy shares — the MemoryRecord,
+%          the FAISS store, the embedding payload, the taxonomy, and the write path.
+% MOVE: Pivot ("Rather than embedding raw trajectories, …") into prose-hierarchy detail.
+% BEATS: see ordered bullets below.
+% FIGURES/TABLES: fig:architecture (Ch4 signature), fig:task-lifecycle.
+% CITATIONS: (architecture is original to this thesis; none required).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Memory Architecture}
+
+\begin{todobox}
+Expand the beats below into prose using the Pivot move. Thread the recurring phrase "footprint" --- this is the substrate the policies later prune.
+\end{todobox}
+
+% - The shared substrate: a `MemoryRecord` written to a `MemoryStore` backed by a
+%   FAISS index; all six policies read and write the same store (fig:architecture).
+% - The embedding payload is [Issue + Final Error + Final Diff] ONLY, capped at
+%   < 7500 tokens (Invariant #4) — enforced at write time by
+%   `store.py::_verify_embedding_size`. Rather than embedding the raw trajectory
+%   (which the embedder would silently truncate into garbage), we embed a compact
+%   outcome-bearing triple.
+% - Each record carries a content-based type from the 5-type taxonomy
+%   {architectural, api_change, bug_fix, test_update, config} (Invariant #7) —
+%   content-based, NOT outcome-based; `outcome` is an orthogonal axis, never collapsed in.
+% - After each task the agent runs reflection, which writes one record into the store
+%   (fig:task-lifecycle: retrieve -> solve -> reflect -> classify -> maintain -> snapshot).
+% - A separate temperature-0 classifier assigns the type at write time (see D4 for the
+%   JSON-mode + Pydantic structured-output handling).
+% - The store's footprint is what the policies act on downstream; cap = 10 (A1).

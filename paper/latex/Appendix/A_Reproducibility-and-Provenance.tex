@@ -1,0 +1,34 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── Appendix A  Reproducibility and Provenance ───────────────────────────
+% PURPOSE: Give a reader everything needed to reproduce the matrix and audit provenance.
+% MOVE: none (reference appendix — structured disclosure, not narrative).
+% BEATS: see ordered bullets below — pre-reg, archive, seeds, environment, model, logging, reversibility.
+% FIGURES/TABLES: cross-ref tab:deviations (§6.3).
+% CITATIONS: none new.
+% SOURCE-DOC: AMENDMENTS.md (D2/D5/D6); CLAUDE.md (provider config, logging schemas v5 §11).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Reproducibility and Provenance}
+
+\begin{todobox}
+Expand the beats below into a structured disclosure list (not a story). Pair each item with the concrete artifact a replicator would consult. Numbers/hashes stay placeholders until the 144-run matrix completes.
+\end{todobox}
+
+% - PRE-REGISTRATION: the frozen design is THESIS_FINAL_v5 (26 frozen decisions + 16
+%   invariants); all changes are logged as dated D1–D6 / A1–A7 amendments (§6.3, tab:deviations).
+% - CODE + DATA ARCHIVE: full source tree (src/, configs/, analysis pipeline) and the
+%   144-run results matrix archived [RESULT: DOI / release tag on completion].
+% - SEED VALUES: 3 seeds (A7-restored), identical across all 6 policies × 8 sequences = 144 runs
+%   [RESULT: list exact seed integers].
+% - COMPUTATIONAL ENVIRONMENT: x86_64 DigitalOcean droplet + 5-VPS snapshot-cloned fleet (D5),
+%   matrix sharded via run_matrix_shard.sh; embeddings local Ollama nomic-embed-text-v2-moe
+%   (768-d, deterministic) (D2); prebuilt swebench instance images.
+% - MODEL PROVENANCE: MiniMax M3 via the 0G router (router-api.0g.ai, OpenAI-compatible) (D6);
+%   model alias, 16-key rotation (rate-limit only, not behavior) logged per run to detect drift;
+%   CoT stripped deterministically before parsing/embedding (D6a); tolerant JSON extraction (D6b).
+% - PER-RUN LOGGING: config hash + dataset revision + model id recorded per run (v5 §11);
+%   task_results.jsonl, memory_events.jsonl, trajectory + before/after snapshots [RESULT: paths].
+% - REVERSIBILITY: provider is .env-only — dropping FREE_LLM_* reverts to Kimi/OpenAI; chat and
+%   embedding clients are separate (no global OPENAI_BASE_URL), so the deviation is reversible.

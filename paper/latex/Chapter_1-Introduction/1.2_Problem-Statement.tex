@@ -1,0 +1,29 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 1.2  Problem Statement ──────────────────────────────────────────────────
+% PURPOSE: Name the pain, its consequence, and the unmet research gap.
+% MOVE: Pain → Consequence → Gap ("therefore there exists a need …").
+% BEATS: pain (bloat vs lossy pruning) · consequence (cost + entanglement) · gap.
+% FIGURES/TABLES: none.
+% CITATIONS: xiong2025 (more memory can hurt — experience-following),
+%            alqithami2025 (closest six-policy prior — NOVELTY-THREAT).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Problem Statement}
+
+\begin{todobox}
+Expand the beats below using Pain \textrightarrow{} Consequence \textrightarrow{} Gap, ending on an explicit "therefore there exists a need …". Pre-empt Alqithami (alqithami2025) as a novelty threat: conversational domain, retrieval not isolated.
+\end{todobox}
+
+% - PAIN: full memory bloats the context window; but naive pruning may drop
+%   task-critical knowledge — both failure modes are real.
+% - more memory can actively hurt via experience-following / interference,
+%   not merely cost @xiong2025.
+% - CONSEQUENCE: cost and latency rise with accumulation; worse, prior work
+%   *entangles* the storage (forgetting) policy with the retrieval policy, so
+%   no benefit is cleanly attributable — and none is demonstrated on coding.
+% - NOVELTY-THREAT: @alqithami2025 is the closest six-policy comparison, but it
+%   is conversational and does *not* hold retrieval constant — differentiate now.
+% - GAP (therefore): there exists no controlled, *retrieval-fixed* comparison of
+%   forgetting policies for coding agents — the central control this thesis adds.

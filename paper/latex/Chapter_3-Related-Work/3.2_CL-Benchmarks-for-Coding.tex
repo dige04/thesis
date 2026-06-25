@@ -1,0 +1,35 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 3.2  Continual Learning Benchmarks and Coding-Agent Memory ───────────
+% PURPOSE: Survey CL/memory benchmarks and coding-agent memory systems thematically.
+% MOVE: Per-work critique → close-positioning (thematic).
+% BEATS: CL/memory benchmarks (mostly conversational/QA) · coding-agent memory
+%   systems (report superiority, vary retrieval).
+% FIGURES/TABLES: none.
+% CITATIONS: joshi2025, membench2025, wei2025evomemory; [VERIFY+ADD] Shen 2602.21611,
+%   [VERIFY+ADD] EXPEREPAIR 2506.10484.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Continual Learning Benchmarks and Coding-Agent Memory}
+
+\begin{todobox}
+Expand the beats below into prose using the per-work-critique \textrightarrow{} positioning MOVE. Two sub-themes; embed a one-line critique per prior-work mention; close each by positioning our work. Thread "retrieval held constant" and "non-inferiority".
+\end{todobox}
+
+% THEME A — CL / memory benchmarks:
+% - SWE-Bench-CL (joshi2025): our benchmark; sequential coding tasks with dependency
+%   structure; critique — supplies the substrate but not a forgetting-policy protocol.
+% - MemBench (membench2025): memory evaluation suite; critique — conversational/QA
+%   oriented, not coding-with-forgetting.
+% - Evo-Memory (wei2025evomemory): evolving memory across tasks; critique — QA-centric,
+%   does not isolate storage policy under fixed retrieval. Close: no benchmark pairs
+%   coding-agent forgetting with retrieval held constant — we adapt SWE-Bench-CL to it.
+% THEME B — Coding-agent memory systems:
+% - Shen (2602.21611) [VERIFY+ADD]: subtask-level memory shows memory *gains* on
+%   SWE-bench; critique — reports superiority (not non-inferiority) and varies retrieval
+%   granularity, conflating storage with retrieval.
+% - EXPEREPAIR (2506.10484) [VERIFY+ADD]: episodic + semantic memory for repair;
+%   critique — also superiority-framed with coupled retrieval. Close: these motivate a
+%   controlled measurement — fix retrieval, vary only the storage/forgetting policy,
+%   and ask the non-inferiority (not superiority) question.

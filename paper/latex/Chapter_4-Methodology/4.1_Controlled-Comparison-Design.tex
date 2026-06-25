@@ -1,0 +1,32 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 4.1  Controlled-Comparison Design ────────────────────────────────────
+% PURPOSE: Establish the single-factor experimental logic that makes H1–H5 valid.
+% MOVE: Pivot ("Rather than tuning many knobs, vary exactly one")
+%       + Capability ≠ applicability (fixed-factor validity).
+% BEATS: see // bullets below.
+% FIGURES/TABLES: fig:architecture (Ch4 signature).
+% CITATIONS: cuconasu2024 (retrieval-as-fixed-control), liu2024 (LiM rationale for fixed injection).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Controlled-Comparison Design}
+
+\begin{todobox}
+Expand the beats below into prose using the Pivot + fixed-factor-validity MOVE. Thread "retrieval held constant" throughout. Reference fig:architecture as the chapter signature.
+\end{todobox}
+
+% - Pivot: rather than co-varying model, retrieval, dataset, and storage at once,
+%   vary EXACTLY ONE factor — the storage / forgetting policy — and hold the rest fixed.
+% - Enumerate what is held constant (the invariants): 8 official SWE-Bench-CL
+%   sequences, no reorder (#1); MiniMax M3 frozen across all conditions (D6); pure
+%   cosine retrieval, IDENTICAL across all 6 policies (#5 — the central control);
+%   top_k=5, same-repo only (#16); injection best-item-LAST (#6, Lost-in-the-Middle);
+%   memory budget cap = 10 (A1); max 20 steps/task (#3); embedding payload
+%   [Issue + Final Error + Final Diff] <7500 tok (#4).
+% - The single manipulated factor: WHAT the MemoryStore keeps vs. forgets between tasks.
+% - Fixed-factor validity argument: because model + retrieval + dataset are constants,
+%   between-policy contrasts (H1–H5) are valid even though absolute resolution rates
+%   are NOT leaderboard-comparable (consequence of D1/D5/D6 — disclose, do not defend).
+% - fig:architecture: agent <-> MemoryStore <-> 6 policies <-> retrieval(cosine, fixed)
+%   <-> task sequence; the policy box is the ONLY swappable component.

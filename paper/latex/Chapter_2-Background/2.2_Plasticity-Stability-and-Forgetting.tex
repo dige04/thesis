@@ -1,0 +1,30 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 2.2  The Plasticity–Stability Tradeoff and Forgetting ────────────────────
+% PURPOSE: Establish the stability/plasticity tension and the counter-intuitive thesis
+%          that forgetting can HELP, motivating proactive memory policies.
+% MOVE: Counter-intuitive lead — contrary to "more memory is always better", accumulated
+%       irrelevant experience can degrade an agent.
+% BEATS: see bullets below.
+% FIGURES/TABLES: (none — narrative; forward-ref fig:interdependence for error propagation)
+% CITATIONS: xiong2025 (experience-following, error propagation), [VERIFY+ADD] Context-Rot (Chroma)
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{The Plasticity--Stability Tradeoff and Forgetting}
+
+\begin{todobox}
+Expand the beats below into prose using the Counter-intuitive lead move; land on the claim that proactive forgetting is a design lever, not merely a failure to retain.
+\end{todobox}
+
+% - Stability vs plasticity: retaining prior competence pulls against adapting to new tasks;
+%   an unbounded store maximizes stability but risks drowning the relevant in the irrelevant.
+% - Catastrophic forgetting is the classic failure mode — but it is framed at the weight level;
+%   for external memory the analogous risk is accumulation, not erasure.
+% - Counter-intuitive case: forgetting can HELP — old or off-task memory acts as a distraction
+%   that crowds out the relevant item and biases retrieval (recurring theme: "footprint").
+% - Error propagation: agents exhibit experience-following — a bad stored experience is
+%   retrieved, reused, and compounds across subsequent tasks @xiong2025.
+% - Hence proactive forgetting is a control lever; thread "not every task needs memory" and
+%   forward-ref the interdependence analysis (fig:interdependence) where ~⅔ of tasks are
+%   file-disjoint. [VERIFY+ADD: Context-Rot (Chroma) — long irrelevant context degrades quality]

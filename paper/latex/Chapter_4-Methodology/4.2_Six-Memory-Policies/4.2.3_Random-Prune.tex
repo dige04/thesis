@@ -1,0 +1,24 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 4.2.3  Random Prune ──────────────────────────────────────────────────
+% PURPOSE: Define the volume-only control policy.
+% MOVE: Counter-intuitive control ("isolate WHAT is forgotten from HOW MUCH").
+% BEATS: see // bullets below.
+% FIGURES/TABLES: (none new; row in six-policy summary table).
+% CITATIONS: (none required).
+% ─────────────────────────────────────────────────────────────────────────
+
+\subsection{Random Prune}
+
+\begin{todobox}
+Expand the beats below into prose. Frame as the "volume vs content" control; set up the H2 contrast (Type-Aware > Random).
+\end{todobox}
+
+% - Eviction rule: uniform random eviction of records once the store exceeds cap = 10 (A1);
+%   each over-cap record is equally likely to be dropped, regardless of age, type, or use.
+% - The control for "volume vs content": it reduces footprint to the cap WITHOUT using any
+%   signal about WHICH record to keep.
+% - By holding volume reduction equal to the content-aware policies, it isolates whether
+%   WHAT is forgotten matters beyond merely reducing how much is stored — the basis of the
+%   H2 contrast (Type-Aware Decay > Random Prune => content > volume).

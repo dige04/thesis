@@ -1,0 +1,29 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 1.3  Research Questions and Scope ───────────────────────────────────────
+% PURPOSE: State the central RQ, sub-questions, and the (anti-creep) scope.
+% MOVE: Operational-narrative objectives (primary → secondary → constraint).
+% BEATS: central RQ · SQ1–SQ5 · scope · out-of-scope.
+% FIGURES/TABLES: none.
+% CITATIONS: joshi2025.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Research Questions and Scope}
+
+\begin{todobox}
+Expand the beats below as a prose hierarchy (primary \textrightarrow{} secondary \textrightarrow{} constraint), not flat bullets. Thread "retrieval held constant" and "not every task needs memory". Keep the scope/out-of-scope as conscious limits.
+\end{todobox}
+
+% - CENTRAL RQ: do proactive forgetting / consolidation policies match
+%   full-memory performance at materially lower cost, and which *content-aware*
+%   structure of forgetting matters most? (benchmark frame @joshi2025)
+% - SQ1 — trade-off: CL-F1 vs cost / footprint across the six policies.
+% - SQ2 — mechanism: volume vs content vs compression (what drives any gap).
+% - SQ3 — predictors: what features predict a *helpful* vs *harmful* memory item.
+% - SQ4 — growth: how memory footprint evolves over the task sequence.
+% - SQ5 — behavioral: does accumulation change agent behaviour (tool calls, errors).
+% - SCOPE: 8 SWE-Bench-CL sequences, 3 seeds, same-repo retrieval, fixed top_k=5,
+%   frozen MiniMax M3, retrieval held constant across all six policies.
+% - OUT-OF-SCOPE (anti-creep): no added conditions beyond six; no cross-repo
+%   main experiment; no hyperparameter grid search.

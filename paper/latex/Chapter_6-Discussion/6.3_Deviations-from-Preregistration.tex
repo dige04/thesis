@@ -1,0 +1,37 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 6.3  Deviations from Pre-Registration ────────────────────────────────
+% PURPOSE: Disclose every deviation (D1–D6) and amendment (A1–A7) as the paper trail
+%          that protects the study against "you moved the goalposts after seeing data".
+% MOVE: Limitation → Root cause → Trade-off → Connect (the principled-amendment framing).
+% BEATS: see ordered bullets below — D-chain, A-chain, then the four-part defense.
+% FIGURES/TABLES: tab:deviations (D1–D6, A1–A7 summary).
+% CITATIONS: none new.
+% SOURCE-DOC: AMENDMENTS.md (authoritative); CLAUDE.md deviation table; defense-qa Q10.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Deviations from Pre-Registration}
+\label{sec:deviations}
+
+\begin{todobox}
+Expand the beats below into prose. Point the reader to tab:deviations for the full list; in text, foreground the PRINCIPLED-AMENDMENT framing. Stress each entry is dated, justified, held constant across conditions, and decided BEFORE the affected data --- not p-hacking. Pre-registration is THESIS\_FINAL\_v5.
+\end{todobox}
+
+% - DEVIATIONS D1–D6 (runtime): D1 model GPT-5.4 → Kimi-k2.6 → MiniMax M3; D2 embedder →
+%   local nomic-embed-text-v2-moe (768-d); D3 cost metric → token-count proxy (flat-rate
+%   provider); D4 classifier → JSON-mode + Pydantic; D5 host → x86_64 DigitalOcean droplet
+%   + 5-VPS fleet; D6 M3 specifics — reasoning/CoT stripped (D6a), no JSON mode → tolerant
+%   extraction (D6b), 16-key rotation failing-closed (D6c). See tab:deviations.
+% - AMENDMENTS A1–A7 (pre-registration): A1 record cap 100 → 10 (makes pruning bind on all
+%   8 sequences, H2 testable); A2 temperature 0 → 1 (endpoint rejects 0); A3 CLS old-memory
+%   threshold 10 → 5 (= cap/2); A4 H1b reframed token-savings → footprint + retrieval
+%   latency; A5 anchor-probe scope (PENDING — see §6.4 / docs/a5-anchor-probe-decision.md);
+%   A6 seeds 3 → 1 (WITHDRAWN); A7 3 seeds / 144 runs RESTORED (free-unlimited provider + fleet).
+% - THE PRINCIPLED-AMENDMENT FRAME (the four-part test, every entry passes): each change is
+%   (a) a mechanical fix to an inconsistency a deviation introduced OR a construct correction
+%   the mechanism demands; (b) dated and decided BEFORE the affected data is collected;
+%   (c) held constant across all conditions × seeds (a fixed factor — contrasts stay valid);
+%   (d) disclosed here. This is the line between principled amendment and researcher-DoF abuse.
+% - Absolute solve rates are explicitly NOT comparable to GPT-5.4 / SWE-Bench leaderboards;
+%   only between-policy contrasts on the fixed model are claimed.

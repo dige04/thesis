@@ -1,0 +1,31 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 1.4  Contributions ──────────────────────────────────────────────────────
+% PURPOSE: Enumerate the thesis contributions and position against prior work.
+% MOVE: Pivot ("Rather than invent a memory policy…") + "In contrast".
+% BEATS: (1) isolation · (2) bracketing+pre-reg · (3) Pareto/footprint · (4) interdep · (5) artifact.
+% FIGURES/TABLES: forward-ref fig:pareto-footprint (A4 footprint axis).
+% CITATIONS: alqithami2025, Shen 2602.21611 [VERIFY+ADD], xiong2025.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Contributions}
+
+\begin{todobox}
+Expand the beats below. Open with the PIVOT "Rather than invent a new memory policy, we measure existing ones under a single control"; use "In contrast" to differentiate Alqithami (alqithami2025) and Shen. Numbers stay placeholders.
+\end{todobox}
+
+% - PIVOT: rather than invent a memory policy, this thesis is a controlled
+%   *measurement* of forgetting under one decisive control.
+% - C1 — retrieval-held-constant isolation of the storage policy: the central
+%   confound control (pure cosine, identical across all six).
+% - C2 — No-Memory ↔ Full-Memory *bracketing* of the six policies, with a
+%   pre-registered, effect-size-first analysis (TOST non-inferiority, r_rb).
+% - C3 — CL-F1 × cost and CL-F1 × footprint Pareto fronts, with the *footprint*
+%   axis (A4) where forgetting wins (forward-ref fig:pareto-footprint).
+% - C4 — interdependence quantification: ~⅓ of tasks depend on predecessors
+%   [RESULT: ~0.30 overlap / ~0.32 frac] — context for when memory can matter @xiong2025.
+% - C5 — a reproducible artifact (144-run matrix, configs, analysis pipeline).
+% - IN CONTRAST: @alqithami2025 is conversational with retrieval *not* fixed;
+%   Shen [VERIFY+ADD] (2602.21611) is coding but *varies* retrieval granularity —
+%   here retrieval is held constant so storage is the only moving part.

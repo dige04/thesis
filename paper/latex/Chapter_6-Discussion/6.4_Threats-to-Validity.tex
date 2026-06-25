@@ -1,0 +1,40 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 6.4  Threats to Validity ─────────────────────────────────────────────
+% PURPOSE: Reframe the study's limits as conscious trade-offs across the four validity types.
+% MOVE: Limitation → Root cause → Trade-off → Connect (per the storytelling template).
+% BEATS: see ordered bullets below — construct/measurement, internal, external, statistical.
+% FIGURES/TABLES: none (cross-ref tab:deviations from 6.3).
+% CITATIONS: SWE-Bench-Illusion 2506.12286 [VERIFY+ADD], Phi-4-reasoning 2504.21318
+%   [VERIFY+ADD], Non-Determinism 2408.04667 [VERIFY+ADD]; xiong2025.
+% SOURCE-DOC: docs/threats-to-validity.md (prose); docs/a5-anchor-probe-decision.md (probe).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Threats to Validity}
+\label{sec:threats}
+
+\begin{todobox}
+Expand the beats below into prose using LIMITATION \textrightarrow{} ROOT CAUSE \textrightarrow{} TRADE-OFF \textrightarrow{} CONNECT for each. Prose is largely drop-in from docs/threats-to-validity.md. Group under the four validity headings. Thread "footprint" and "not every task needs memory".
+\end{todobox}
+
+% - CONSTRUCT & MEASUREMENT: anchor-probe stability saturated at 1.000 on the 5-anchor
+%   gate-3 sample — may be instrument INSENSITIVITY (this is the E7 interdependence
+%   phenomenon: anchors drawn from the file-disjoint ⅔ cannot move) rather than true
+%   absence of forgetting; tested under A5 (docs/a5-anchor-probe-decision.md). Cost axis
+%   inflated by M3 reasoning tokens [VERIFY+ADD] (Phi-4-reasoning 2504.21318) — uniform
+%   across conditions, so contrasts hold, absolute not comparable. CLS inert (0 clusters)
+%   → H3 reported N/A, not supported; declined to relax the frozen 0.70 threshold.
+% - INTERNAL: contamination (SWE-Bench public, M3 cutoff undocumented) is CONSTANT across
+%   conditions → biases absolute solve rates, NOT between-policy contrasts [VERIFY+ADD]
+%   (SWE-Bench-Illusion 2506.12286); per-run provenance (model alias, config hash, dataset
+%   revision) logged to detect router/alias drift.
+% - EXTERNAL: single base model (M3, third link of declared D1 chain) — a SCOPE BOUNDARY
+%   defended by scope + cost-axis cleanliness + bandwidth, NOT budget (free-unlimited
+%   provider + 5-VPS fleet removed compute as a constraint); same-repo retrieval only;
+%   fixed top_k=5. Deeper bound: only ~⅓ of tasks are interdependent, so "memory helps"
+%   claims apply to that subset, not sequential coding in general @xiong2025.
+% - STATISTICAL-CONCLUSION: N=8 sequence-level means is honestly underpowered for small
+%   effects → LEAD WITH ESTIMATION (effect sizes + BCa intervals) over dichotomous
+%   significance; run-level seed variance reported SEPARATELY from task-level bootstrap,
+%   never pooled (two distinct variance sources) [VERIFY+ADD] (Non-Determinism 2408.04667).

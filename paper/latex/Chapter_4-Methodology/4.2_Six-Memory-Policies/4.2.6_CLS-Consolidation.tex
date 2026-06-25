@@ -1,0 +1,30 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 4.2.6  CLS Consolidation ─────────────────────────────────────────────
+% PURPOSE: Define abstractive consolidation and disclose its structural inertness (H3).
+% MOVE: Cognitive-grounding (Complementary Learning Systems) + Counter-intuitive negative result.
+% BEATS: see // bullets below.
+% FIGURES/TABLES: (none new; row in six-policy summary table).
+% CITATIONS: mcclelland1995.
+% ─────────────────────────────────────────────────────────────────────────
+
+\subsection{CLS Consolidation}
+
+\begin{todobox}
+Expand the beats below into prose. Ground in Complementary Learning Systems [@mcclelland1995]; report the structural-inertness result honestly as a negative finding (H3), and stress the threshold was NOT relaxed.
+\end{todobox}
+
+% - Abstractive (compressive) forgetting: instead of dropping records, periodically replace
+%   clusters of old memories with an LLM-written summary — modeling slow neocortical
+%   consolidation in Complementary Learning Systems [@mcclelland1995].
+% - Schedule: every k = 5 tasks (Invariant #9), cluster old memories with DBSCAN, forming a
+%   cluster only at >= 3 members at >= 0.70 cosine similarity, then LLM-summarize each cluster;
+%   if no cluster qualifies, fall back to Type-Aware Decay (4.2.5) at cap = 10 (A1).
+% - IMPORTANT (negative / not-applicable result, H3): on SWE-Bench-CL this policy is
+%   STRUCTURALLY INERT (A3) — diverse same-repo memories never cluster -> 0 consolidations
+%   observed -> CLS reduces empirically to Type-Aware Decay (CLS ≡ Type-Aware).
+% - The 0.70 similarity threshold was NOT relaxed to force clustering: frozen Invariant #23
+%   (integrity) — relaxing it to manufacture a positive result was explicitly refused.
+% - Disclose as a negative result: report [RESULT: 0 consolidations across the 144-run matrix]
+%   rather than tuning the policy to fire.
