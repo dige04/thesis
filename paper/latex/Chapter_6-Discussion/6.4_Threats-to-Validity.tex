@@ -1,40 +1,80 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% SOURCE: docs/threats-to-validity.md (setup) + docs/a5-anchor-probe-decision.md /
+% AMENDMENTS.md A5 (RESOLUTION). INTEGRITY: carry A5 THROUGH -- the instrument is NOT
+% measurement-blind; the 1.000 is regime-driven. Model = deepseek-v4-flash. No TOST claim.
+% Cite only bib keys (drop the scaffold's [VERIFY+ADD] refs not in references.bib).
 
 % ── 6.4  Threats to Validity ─────────────────────────────────────────────
-% PURPOSE: Reframe the study's limits as conscious trade-offs across the four validity types.
-% MOVE: Limitation → Root cause → Trade-off → Connect (per the storytelling template).
-% BEATS: see ordered bullets below — construct/measurement, internal, external, statistical.
-% FIGURES/TABLES: none (cross-ref tab:deviations from 6.3).
-% CITATIONS: SWE-Bench-Illusion 2506.12286 [VERIFY+ADD], Phi-4-reasoning 2504.21318
-%   [VERIFY+ADD], Non-Determinism 2408.04667 [VERIFY+ADD]; xiong2025.
-% SOURCE-DOC: docs/threats-to-validity.md (prose); docs/a5-anchor-probe-decision.md (probe).
+% PURPOSE: Reframe the study's limits as conscious trade-offs across four validity types.
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Threats to Validity}
 \label{sec:threats}
 
-\begin{todobox}
-Expand the beats below into prose using LIMITATION \textrightarrow{} ROOT CAUSE \textrightarrow{} TRADE-OFF \textrightarrow{} CONNECT for each. Prose is largely drop-in from docs/threats-to-validity.md. Group under the four validity headings. Thread "footprint" and "not every task needs memory".
-\end{todobox}
+\paragraph{Construct and measurement validity.}
+The continual-learning metric's stability dimension is the most delicate construct in this
+study. The pre-registered stability instrument --- anchor-probe re-evaluation of earlier
+tasks against later memory states --- saturated at $1.000$ on the small gate-3 anchor
+sample, which raised a real worry: a saturated metric could mean genuine absence of
+forgetting \emph{or} an instrument too insensitive to register it. We resolved this rather
+than leaving it open (amendment A5). A targeted discrimination sub-study, run on cells
+selected so that Full Memory and an aggressive pruner actually retrieve different records,
+shows the instrument is \emph{not} measurement-blind: on cells where Full retained and
+retrieved a task's own solution memory while the pruner had evicted it, Full re-solved the
+task where the pruner could not (a clean existence proof of one cell at three-of-three versus
+zero-of-three). The saturation is therefore \emph{regime-driven}, not a broken metric: in the
+natural SWE-Bench-CL regime most tasks are solvable without memory, or the relevant memory is
+not cosine-retrieved, so stability is rarely exercised. Two limits bound this sub-study and
+are stated narrowly: its signal is \emph{backward retention only} --- the forward, cross-task
+interdependence cells were at the floor in both conditions, so it gives no support for
+``earlier-task memory helps later tasks'' --- and it carries no p-value, because the cells
+were selected to maximise discrimination. Consequently CL-F1 is reported as a
+resolution-rate proxy and the efficiency claim is carried by the directly-measured footprint
+axis, which is immune to this sensitivity. Relatedly, CLS Consolidation never clustered on
+the benchmark's heterogeneous same-repository memories, so H3 is reported as not-applicable
+rather than supported; we declined to relax the frozen similarity threshold, which would have
+manufactured incoherent summaries. Finally, because the executed model emits reasoning tokens
+counted in completion length, the token-cost axis is inflated relative to a non-reasoning
+model; the inflation is uniform across conditions, so between-policy cost contrasts hold
+while absolute token costs do not transfer across studies.
 
-% - CONSTRUCT & MEASUREMENT: anchor-probe stability saturated at 1.000 on the 5-anchor
-%   gate-3 sample — may be instrument INSENSITIVITY (this is the E7 interdependence
-%   phenomenon: anchors drawn from the file-disjoint ⅔ cannot move) rather than true
-%   absence of forgetting; tested under A5 (docs/a5-anchor-probe-decision.md). Cost axis
-%   inflated by M3 reasoning tokens [VERIFY+ADD] (Phi-4-reasoning 2504.21318) — uniform
-%   across conditions, so contrasts hold, absolute not comparable. CLS inert (0 clusters)
-%   → H3 reported N/A, not supported; declined to relax the frozen 0.70 threshold.
-% - INTERNAL: contamination (SWE-Bench public, M3 cutoff undocumented) is CONSTANT across
-%   conditions → biases absolute solve rates, NOT between-policy contrasts [VERIFY+ADD]
-%   (SWE-Bench-Illusion 2506.12286); per-run provenance (model alias, config hash, dataset
-%   revision) logged to detect router/alias drift.
-% - EXTERNAL: single base model (M3, third link of declared D1 chain) — a SCOPE BOUNDARY
-%   defended by scope + cost-axis cleanliness + bandwidth, NOT budget (free-unlimited
-%   provider + 5-VPS fleet removed compute as a constraint); same-repo retrieval only;
-%   fixed top_k=5. Deeper bound: only ~⅓ of tasks are interdependent, so "memory helps"
-%   claims apply to that subset, not sequential coding in general @xiong2025.
-% - STATISTICAL-CONCLUSION: N=8 sequence-level means is honestly underpowered for small
-%   effects → LEAD WITH ESTIMATION (effect sizes + BCa intervals) over dichotomous
-%   significance; run-level seed variance reported SEPARATELY from task-level bootstrap,
-%   never pooled (two distinct variance sources) [VERIFY+ADD] (Non-Determinism 2408.04667).
+\paragraph{Internal validity.}
+Retrieval is held identical --- pure cosine, fixed depth --- across all six conditions, so
+the contrast is attributable to the storage and forgetting policy rather than to search. The
+model, embedder, temperature, and memory budget are fixed factors held constant across
+conditions and seeds. The principal residual threat is benchmark contamination: SWE-Bench
+tasks are public and the model's training cutoff is undocumented. Because any contamination
+is constant across conditions, it does not bias the between-policy contrasts; it does render
+absolute solve rates uninterpretable as capability measures, which we disclaim accordingly.
+Per-run provenance --- model alias, configuration hash, and dataset revision --- is logged so
+that any drift under the rotating-key router would be detectable. A more concrete internal
+threat was the agent's own tooling: a trajectory audit found the \texttt{read\_file} and
+\texttt{edit\_file} instruments defective, which could have turned an instrument artefact into
+an apparent between-policy effect. This is a \emph{mitigated} threat rather than a live one
+--- the defect was root-caused, fixed (commit \texttt{cceb325}), and the corrected instrument
+was re-validated by a pre-registered, externally reviewed health gate before the matrix was
+run (Section~\ref{sec:instrument}).
+
+\paragraph{External validity.}
+The results rest on a single base model (\texttt{deepseek-v4-flash}, the final link of the
+disclosed deviation chain), a single benchmark family (SWE-Bench-CL), same-repository
+retrieval only, and a fixed retrieval depth. This is a conscious scope boundary, defended by
+scope and measurement cleanliness rather than by budget --- the move to an unlimited provider
+and a horizontal fleet removed compute as the binding constraint. We make no cross-model or
+cross-benchmark generalisation claim. A deeper boundary is intrinsic to the task
+distribution: only a minority of tasks --- on the order of one-third --- structurally depend
+on a predecessor, so any conclusion about memory's \emph{benefit} applies to that
+interdependent subset rather than to sequential coding in general, and the
+experience-following risk~\cite{xiong2025} means an indiscriminate store can hurt the
+remainder.
+
+\paragraph{Statistical-conclusion validity.}
+The primary test is the Wilcoxon signed-rank test on $N=8$ sequence-level means with Holm
+correction over the five pre-registered contrasts, accompanied by rank-biserial effect sizes
+and BCa bootstrap intervals. With $N=8$ the design is honestly underpowered for small
+effects, which we address by leading with estimation --- effect sizes and intervals, plus the
+design's detectable-effect profile --- rather than dichotomous significance, and by not
+switching tests to manufacture a significant verdict (Invariant~\#11). Run-level variance
+from the agent's stochasticity is estimated from the three seeds and reported separately from
+task-level bootstrap intervals; the two are distinct variance sources and are never pooled.

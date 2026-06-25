@@ -1,29 +1,65 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 
 % ── 4.2  The Six Memory Policies (Overview) ──────────────────────────────
 % PURPOSE: Frame the six policies as a dose-ladder and orient the reader before detail.
-% MOVE: Prose-hierarchy (boundary baselines -> heuristics -> content-aware) + table summary.
-% BEATS: see // bullets below.
-% FIGURES/TABLES: fig:task-lifecycle; tab (six-policy summary, see tab:main-results columns).
-% CITATIONS: anderson1991 (Type-Aware lineage), mcclelland1995 (CLS lineage).
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{The Six Memory Policies}
+\label{sec:policies}
 
-\begin{todobox}
-Expand the beats below into prose using the dose-ladder MOVE. Insert the six-policy summary table here and reference fig:task-lifecycle for where forgetting fires.
-\end{todobox}
+The six conditions are best read as a \emph{dose ladder} of retention. No Memory is the
+zero dose --- nothing is carried across tasks; Full Memory is the maximum dose --- nothing
+is ever discarded; and the four interior policies sit between them, each forgetting a
+different subset once the store fills. The ladder operationalises ``not every task needs
+memory'' as a controlled gradient: rather than asking whether memory helps in the
+abstract, it varies how much, and which, experience the agent keeps.
 
-% - Dose-ladder framing: No Memory = 0 dose -> the four pruning/decay/consolidation
-%   policies = partial dose -> Full Memory = maximum dose. The ladder operationalizes
-%   "not every task needs memory" as a controlled gradient of retention.
-% - Two boundary baselines bracket the ladder: No Memory (floor) and Full Memory (ceiling).
-% - Four interior policies differ ONLY in WHAT they forget at the cap, not in retrieval:
-%   Random Prune, Recency Prune, Type-Aware Decay, CLS Consolidation.
-% - Summary table (six rows): policy | what it keeps/forgets | cap behavior | forgetting kind.
-% - Cap = 10 (A1) binds all four pruning policies (Random, Recency, Type-Aware, CLS);
-%   No Memory has nothing to cap, Full Memory ignores the cap by design.
-% - fig:task-lifecycle: retrieve -> solve -> reflect -> classify -> MAINTAIN
-%   [the policy forgets HERE] -> snapshot. Every policy shares this loop; only the
-%   MAINTAIN step differs.
+The two boundary baselines bracket the comparison. No Memory establishes the floor against
+which any benefit of remembering is measured; Full Memory establishes the ceiling and the
+accumulation cost that proactive forgetting must either match (the non-inferiority
+question) or beat on footprint. The four interior policies --- Random Prune, Recency
+Prune, Type-Aware Decay, and CLS Consolidation --- differ \emph{only} in what they forget
+when the store exceeds the budget; they share an identical retrieval mechanism with each
+other and with the baselines. The binding budget is a cap of ten records (amendment A1),
+which is smaller than the shortest sequence, so eviction genuinely fires for all four
+interior policies; No Memory has nothing to cap, and Full Memory ignores the cap by design.
+
+Every condition runs the same per-task loop --- retrieve, solve, reflect, classify, and
+then \emph{maintain} the store --- and the policies diverge at exactly one step, the
+maintenance step where forgetting fires (Figure~\ref{fig:task-lifecycle}). Holding the rest
+of the loop identical is what makes the dose ladder a clean single-factor manipulation.
+Table~\ref{tab:policies} summarises the six.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The six memory policies. All four interior policies share an identical
+  retrieval mechanism and differ only at the maintenance (forgetting) step. Cap $=10$
+  records (A1) binds the four pruning/decay/consolidation policies.}
+  \label{tab:policies}
+  \begin{tabular}{lll}
+    \toprule
+    Policy & What it keeps / forgets & Forgetting kind \\
+    \midrule
+    No Memory          & keeps nothing across tasks            & total (floor) \\
+    Full Memory        & keeps everything; cap ignored         & none (ceiling) \\
+    Random Prune       & drops uniformly at random over cap    & volume-only \\
+    Recency Prune      & drops the oldest records over cap      & temporal heuristic \\
+    Type-Aware Decay   & drops the lowest decay-score record   & content-aware \\
+    CLS Consolidation  & summarises clusters of old records    & compressive \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\begin{figurestub}{per-task memory loop (to be drawn)}
+The shared per-task loop: \emph{retrieve} (cosine top-$k$, identical across policies)
+$\rightarrow$ \emph{solve} (the agent's ReAct attempt) $\rightarrow$ \emph{reflect}
+$\rightarrow$ \emph{classify} (5-type taxonomy) $\rightarrow$ \textbf{maintain} (the only
+step that differs --- the policy forgets here) $\rightarrow$ \emph{snapshot}.
+\end{figurestub}
+\caption{The shared per-task loop; every policy is identical except at the maintenance
+step. Diagram to be drawn for the final manuscript.}
+\label{fig:task-lifecycle}
+\end{figure}

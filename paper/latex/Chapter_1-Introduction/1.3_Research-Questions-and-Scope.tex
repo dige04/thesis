@@ -1,29 +1,48 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 
 % ── 1.3  Research Questions and Scope ───────────────────────────────────────
 % PURPOSE: State the central RQ, sub-questions, and the (anti-creep) scope.
-% MOVE: Operational-narrative objectives (primary → secondary → constraint).
-% BEATS: central RQ · SQ1–SQ5 · scope · out-of-scope.
-% FIGURES/TABLES: none.
-% CITATIONS: joshi2025.
+% MOVE: Operational-narrative objectives (primary -> secondary -> constraint).
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Research Questions and Scope}
 
-\begin{todobox}
-Expand the beats below as a prose hierarchy (primary \textrightarrow{} secondary \textrightarrow{} constraint), not flat bullets. Thread "retrieval held constant" and "not every task needs memory". Keep the scope/out-of-scope as conscious limits.
-\end{todobox}
+The central research question is whether proactive forgetting and consolidation policies
+can match the task-resolution performance of full-memory accumulation at materially lower
+cost, and --- if any difference exists --- which \emph{content-aware} structure of
+forgetting matters most. The framing throughout is that \emph{not every task needs
+memory}: the question is not how to remember more, but when and how much to forget without
+paying for it in resolved issues. We instantiate the question on the SWE-Bench-CL
+continual-learning benchmark for coding agents~\cite{joshi2025}.
 
-% - CENTRAL RQ: do proactive forgetting / consolidation policies match
-%   full-memory performance at materially lower cost, and which *content-aware*
-%   structure of forgetting matters most? (benchmark frame @joshi2025)
-% - SQ1 — trade-off: CL-F1 vs cost / footprint across the six policies.
-% - SQ2 — mechanism: volume vs content vs compression (what drives any gap).
-% - SQ3 — predictors: what features predict a *helpful* vs *harmful* memory item.
-% - SQ4 — growth: how memory footprint evolves over the task sequence.
-% - SQ5 — behavioral: does accumulation change agent behaviour (tool calls, errors).
-% - SCOPE: 8 SWE-Bench-CL sequences, 3 seeds, same-repo retrieval, fixed top_k=5,
-%   frozen MiniMax M3, retrieval held constant across all six policies.
-% - OUT-OF-SCOPE (anti-creep): no added conditions beyond six; no cross-repo
-%   main experiment; no hyperparameter grid search.
+This primary question decomposes into five secondary questions, in descending order of
+how load-bearing they are for the thesis:
+
+\begin{itemize}
+  \item \textbf{SQ1 (trade-off).} How do the six policies compare on continual-learning
+        resolution (the CL-F1 proxy) against cost and memory footprint?
+  \item \textbf{SQ2 (mechanism).} If a gap exists, what drives it --- the \emph{volume} of
+        memory retained, its \emph{content} (which records are kept), or its
+        \emph{compression} into consolidated summaries?
+  \item \textbf{SQ3 (predictors).} What features of a stored record predict whether it
+        will prove \emph{helpful} versus \emph{harmful} when retrieved?
+  \item \textbf{SQ4 (growth).} How does the memory footprint evolve over the course of a
+        task sequence under each policy?
+  \item \textbf{SQ5 (behavioral).} Does accumulation change how the agent behaves
+        step to step --- its tool-call count, its error rate?
+\end{itemize}
+
+The scope is deliberately narrow, and the narrowness is the contribution. The experiment
+covers the eight official SWE-Bench-CL sequences, three seeds, same-repository retrieval
+only, and a fixed retrieval depth of $k=5$, on a single frozen model
+(\texttt{deepseek-v4-flash}; see the deviations in Section~\ref{sec:deviations}). The
+decisive constraint is that \emph{retrieval is held constant across all six policies}:
+pure cosine similarity, identical depth and context budget, so that the storage policy is
+the only moving part.
+
+The out-of-scope boundaries are conscious limits, not omissions. We do not add conditions
+beyond the six pre-registered policies; we do not run a cross-repository main experiment;
+and we do not perform a hyperparameter grid search over the policies. These choices keep
+the comparison clean enough that its result, whatever it is, can be attributed to
+forgetting rather than to an uncontrolled degree of freedom.

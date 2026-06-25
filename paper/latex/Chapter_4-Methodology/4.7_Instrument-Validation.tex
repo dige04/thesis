@@ -1,0 +1,61 @@
+% Drafted 2026-06-25. NEW methodological contribution (not in the original Typst scaffold).
+% Sources: docs/ab-gate-findings-2026-06-24.md, docs/amended-gate-2026-06-24.md,
+% results/ab_gate/amended_cceb325_result.json, results/manifest/freeze.json (sha cceb325).
+% INTEGRITY: NEVER state "the original gate passed". Original gate STOPped -> root cause ->
+% hotfix cceb325 -> amended (pre-registered) gate -> GO. Outcome numbers reported in 5.0.
+
+% ── 4.7  Instrument Validation ───────────────────────────────────────────
+% PURPOSE: Document the pre-registered A/B health check of the agent's own tooling,
+%          its STOP, the root-caused fix, and the amended re-validation.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Instrument Validation}
+\label{sec:instrument}
+
+A controlled comparison is only as trustworthy as the instrument that produces its data. A
+trajectory audit of an early full-matrix run revealed that the agent's own file tools were
+defective --- \texttt{read\_file} returned no line ranges and truncated at a few kilobytes,
+and \texttt{edit\_file} mishandled path normalisation --- which meant that an apparent
+between-policy result could be an artefact of broken tooling rather than of forgetting.
+Before trusting any matrix, we therefore ran a pre-registered A/B health check of the
+instrument itself, and the result was decisive enough to halt and re-engineer before
+re-running. We report the procedure here and its verified outcome in
+Section~\ref{sec:instrument-results}.
+
+\paragraph{A/B design.}
+The check is a 36-cell paired A/B: two sequences (\texttt{pytest}, \texttt{scikit-learn})
+$\times$ three policies (\texttt{no\_memory}, \texttt{full\_memory}, \texttt{recency\_prune})
+$\times$ three seeds $\times$ two tool modes (\emph{legacy}, the pre-fix tooling, and
+\emph{fixed}, the post-fix tooling). Everything other than the tool mode is held constant,
+and every cell is run in both modes so the comparison is fully paired.
+
+\paragraph{The original gate stopped.}
+The pre-registered health gate returned \textbf{STOP}. Two criteria failed: a non-zero count
+of edit path/index failures, and an edit-failure ratio above the pre-registered $0.15$
+threshold. Root-cause analysis attributed the failures to a real bug in the path-handling
+fix: \texttt{edit\_file} normalised the diff's paths but then compared them against the raw,
+un-normalised \texttt{path} argument, so a perfectly valid edit to an absolute container path
+was rejected as a spurious ``security'' violation. The overwhelming majority of the security
+rejections --- 77 of 78 --- were this single bug firing on same-file edits (the one remaining
+rejection was a genuine cross-file diff, correctly refused). The defect was fixed (commit
+\texttt{cceb325}), with regression tests covering the absolute-path and double-slash cases.
+
+\paragraph{A principled amendment, not a moved goalpost.}
+After the fix, the residual edit failures are \emph{model-quality} failures --- the frozen
+model occasionally emits a malformed unified diff or an incorrect path --- which no
+instrument can prevent and which the agent recovers from via retry. We therefore amended the
+gate on first principles, \emph{before} collecting any re-run data, and submitted the
+amendment for external (Codex) review. The amendment retires the absolute $0.15$
+total-ratio criterion --- which conflates instrument health with a fixed property of the
+model --- and replaces it with two principled checks: (i) \emph{instrument-attributable}
+failures must fall to zero, and (ii) the \emph{model-quality} failure rate in the fixed arm
+must not exceed that in the legacy arm (a non-regression guard against the fix silently
+degrading diff quality), alongside the unchanged completeness, pairing, provenance, and
+token-inflation checks. The instrument-versus-model distinction is defined on first
+principles, not fitted to the data: model-quality diff errors are a property of the frozen
+model held constant across all conditions and seeds --- exactly the logic by which the
+model substitution itself (deviations D1--D8, Section~\ref{sec:deviations}) is
+non-confounding for between-policy contrasts. The amended gate's verdict on fresh
+post-hotfix data, and the supporting numbers, are reported in
+Section~\ref{sec:instrument-results}; the full 144-run matrix was executed only after that
+gate returned GO, on the fixed code at the frozen experiment commit \texttt{cceb325}.

@@ -1,35 +1,38 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% NOTE: Shen (2602.21611) and EXPEREPAIR (2506.10484) were [VERIFY+ADD] in the scaffold but
+% are NOT in references.bib -- the coding-agent-memory pattern is stated generically here
+% rather than with uncited specifics. Add to bib + cite if these works are to be named.
 
 % ── 3.2  Continual Learning Benchmarks and Coding-Agent Memory ───────────
 % PURPOSE: Survey CL/memory benchmarks and coding-agent memory systems thematically.
-% MOVE: Per-work critique → close-positioning (thematic).
-% BEATS: CL/memory benchmarks (mostly conversational/QA) · coding-agent memory
-%   systems (report superiority, vary retrieval).
-% FIGURES/TABLES: none.
-% CITATIONS: joshi2025, membench2025, wei2025evomemory; [VERIFY+ADD] Shen 2602.21611,
-%   [VERIFY+ADD] EXPEREPAIR 2506.10484.
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Continual Learning Benchmarks and Coding-Agent Memory}
 
-\begin{todobox}
-Expand the beats below into prose using the per-work-critique \textrightarrow{} positioning MOVE. Two sub-themes; embed a one-line critique per prior-work mention; close each by positioning our work. Thread "retrieval held constant" and "non-inferiority".
-\end{todobox}
+\subsection{Continual-learning and memory benchmarks}
 
-% THEME A — CL / memory benchmarks:
-% - SWE-Bench-CL (joshi2025): our benchmark; sequential coding tasks with dependency
-%   structure; critique — supplies the substrate but not a forgetting-policy protocol.
-% - MemBench (membench2025): memory evaluation suite; critique — conversational/QA
-%   oriented, not coding-with-forgetting.
-% - Evo-Memory (wei2025evomemory): evolving memory across tasks; critique — QA-centric,
-%   does not isolate storage policy under fixed retrieval. Close: no benchmark pairs
-%   coding-agent forgetting with retrieval held constant — we adapt SWE-Bench-CL to it.
-% THEME B — Coding-agent memory systems:
-% - Shen (2602.21611) [VERIFY+ADD]: subtask-level memory shows memory *gains* on
-%   SWE-bench; critique — reports superiority (not non-inferiority) and varies retrieval
-%   granularity, conflating storage with retrieval.
-% - EXPEREPAIR (2506.10484) [VERIFY+ADD]: episodic + semantic memory for repair;
-%   critique — also superiority-framed with coupled retrieval. Close: these motivate a
-%   controlled measurement — fix retrieval, vary only the storage/forgetting policy,
-%   and ask the non-inferiority (not superiority) question.
+The benchmark this thesis builds on, SWE-Bench-CL~\cite{joshi2025}, arranges real GitHub
+issues into ordered, same-repository sequences with genuine dependency structure --- the
+substrate a continual-learning study of coding agents needs. What it supplies is the task
+stream; what it does not supply is a protocol for comparing \emph{forgetting policies},
+which this thesis adds on top of it. Broader memory-evaluation suites sit further from the
+target: MemBench~\cite{membench2025} assembles a comprehensive battery for agent memory but
+is oriented to conversational and question-answering interaction rather than
+coding-with-forgetting, and Evo-Memory~\cite{wei2025evomemory} benchmarks self-evolving
+memory across tasks but is QA-centric and does not isolate the storage policy under fixed
+retrieval. The common gap is that no existing benchmark pairs coding-agent forgetting with
+retrieval held constant; we adapt SWE-Bench-CL to exactly that protocol.
+
+\subsection{Coding-agent memory systems}
+
+A parallel line equips coding and program-repair agents with episodic or semantic memory of
+past fixes and reports that it improves resolution. Two features recur across these systems
+and matter for how their results should be read. First, they are framed as
+\emph{superiority} claims --- memory helps --- rather than as the non-inferiority question
+of whether a lighter store can match a heavier one. Second, they typically vary the
+retrieval mechanism (its granularity, its ranking, or what unit is indexed) alongside the
+memory contents, so a reported gain cannot be attributed to storage as opposed to search.
+Both features motivate the design here: fix retrieval, vary only the storage and forgetting
+policy, and ask the non-inferiority question --- can an agent forget aggressively and lose
+nothing on task resolution --- rather than assuming more memory is better.

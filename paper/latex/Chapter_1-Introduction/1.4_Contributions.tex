@@ -1,31 +1,57 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 
 % ── 1.4  Contributions ──────────────────────────────────────────────────────
 % PURPOSE: Enumerate the thesis contributions and position against prior work.
-% MOVE: Pivot ("Rather than invent a memory policy…") + "In contrast".
-% BEATS: (1) isolation · (2) bracketing+pre-reg · (3) Pareto/footprint · (4) interdep · (5) artifact.
-% FIGURES/TABLES: forward-ref fig:pareto-footprint (A4 footprint axis).
-% CITATIONS: alqithami2025, Shen 2602.21611 [VERIFY+ADD], xiong2025.
+% MOVE: Pivot ("Rather than invent a memory policy...") + "In contrast".
+% Contributions framed as METHOD; finding-clauses left as placeholders.
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Contributions}
 
-\begin{todobox}
-Expand the beats below. Open with the PIVOT "Rather than invent a new memory policy, we measure existing ones under a single control"; use "In contrast" to differentiate Alqithami (alqithami2025) and Shen. Numbers stay placeholders.
-\end{todobox}
+Rather than invent yet another memory policy and argue that it wins, this thesis is a
+controlled \emph{measurement} of forgetting under one decisive control. Its contributions
+are methodological and empirical, and they hold regardless of which way the headline
+result points:
 
-% - PIVOT: rather than invent a memory policy, this thesis is a controlled
-%   *measurement* of forgetting under one decisive control.
-% - C1 — retrieval-held-constant isolation of the storage policy: the central
-%   confound control (pure cosine, identical across all six).
-% - C2 — No-Memory ↔ Full-Memory *bracketing* of the six policies, with a
-%   pre-registered, effect-size-first analysis (TOST non-inferiority, r_rb).
-% - C3 — CL-F1 × cost and CL-F1 × footprint Pareto fronts, with the *footprint*
-%   axis (A4) where forgetting wins (forward-ref fig:pareto-footprint).
-% - C4 — interdependence quantification: ~⅓ of tasks depend on predecessors
-%   [RESULT: ~0.30 overlap / ~0.32 frac] — context for when memory can matter @xiong2025.
-% - C5 — a reproducible artifact (144-run matrix, configs, analysis pipeline).
-% - IN CONTRAST: @alqithami2025 is conversational with retrieval *not* fixed;
-%   Shen [VERIFY+ADD] (2602.21611) is coding but *varies* retrieval granularity —
-%   here retrieval is held constant so storage is the only moving part.
+\begin{enumerate}
+  \item \textbf{Retrieval-held-constant isolation of the storage policy.} The central
+        confound control: all six policies retrieve through identical pure-cosine search
+        at the same depth, so any between-policy difference is attributable to what is
+        \emph{kept} rather than to how it is \emph{searched}. To our knowledge this is the
+        first such isolation for coding agents.
+  \item \textbf{A No-Memory $\leftrightarrow$ Full-Memory bracketing with a
+        pre-registered, effect-size-first analysis.} The two extremes bracket the four
+        intermediate policies, and the analysis leads with rank-biserial effect sizes and
+        bootstrap confidence intervals rather than dichotomous significance, with the
+        primary test (Wilcoxon signed-rank on $N=8$ sequence means, Holm-corrected) and a
+        power characterisation fixed in advance.
+  \item \textbf{Two-axis Pareto analysis of resolution against both compute and memory
+        footprint.} Separating the cost question into a compute axis (total tokens) and a
+        storage \emph{footprint} axis (memory carried per task) localises where, if
+        anywhere, forgetting pays off (Figure~\ref{fig:pareto-footprint});
+        the quantitative frontier is reported in
+        Chapter~\ref{ch:results} \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}.
+  \item \textbf{A quantification of task interdependence as the precondition for memory to
+        matter.} Only a minority of SWE-Bench-CL tasks --- on the order of one-third ---
+        structurally depend on a predecessor (a stored record whose gold-patch files
+        overlap the current task), which bounds how much any memory policy could help and
+        contextualises the experience-following risk~\cite{xiong2025}; the exact figures
+        are reported in Chapter~\ref{ch:results}.
+  \item \textbf{An instrument-validation sub-study.} A pre-registered A/B health check of
+        the agent's own tooling caught a defect in the edit/read instrumentation, drove a
+        root-caused fix, and re-validated the corrected instrument before the full matrix
+        was run (Section~\ref{sec:instrument}). The trustworthiness procedure is itself a
+        reusable methodological contribution.
+  \item \textbf{A reproducible artifact.} The full 144-run matrix, the six policy
+        implementations, the configuration, and the analysis pipeline are released so the
+        measurement can be re-derived end to end (Appendix~\ref{ch:appendix}).
+\end{enumerate}
+
+In contrast to the closest prior work, the comparison here moves only one thing.
+Alqithami's six-policy study~\cite{alqithami2025} is conversational and does not hold
+retrieval fixed, so its conditions differ in both storage and search; coding-oriented
+memory systems, in turn, typically vary retrieval granularity or ranking alongside
+storage. By freezing retrieval, the model, the dataset, and the agent loop, this thesis
+makes the storage policy the only independent variable --- which is what licenses reading
+the result as an effect of forgetting itself.

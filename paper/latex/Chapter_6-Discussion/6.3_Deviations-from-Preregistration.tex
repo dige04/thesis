@@ -1,37 +1,105 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% SOURCE: AMENDMENTS.md (authoritative D1-D8, A1-A7); docs/amended-gate-2026-06-24.md;
+% docs/MORNING-REPORT-2026-06-25.md (disk-capacity / sequence-phased execution).
+% INTEGRITY: final model = deepseek-v4-flash (D8, single model all roles). A5 is RESOLVED
+% (option c), NOT pending. A6 withdrawn / A7 restored 3 seeds. Hotfix cceb325 is an amendment.
 
 % ── 6.3  Deviations from Pre-Registration ────────────────────────────────
-% PURPOSE: Disclose every deviation (D1–D6) and amendment (A1–A7) as the paper trail
-%          that protects the study against "you moved the goalposts after seeing data".
-% MOVE: Limitation → Root cause → Trade-off → Connect (the principled-amendment framing).
-% BEATS: see ordered bullets below — D-chain, A-chain, then the four-part defense.
-% FIGURES/TABLES: tab:deviations (D1–D6, A1–A7 summary).
-% CITATIONS: none new.
-% SOURCE-DOC: AMENDMENTS.md (authoritative); CLAUDE.md deviation table; defense-qa Q10.
+% PURPOSE: Disclose every deviation and amendment as the paper trail against goalpost-moving.
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Deviations from Pre-Registration}
 \label{sec:deviations}
 
-\begin{todobox}
-Expand the beats below into prose. Point the reader to tab:deviations for the full list; in text, foreground the PRINCIPLED-AMENDMENT framing. Stress each entry is dated, justified, held constant across conditions, and decided BEFORE the affected data --- not p-hacking. Pre-registration is THESIS\_FINAL\_v5.
-\end{todobox}
+The pre-registration is \texttt{THESIS\_FINAL\_v5}; every change from it is recorded here so
+the study can be audited against the charge of moving the goalposts after seeing the data.
+Each entry passes the same four-part test: it is (a) a mechanical fix to an inconsistency a
+prior deviation introduced, or a construct correction the mechanism demands; (b) dated and
+decided \emph{before} the affected data was collected; (c) held constant across all
+conditions and seeds, so it is a fixed factor that cannot bias a between-policy contrast; and
+(d) disclosed. Table~\ref{tab:deviations} lists them; the text foregrounds the load-bearing
+ones.
 
-% - DEVIATIONS D1–D6 (runtime): D1 model GPT-5.4 → Kimi-k2.6 → MiniMax M3; D2 embedder →
-%   local nomic-embed-text-v2-moe (768-d); D3 cost metric → token-count proxy (flat-rate
-%   provider); D4 classifier → JSON-mode + Pydantic; D5 host → x86_64 DigitalOcean droplet
-%   + 5-VPS fleet; D6 M3 specifics — reasoning/CoT stripped (D6a), no JSON mode → tolerant
-%   extraction (D6b), 16-key rotation failing-closed (D6c). See tab:deviations.
-% - AMENDMENTS A1–A7 (pre-registration): A1 record cap 100 → 10 (makes pruning bind on all
-%   8 sequences, H2 testable); A2 temperature 0 → 1 (endpoint rejects 0); A3 CLS old-memory
-%   threshold 10 → 5 (= cap/2); A4 H1b reframed token-savings → footprint + retrieval
-%   latency; A5 anchor-probe scope (PENDING — see §6.4 / docs/a5-anchor-probe-decision.md);
-%   A6 seeds 3 → 1 (WITHDRAWN); A7 3 seeds / 144 runs RESTORED (free-unlimited provider + fleet).
-% - THE PRINCIPLED-AMENDMENT FRAME (the four-part test, every entry passes): each change is
-%   (a) a mechanical fix to an inconsistency a deviation introduced OR a construct correction
-%   the mechanism demands; (b) dated and decided BEFORE the affected data is collected;
-%   (c) held constant across all conditions × seeds (a fixed factor — contrasts stay valid);
-%   (d) disclosed here. This is the line between principled amendment and researcher-DoF abuse.
-% - Absolute solve rates are explicitly NOT comparable to GPT-5.4 / SWE-Bench leaderboards;
-%   only between-policy contrasts on the fixed model are claimed.
+\paragraph{Runtime deviations (D1--D8).}
+The most consequential deviation is the model. The pre-registered GPT-5.4 was unavailable
+under the project's resource constraints, and the executed model arrived at through a
+\emph{disclosed chain} of OpenAI-compatible substitutions: GPT-5.4 (pre-registered) $\to$
+Kimi-k2.6 (D1) $\to$ MiniMax M3 (D6) $\to$ a per-role Kimi-plus-DeepSeek split (D7) $\to$,
+finally, a \emph{single} model serving all roles --- \texttt{deepseek-v4-flash} on OpenCode,
+agent and classifier and reflection and CLS summariser alike (D8). The final single-model
+configuration is the cleanest of the chain: it removes the cross-vendor model mix entirely,
+so within every cell all six policies share identical models and the model never confounds a
+between-policy contrast. Because the model is substituted, absolute resolution rates are
+\emph{not} comparable to GPT-5.4 or to public SWE-Bench leaderboards --- only the
+between-policy contrasts on the fixed model are claimed. The remaining runtime deviations are
+infrastructural and likewise uniform across conditions: the embedder is a local
+\texttt{nomic-embed-text-v2-moe} (768-dimensional, D2); cost is measured as a token-count
+proxy because the provider is flat-rate (D3); structured outputs use prompt-instructed JSON
+with tolerant extraction and Pydantic validation rather than a native JSON-schema mode the
+provider does not support (D4/D6b); the host is an x86\_64 cloud fleet rather than the
+pre-registered machine (D5); reasoning tokens are stripped before parsing, embedding, and
+re-injection (so the memory payload stays reasoning-free), while the cost axis carries a
+uniform, between-condition-neutral inflation from the light reasoning model (D6a/D8a); and a
+rotating key pool fails closed on quota exhaustion so balance depletion can never be recorded
+as a false \texttt{resolved=0} (D6c/D8b). Every runtime deviation is configuration-only and
+reversible via environment variables.
+
+\paragraph{Pre-registration amendments (A1--A7).}
+Several amendments correct inconsistencies the deviations or the benchmark exposed. The
+memory budget cap was lowered from 100 to 10 records (A1) because all eight sequences are
+short enough that a cap of 100 never binds --- with it, the four pruning policies would have
+been operationally identical to Full Memory, and H2 would be untestable; a cap of 10, below
+the shortest sequence, makes pruning genuinely fire. Temperature was raised from 0 to 1 (A2)
+because the reasoning endpoint rejects a temperature of 0; it is held constant across all
+conditions, and the resulting classifier non-determinism is logged as a failure rate. The
+CLS old-memory threshold was lowered to half the cap (A3), a derived consequence of A1, so
+that consolidation could in principle select candidates. The H1b efficiency hypothesis was
+reframed from token savings to memory footprint and retrieval latency (A4): with retrieval
+depth fixed, storage pruning cannot reduce the prompt budget, so footprint is the honest,
+mechanism-aligned axis. The anchor-probe scope (A5) was resolved by demoting the full
+matrix-scale anchor-probe in favour of a targeted construct-validity sub-study and reporting
+CL-F1 as a resolution-rate proxy (Section~\ref{sec:threats}). Finally, a deadline-driven
+reduction to a single seed (A6) was \emph{withdrawn} and the full three-seed, 144-run design
+restored (A7) once the move to an unlimited provider and a horizontal fleet removed the
+compute pressure.
+
+\paragraph{Instrument and execution amendments.}
+Two further amendments arose during the rerun and are disclosed here for completeness. First,
+the instrument hotfix (commit \texttt{cceb325}): the edit-tool path-normalisation bug
+described in Section~\ref{sec:instrument} was fixed, and the pre-registered health gate was
+amended on first principles (instrument-attributable failures to zero plus a model-quality
+non-regression bound, replacing the absolute total-ratio criterion) and Codex-reviewed before
+any re-run data was collected. Second, an execution amendment forced by infrastructure: the
+per-task Docker evaluation images accumulate beyond the fleet's disk capacity when all eight
+sequences run at once, so the fixed-code matrix is executed under a \emph{sequence-phased}
+scheduler --- one sequence's images are pulled, its cells run, and the images pruned before
+the next phase --- at the frozen experiment commit \texttt{cceb325}. This changes only the
+scheduling of identical work, not what is computed, and is therefore non-confounding.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Deviations (D) and amendments (A) from the \texttt{THESIS\_FINAL\_v5}
+  pre-registration. Every entry is held constant across all conditions and seeds.}
+  \label{tab:deviations}
+  \begin{tabular}{lll}
+    \toprule
+    ID & Change & Status / rationale \\
+    \midrule
+    D1--D8 & model $\to$ \texttt{deepseek-v4-flash} (single, all roles) & fixed factor; absolute rates not comparable \\
+    D2 & embedder $\to$ local \texttt{nomic-embed-text-v2-moe} (768-d) & uniform across conditions \\
+    D3 & cost metric $\to$ token-count proxy & flat-rate provider \\
+    D4/D6b & structured output $\to$ JSON + Pydantic & provider lacks JSON-schema mode \\
+    D5 & host $\to$ x86\_64 cloud fleet & uniform; exclusions disclosed \\
+    D6a/D8a & reasoning tokens stripped; cost-axis inflation & uniform, between-condition-neutral \\
+    A1 & record cap $100 \to 10$ & makes pruning bind; H2 testable \\
+    A2 & temperature $0 \to 1$ & endpoint rejects 0; classifier rate logged \\
+    A3 & CLS old-memory threshold $\to$ cap/2 & derived from A1 \\
+    A4 & H1b $\to$ footprint + latency & mechanism-aligned efficiency axis \\
+    A5 & anchor-probe $\to$ construct-validity sub-study & CL-F1 reported as resolve-rate proxy \\
+    A6 $\to$ A7 & seeds $1 \to 3$ (A6 withdrawn) & full 144-run design restored \\
+    \texttt{cceb325} & edit-tool hotfix + amended gate & pre-registered, Codex-reviewed (\S\ref{sec:instrument}) \\
+    exec & sequence-phased scheduling & disk capacity; reschedules identical work \\
+    \bottomrule
+  \end{tabular}
+\end{table}

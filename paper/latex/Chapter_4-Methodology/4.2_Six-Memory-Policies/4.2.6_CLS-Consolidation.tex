@@ -1,30 +1,28 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
-
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 % ── 4.2.6  CLS Consolidation ─────────────────────────────────────────────
-% PURPOSE: Define abstractive consolidation and disclose its structural inertness (H3).
-% MOVE: Cognitive-grounding (Complementary Learning Systems) + Counter-intuitive negative result.
-% BEATS: see // bullets below.
-% FIGURES/TABLES: (none new; row in six-policy summary table).
-% CITATIONS: mcclelland1995.
-% ─────────────────────────────────────────────────────────────────────────
 
 \subsection{CLS Consolidation}
+\label{sec:cls}
 
-\begin{todobox}
-Expand the beats below into prose. Ground in Complementary Learning Systems [@mcclelland1995]; report the structural-inertness result honestly as a negative finding (H3), and stress the threshold was NOT relaxed.
-\end{todobox}
+CLS Consolidation forgets by \emph{compression} rather than deletion. On a fixed schedule
+--- every $k=5$ tasks (Invariant~\#9) --- it clusters the older memories with DBSCAN, forms
+a cluster only where at least three records lie within $0.70$ cosine similarity of one
+another, and replaces each qualifying cluster with a single LLM-written summary. This models
+the slow neocortical consolidation of Complementary Learning Systems
+theory~\cite{mcclelland1995}: stable, repeated structure is abstracted into a compact gist
+while one-off details fade. When no cluster qualifies, the policy falls back to Type-Aware
+Decay (Section~\ref{sec:type-decay}) at the cap of ten (A1), so it never simply overflows.
 
-% - Abstractive (compressive) forgetting: instead of dropping records, periodically replace
-%   clusters of old memories with an LLM-written summary — modeling slow neocortical
-%   consolidation in Complementary Learning Systems [@mcclelland1995].
-% - Schedule: every k = 5 tasks (Invariant #9), cluster old memories with DBSCAN, forming a
-%   cluster only at >= 3 members at >= 0.70 cosine similarity, then LLM-summarize each cluster;
-%   if no cluster qualifies, fall back to Type-Aware Decay (4.2.5) at cap = 10 (A1).
-% - IMPORTANT (negative / not-applicable result, H3): on SWE-Bench-CL this policy is
-%   STRUCTURALLY INERT (A3) — diverse same-repo memories never cluster -> 0 consolidations
-%   observed -> CLS reduces empirically to Type-Aware Decay (CLS ≡ Type-Aware).
-% - The 0.70 similarity threshold was NOT relaxed to force clustering: frozen Invariant #23
-%   (integrity) — relaxing it to manufacture a positive result was explicitly refused.
-% - Disclose as a negative result: report [RESULT: 0 consolidations across the 144-run matrix]
-%   rather than tuning the policy to fire.
+The honest finding is that on SWE-Bench-CL this policy is \emph{structurally inert}. The
+same-repository memories within a sequence are diverse --- each a different issue --- and do
+not form clusters of three or more at the $0.70$ threshold, so consolidation does not fire;
+in the gate-3 validation it produced zero consolidation events on both probed sequences
+(amendment A3), reducing empirically to its Type-Aware Decay fallback. The matrix-wide
+consolidation count is reported with the H3 results
+(Section~\ref{sec:h3}) \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}. We deliberately
+did \emph{not} relax the $0.70$ threshold to force clustering: that parameter is frozen
+(Invariant~\#23), and lowering it to manufacture a positive result would merge dissimilar
+memories into incoherent summaries. H3 is therefore reported as a negative,
+not-applicable result --- itself a finding about how compressive forgetting behaves on
+genuinely heterogeneous coding experience.

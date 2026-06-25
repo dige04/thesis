@@ -1,32 +1,53 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 
 % ── 4.1  Controlled-Comparison Design ────────────────────────────────────
-% PURPOSE: Establish the single-factor experimental logic that makes H1–H5 valid.
-% MOVE: Pivot ("Rather than tuning many knobs, vary exactly one")
-%       + Capability ≠ applicability (fixed-factor validity).
-% BEATS: see // bullets below.
-% FIGURES/TABLES: fig:architecture (Ch4 signature).
-% CITATIONS: cuconasu2024 (retrieval-as-fixed-control), liu2024 (LiM rationale for fixed injection).
+% PURPOSE: Establish the single-factor experimental logic that makes H1-H5 valid.
+% Model is deepseek-v4-flash (D8) -- NOT MiniMax M3 (stale D6 in scaffold beats).
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Controlled-Comparison Design}
 
-\begin{todobox}
-Expand the beats below into prose using the Pivot + fixed-factor-validity MOVE. Thread "retrieval held constant" throughout. Reference fig:architecture as the chapter signature.
-\end{todobox}
+Rather than co-vary model, retrieval, dataset, and storage at once --- as most prior memory
+systems do --- this study varies \emph{exactly one} factor, the storage and forgetting
+policy, and holds everything else fixed. The logic is that of a single-factor experiment:
+if six conditions differ in one and only one component, any between-condition difference is
+attributable to that component. Everything that is not the forgetting policy is therefore an
+invariant, frozen and shared across all six conditions and all three seeds.
 
-% - Pivot: rather than co-varying model, retrieval, dataset, and storage at once,
-%   vary EXACTLY ONE factor — the storage / forgetting policy — and hold the rest fixed.
-% - Enumerate what is held constant (the invariants): 8 official SWE-Bench-CL
-%   sequences, no reorder (#1); MiniMax M3 frozen across all conditions (D6); pure
-%   cosine retrieval, IDENTICAL across all 6 policies (#5 — the central control);
-%   top_k=5, same-repo only (#16); injection best-item-LAST (#6, Lost-in-the-Middle);
-%   memory budget cap = 10 (A1); max 20 steps/task (#3); embedding payload
-%   [Issue + Final Error + Final Diff] <7500 tok (#4).
-% - The single manipulated factor: WHAT the MemoryStore keeps vs. forgets between tasks.
-% - Fixed-factor validity argument: because model + retrieval + dataset are constants,
-%   between-policy contrasts (H1–H5) are valid even though absolute resolution rates
-%   are NOT leaderboard-comparable (consequence of D1/D5/D6 — disclose, do not defend).
-% - fig:architecture: agent <-> MemoryStore <-> 6 policies <-> retrieval(cosine, fixed)
-%   <-> task sequence; the policy box is the ONLY swappable component.
+The held-constant factors are enumerated as design invariants. The task stream is the eight
+official SWE-Bench-CL sequences, run in their fixed order with no reordering (Invariant~\#1).
+The model is frozen: a single \texttt{deepseek-v4-flash} instance serves every model role
+across all conditions (the deviation chain from the pre-registered model is disclosed in
+Section~\ref{sec:deviations}). Retrieval is the central control --- pure cosine similarity,
+identical across all six policies, with no per-policy bonuses or penalties (Invariant~\#5)
+--- at a fixed depth $k=5$, same-repository only (Invariant~\#16), with the best-scoring
+record injected last to mitigate the lost-in-the-middle effect (Invariant~\#6). The agent
+runs at most 20 steps per task (Invariant~\#3), and the embedding payload is the compact
+\texttt{[Issue + Final Error + Final Diff]} under the embedder's token cap (Invariant~\#4).
+A memory budget cap of ten records (amendment A1) binds the four interior policies. The
+single manipulated factor is what the \texttt{MemoryStore} keeps versus forgets between
+tasks.
+
+This design buys a specific, bounded kind of validity. Because the model, retrieval,
+dataset, and agent loop are constants, the between-policy contrasts (H1--H5) are valid as
+statements about forgetting. They are \emph{not}, however, statements about absolute
+capability: holding a substituted model and host fixed (Section~\ref{sec:deviations}) means
+the absolute resolution rates are not comparable to public SWE-Bench leaderboards. That is a
+consequence of the design to be disclosed, not defended --- the comparison is internal by
+construction, and its strength is precisely that it does not depend on the absolute numbers.
+Figure~\ref{fig:architecture} shows the pipeline with the policy box as the only swappable
+component.
+
+\begin{figure}[htbp]
+\centering
+\begin{figurestub}{architecture diagram (to be drawn)}
+The memory-equipped coding agent: the agent interacts with a \texttt{MemoryStore} through a
+fixed cosine retriever (identical across conditions) over a task sequence; the
+storage/forgetting \emph{policy} is the single swappable component, instantiated as one of
+the six. Retrieval, model, dataset, and agent loop are held constant.
+\end{figurestub}
+\caption{The memory-equipped agent, with the forgetting policy as the only swappable
+component. Chapter-signature architecture diagram, to be drawn for the final manuscript.}
+\label{fig:architecture}
+\end{figure}

@@ -1,24 +1,13 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
-
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 % ── 4.2.1  No Memory ─────────────────────────────────────────────────────
-% PURPOSE: Define the floor boundary baseline (zero retention).
-% MOVE: Boundary-baseline definition (the lower bracket of the dose-ladder).
-% BEATS: see // bullets below.
-% FIGURES/TABLES: (none new; row in six-policy summary table).
-% CITATIONS: (none required).
-% ─────────────────────────────────────────────────────────────────────────
 
 \subsection{No Memory}
 
-\begin{todobox}
-Expand the beats below into prose. Frame as the lower bracket of the dose-ladder; thread "not every task needs memory".
-\end{todobox}
-
-% - Boundary baseline: the zero-dose floor of the dose-ladder.
-% - Zero retention: nothing is written to or carried across tasks; the MemoryStore is
-%   empty at every task boundary.
-% - The agent sees ONLY the current task (its issue + repo), with no retrieved prior
-%   experience — retrieval is still "held constant" but returns nothing because the
-%   store is empty.
-% - Serves as the reference against which any benefit (or harm) of memory is measured.
+No Memory is the zero-dose floor of the ladder. Nothing is written to or carried across
+tasks: the \texttt{MemoryStore} is empty at every task boundary, so the agent sees only the
+current issue and its repository, with no retrieved prior experience. Retrieval is still
+``held constant'' in the formal sense --- the same cosine search runs --- but it returns
+nothing because there is nothing to return. This condition is the reference against which
+any benefit, or any harm, of remembering is measured; it is the operational meaning of an
+agent for which no task needs memory.

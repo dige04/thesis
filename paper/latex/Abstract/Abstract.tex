@@ -1,30 +1,26 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% INTEGRITY: model = deepseek-v4-flash. The RESULTS clause must NOT assert the pending
+% headline -- it states the question; the finding is [RESULT: pending runs_144_seq_cceb325].
+% No TOST claim. Thread "retrieval held constant", "non-inferiority", "footprint".
 
 % ── Abstract ─────────────────────────────────────────────────────────────
-% PURPOSE: 130–160-word structured abstract of the whole thesis.
-% MOVE: Capability ≠ applicability → Pivot → Counter-intuitive results.
-% BEATS: context · problem · approach · method · results · significance.
-% FIGURES/TABLES: none.
-% CITATIONS: none.
+% PURPOSE: 130-160-word structured abstract of the whole thesis.
 % ─────────────────────────────────────────────────────────────────────────
 
 \chapter*{Abstract}\addcontentsline{toc}{chapter}{Abstract}
 
-\begin{todobox}
-Expand the beats below into a single 130--160-word structured paragraph. Open with capability\ensuremath{\neq}applicability, pivot mid-way, lead the results counter-intuitively. Thread the phrases "retrieval held constant", "non-inferiority", and "footprint". Keep all numbers as placeholders.
-\end{todobox}
-
-% - context: LLM coding agents now operate across task *sequences*; experience
-%   accumulates as persistent memory.
-% - problem: naive accumulation inflates context and cost with no proven benefit.
-% - approach (PIVOT): rather than invent a new policy, we isolate *storage* from
-%   *retrieval* — 6 policies under identical retrieval, frozen MiniMax M3, 144 runs.
-% - method: SWE-Bench-CL, CL-F1, pre-registered effect-size-first (TOST / Wilcoxon).
-% - results (COUNTER-INTUITIVE) [PRELIMINARY; full 144-run matrix RUNNING]:
-%   forgetting is non-inferior to full memory at a lower [RESULT: footprint];
-%   ~⅓ of tasks are structurally interdependent.
-% - significance: a controlled *measurement*, not a new policy — guidance on
-%   *when* and *how much* to forget.
-
-% - [VERIFY+ADD] optional Vietnamese abstract (Tóm tắt) — mirror the English beats.
+LLM coding agents resolve real repository issues, but applying them across long
+\emph{sequences} of related tasks is harder: experience accumulates as persistent memory, yet
+naive accumulation inflates cost with no proven benefit and can even mislead. Rather than
+invent another memory policy, we isolate \emph{storage} from \emph{retrieval}: six forgetting
+policies, bracketed by No Memory and Full Memory, are compared under \emph{identical,
+retrieval-held-constant} cosine search, a single frozen model (\texttt{deepseek-v4-flash}),
+and a 144-run matrix over the eight SWE-Bench-CL sequences and three seeds. The analysis is
+pre-registered and effect-size-first (Wilcoxon on $N=8$ sequence means, rank-biserial effect
+sizes, bootstrap intervals), with cost read on two axes, compute and memory footprint. We ask
+whether proactive forgetting is non-inferior to full accumulation, and at what footprint:
+\texttt{[RESULT: pending runs\_144\_seq\_cceb325]}. The contribution is a controlled
+\emph{measurement} --- including an instrument-validation sub-study that caught and fixed a
+tooling defect before the matrix --- of \emph{when} and \emph{how much} a coding agent should
+forget, not a new policy.

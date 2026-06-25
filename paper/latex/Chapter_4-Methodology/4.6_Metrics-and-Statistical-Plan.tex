@@ -1,34 +1,68 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% INTEGRITY: CL-F1 reported as resolve-rate PROXY (anchor-probe demoted, A5). TOST/SESOI was
+% PRE-REGISTERED but NOT computed -- non-inferiority reported via bounded CIs + power, not a
+% TOST verdict (advisor landmine #3). Cite only bib keys (no Lakens-TOSTER).
 
 % ── 4.6  Metrics and Pre-Registered Statistical Plan ─────────────────────
-% PURPOSE: Define the outcome and cost metrics, then lay out the effect-size-first,
-%          pre-registered, non-inferiority statistical plan.
-% MOVE: Prose-hierarchy objectives — primary outcome -> cost axes -> inferential plan.
-% BEATS: see ordered bullets below.
-% FIGURES/TABLES: tab:metrics; fig:pareto-cost, fig:pareto-footprint; fig:anchor-probe.
-% CITATIONS: cumming2014, wasserstein2019, Lakens-TOSTER [VERIFY+ADD].
+% PURPOSE: Define outcome/cost metrics and the effect-size-first, pre-registered plan.
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Metrics and Pre-Registered Statistical Plan}
 \label{sec:metrics}
 
-\begin{todobox}
-Expand the beats below into prose. Thread "non-inferiority" and the two-axis "footprint" framing. Mark all live numbers as [RESULT: ...] --- the 144-run matrix is running.
-\end{todobox}
+\paragraph{Outcome metric.}
+The primary outcome is CL-F1, the continual-learning resolution measure that the
+pre-registration defined as a combination of \emph{plasticity} (solving the current task)
+and \emph{stability} (retaining competence on earlier tasks), the latter measured by
+anchor-probe re-evaluation. In this thesis CL-F1 is reported as a \emph{resolution-rate
+proxy}: the full anchor-probe instrumentation was not run at matrix scale, so the stability
+dimension is addressed separately through a targeted construct-validity sub-study
+(amendment A5; Section~\ref{sec:h5}) rather than folded into the headline metric. Readers
+should read CL-F1 here as the per-condition resolution rate, with the stability question
+treated explicitly and its limitation disclosed in Threats to Validity
+(Section~\ref{sec:threats}).
 
-% - Primary outcome: CL-F1, measured by anchor-probe re-evaluation (plasticity x stability;
-%   see fig:anchor-probe for the anchors x probes schedule).
-% - Cost is reported on a TWO-axis Pareto (tab:metrics): (i) token-count proxy (D3), and
-%   (ii) memory footprint + retrieval latency — the A4-reframed H1b efficiency axis, where
-%   forgetting is expected to win, NOT token-savings (fig:pareto-cost, fig:pareto-footprint).
-% - The plan is effect-size-first and pre-registered (cumming2014, wasserstein2019):
-%   lead with estimation and intervals, not bare p-values.
-% - Non-inferiority: TOST with SESOI = +/-0.03 CL-F1 (Lakens-TOSTER [VERIFY+ADD]),
-%   on the N=8 sequence-median paired difference.
-% - Confirmatory test: Wilcoxon signed-rank on N=8 sequence means, Holm correction over the
-%   5 pre-registered contrasts (Invariant #11).
-% - Effect size: rank-biserial r_rb (Invariant #12 — NOT Cohen's d, NOT Cliff's delta).
-% - Intervals: BCa bootstrap, 5000 iterations (Invariant #15).
-% - Task-level model: GLMM binomial/logit with a crossed random effect on task_id
-%   (Invariant #14). Feature analysis: PR-AUC + VIF check (Invariant #13).
+\paragraph{Cost metrics.}
+Cost is reported on a two-axis Pareto frontier (Table~\ref{tab:metrics}): a \emph{compute}
+axis (total tokens per run, a provider-independent proxy under deviation D3) and a
+\emph{footprint} axis (memory tokens carried per task, plus retrieval-index growth). The
+footprint axis is the A4 reframing of the original H1b efficiency hypothesis: because
+retrieval depth is fixed, storage pruning cannot reduce the prompt budget, so the honest
+place to look for an efficiency win is footprint, not total-token savings.
+
+\paragraph{Inferential plan.}
+The analysis is pre-registered and effect-size-first, reporting estimation --- intervals and
+effect sizes --- ahead of dichotomous significance, in the spirit
+of~\cite{cumming2014} and~\cite{wasserstein2019}. The primary confirmatory test is the
+Wilcoxon signed-rank test on $N=8$ sequence-level means, comparing each policy against Full
+Memory with Holm correction over the five pre-registered contrasts (Invariant~\#11); the
+sequence, not the task, is the unit of analysis, to avoid pseudo-replication. Effect size is
+the rank-biserial correlation $r_{rb}$ (Invariant~\#12, deliberately not Cohen's $d$ or
+Cliff's $\delta$), and confidence intervals are BCa bootstrap with 5000 resamples
+(Invariant~\#15). Non-inferiority was pre-registered against a smallest-effect-size-of-
+interest of $\pm0.03$ CL-F1; the thesis reports it through the bounded paired-difference
+interval and the design's detectable-effect (power) profile rather than as a separate
+equivalence-test verdict, and does not switch tests to manufacture significance. At the task
+level, a generalised linear mixed model (binomial/logit) with a crossed random effect on
+\texttt{task\_id} (Invariant~\#14) complements the sequence-level test, and the
+helpful-versus-harmful feature analysis uses PR-AUC with a VIF collinearity check rather
+than accuracy or ROC-AUC, given the low positive-class rate (Invariant~\#13).
+
+\begin{table}[htbp]
+  \centering
+  \caption{Metrics and their roles. Numeric values are reported in
+  Chapter~\ref{ch:results} from the trustworthy rerun.}
+  \label{tab:metrics}
+  \begin{tabular}{lll}
+    \toprule
+    Metric & Definition & Role / axis \\
+    \midrule
+    CL-F1 (proxy)   & per-condition resolution rate         & primary outcome \\
+    Footprint       & memory tokens carried per task         & efficiency (footprint axis) \\
+    Total tokens    & tokens per run (D3 proxy)              & efficiency (compute axis) \\
+    Tool calls      & agent tool invocations per task        & behavioral (H4) \\
+    Memory lift     & full minus no-memory resolution        & interdependence (E7) \\
+    \bottomrule
+  \end{tabular}
+\end{table}

@@ -1,30 +1,37 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 
 % ── 2.4  Retrieval-Augmented Memory and Context Rot ──────────────────────────
-% PURPOSE: Explain dense retrieval over the memory store and why retrieval must be HELD
-%          CONSTANT across all six policies to isolate the storage/forgetting decision.
-% MOVE: Pain → Consequence → Gap — positional + long-context degradation motivates fixing
-%       retrieval so the experiment isolates STORAGE, not retrieval, effects.
-% BEATS: see bullets below.
-% FIGURES/TABLES: forward-ref fig:architecture (cosine, fixed); tab:metrics
-% CITATIONS: liu2024, du2025, cuconasu2024, [VERIFY+ADD] Context-Rot (Chroma)
+% PURPOSE: Explain dense retrieval over the store and why retrieval is HELD CONSTANT
+%          across all six policies to isolate the storage/forgetting decision.
 % ─────────────────────────────────────────────────────────────────────────────
 
 \section{Retrieval-Augmented Memory and Context Rot}
 
-\begin{todobox}
-Expand the beats below into prose using the Pain \textrightarrow{} Consequence \textrightarrow{} Gap move; conclude with the central control: retrieval is pure cosine, identical across all six policies.
-\end{todobox}
+A memory store is only as useful as what retrieval pulls from it. In this work retrieval is
+dense: each stored record is embedded and scored against the current query by cosine
+similarity, and the top $k=5$ same-repository records are injected into the agent's prompt.
+The embedded payload is deliberately compact --- the issue text, the final error, and the
+final diff, kept under the embedder's token cap --- and embeddings come from a local
+\texttt{nomic-embed-text-v2-moe} model (see the deviations in Section~\ref{sec:deviations}).
 
-% - Dense retrieval over a memory store: each candidate is embedded and scored by cosine
-%   similarity to the query; here top_k=5, same-repo only, payload [Issue + Final Error +
-%   Final Diff] < 7500 tok (Inv #4, #16), embedder nomic-embed-text-v2-moe 768-d (D2).
-% - Lost-in-the-middle: positional effects mean items mid-context are under-used; the agent
-%   places the best-retrieved item LAST (Inv #6) to mitigate this @liu2024 @cuconasu2024.
-% - Context rot: long context degrades performance even with perfect retrieval — quality
-%   falls as irrelevant tokens accumulate @du2025 [VERIFY+ADD: Context-Rot (Chroma)].
-% - Gap → the central control: because retrieval is itself a confound, retrieval is held
-%   constant — pure cosine, identical across all 6 policies (Inv #5) — so observed
-%   differences are attributable to STORAGE/forgetting, not retrieval (recurring: "retrieval
-%   held constant"). Forward-ref fig:architecture.
+The pain is that retrieval is not neutral about \emph{where} in the prompt a record lands.
+Models use the middle of a long context least --- the lost-in-the-middle
+effect~\cite{liu2024} --- and the presence of plausible-but-irrelevant retrieved passages
+can itself change the answer~\cite{cuconasu2024}. The agent mitigates the positional part
+by ordering the injected records so the best-scoring one comes \emph{last}, nearest the
+generation point.
+
+The consequence runs deeper than position. Even with retrieval held perfect, simply
+lengthening the context degrades performance: irrelevant tokens accumulated in the window
+lower answer quality regardless of whether the relevant item is present~\cite{du2025}. For
+an accumulating memory store this is the quiet tax on remembering --- every kept record is
+a candidate distractor, so the storage policy and the retrieval outcome are coupled.
+
+This coupling is exactly the gap the thesis's design closes. Because retrieval is itself a
+powerful confound --- a policy could appear to ``remember better'' merely by searching
+differently --- retrieval is \emph{held constant across all six policies}: pure cosine
+similarity, the same depth, the same context budget, same-repository only. With search
+frozen, any difference between conditions is attributable to what each policy stores and
+forgets, not to how it retrieves. Figure~\ref{fig:architecture} shows where this control
+sits in the pipeline: the storage policy is the only swappable component.

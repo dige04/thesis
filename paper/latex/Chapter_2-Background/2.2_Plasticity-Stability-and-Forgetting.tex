@@ -1,30 +1,38 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 
-% ── 2.2  The Plasticity–Stability Tradeoff and Forgetting ────────────────────
-% PURPOSE: Establish the stability/plasticity tension and the counter-intuitive thesis
+% ── 2.2  The Plasticity-Stability Tradeoff and Forgetting ────────────────────
+% PURPOSE: Establish the stability/plasticity tension and the counter-intuitive claim
 %          that forgetting can HELP, motivating proactive memory policies.
-% MOVE: Counter-intuitive lead — contrary to "more memory is always better", accumulated
-%       irrelevant experience can degrade an agent.
-% BEATS: see bullets below.
-% FIGURES/TABLES: (none — narrative; forward-ref fig:interdependence for error propagation)
-% CITATIONS: xiong2025 (experience-following, error propagation), [VERIFY+ADD] Context-Rot (Chroma)
 % ─────────────────────────────────────────────────────────────────────────────
 
 \section{The Plasticity--Stability Tradeoff and Forgetting}
 
-\begin{todobox}
-Expand the beats below into prose using the Counter-intuitive lead move; land on the claim that proactive forgetting is a design lever, not merely a failure to retain.
-\end{todobox}
+Contrary to the intuition that more memory is always better, an agent that retains
+everything can be worse off than one that forgets. The reason is the classic
+plasticity--stability tension: retaining prior competence pulls against adapting to what is
+new. An unbounded store maximises stability in principle, but in doing so it risks drowning
+the one relevant record among a growing mass of irrelevant ones.
 
-% - Stability vs plasticity: retaining prior competence pulls against adapting to new tasks;
-%   an unbounded store maximizes stability but risks drowning the relevant in the irrelevant.
-% - Catastrophic forgetting is the classic failure mode — but it is framed at the weight level;
-%   for external memory the analogous risk is accumulation, not erasure.
-% - Counter-intuitive case: forgetting can HELP — old or off-task memory acts as a distraction
-%   that crowds out the relevant item and biases retrieval (recurring theme: "footprint").
-% - Error propagation: agents exhibit experience-following — a bad stored experience is
-%   retrieved, reused, and compounds across subsequent tasks @xiong2025.
-% - Hence proactive forgetting is a control lever; thread "not every task needs memory" and
-%   forward-ref the interdependence analysis (fig:interdependence) where ~⅔ of tasks are
-%   file-disjoint. [VERIFY+ADD: Context-Rot (Chroma) — long irrelevant context degrades quality]
+In parametric learning this tension surfaces as catastrophic forgetting --- new gradients
+overwrite old competence --- but that framing is at the level of weights. For an external,
+retrieval-backed memory the failure mode inverts: the danger is not erasure but
+\emph{accumulation}. Stale or off-task records do not simply sit harmlessly in the store;
+they act as distractors that crowd out the relevant item and bias what retrieval surfaces.
+The cost of remembering is paid not only in tokens but in the quality of what is retrieved.
+
+This is where forgetting becomes a design lever rather than a deficiency. Empirically,
+agents exhibit \emph{experience-following}: a retrieved precedent is reused faithfully,
+which is a virtue when the precedent is apt and a liability when it is not. A bad stored
+experience, once retrieved, is reused and its error compounds across subsequent
+tasks~\cite{xiong2025}. Under experience-following, pruning a misleading record is not lost
+information --- it is removed interference. Proactive forgetting can therefore raise
+performance, not merely lower cost.
+
+This reframes the whole question the thesis asks. If forgetting can help, then the design
+problem is not how to remember more but \emph{when} and \emph{how much} to forget --- and
+the answer is bounded by how often memory is even relevant. Most coding tasks in the
+benchmark do not share files with any predecessor (Figure~\ref{fig:interdependence}), so
+for the majority of tasks there is nothing useful to carry forward and accumulation buys
+only risk. Not every task needs memory; the policies in this thesis are different bets on
+which records are worth keeping for the minority that do.

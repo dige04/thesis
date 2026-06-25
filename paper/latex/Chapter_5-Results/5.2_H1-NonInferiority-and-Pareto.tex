@@ -1,149 +1,115 @@
-% ── 5.2  H1: Non-Inferiority and the Performance–Cost Frontier ───────────
-% PURPOSE: Deliver the signature result — forgetting is non-inferior on the CL-F1 proxy
-%          and wins on the footprint axis. This is the section the whole thesis points at.
-% Numbers grounded in GROUNDED_FACTS.md §2, §3 + results/memory_robustness.json.
-% NOTE (integrity): TOST/SESOI was NOT computed. Primary test = Wilcoxon (Invariant #11);
-% bootstrap CI + power are SENSITIVITY only — do not switch tests to claim significance.
-% The compute-axis Pareto is a NULL (policies overlap); forgetting wins ONLY on footprint.
+% ── 5.2  H1: Resolution and the Performance--Cost / Footprint Frontiers ──────
+% PURPOSE: The signature analysis -- whether forgetting matches full memory on the
+%          CL-F1 proxy, and how the two cost axes (compute vs footprint) behave.
+% INTEGRITY: every numeric value and every conclusion-clause is a PLACEHOLDER pending
+% the trustworthy 144 rerun (runs_144_seq_cceb325). The pre-registered ANALYSIS PLAN is
+% writable now; the ANSWER is not. Primary test = Wilcoxon (Invariant #11); TOST/SESOI
+% was NOT computed -- non-inferiority is read from bounded CIs + power, not a TOST verdict.
+% Figures are placeholder boxes (results/plots is regenerated from the rerun).
 % ─────────────────────────────────────────────────────────────────────────
 
-\section{H1: Non-Inferiority and the Performance--Cost Frontier}
+\section{H1: Resolution and the Performance--Cost / Footprint Frontiers}
 \label{sec:h1}
 
-Contrary to the intuition that an agent which remembers more of its past should solve
-more of its future, \textbf{no forgetting policy is distinguishable from full-memory
-accumulation on the resolution proxy}, and the policy that carries the least memory is
-the one that resolves the most tasks. Because retrieval is held constant across all six
-conditions, this is not a confound of \emph{how} memory is searched but a direct
-consequence of \emph{what} each policy chooses to keep --- which licenses reading the
-comparison as a clean effect of the forgetting policy itself.
+This section reports the thesis's primary contrast: whether any forgetting policy differs
+from full-memory accumulation on the resolution proxy, and how cost behaves on the compute
+and footprint axes. Because retrieval is held constant across all six conditions, the
+contrast is attributable to \emph{what} each policy keeps rather than to \emph{how} memory
+is searched. The analysis plan below is fixed in advance; the quantitative verdict is
+filled from the trustworthy rerun \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}.
 
-\subsection{The primary test: no policy beats full memory}
+\subsection{The primary test}
 
 The pre-registered primary analysis is a Wilcoxon signed-rank test on $N=8$
 sequence-level means, comparing each of the five other policies against
 \texttt{full\_memory}, with Holm correction across the five contrasts
-(the pre-registered primary test; see Section~\ref{sec:metrics}). The result is uniform:
-\textbf{every contrast is non-significant after correction}, and every bootstrap
-confidence interval on the paired difference crosses zero (Table~\ref{tab:main-results}).
-Proactive forgetting is, on this evidence, \emph{non-inferior} to full-memory
-accumulation. The closest any contrast comes to significance is \texttt{no\_memory}
-versus \texttt{full\_memory} ($p=0.109$ uncorrected, large effect $r_{rb}=-0.667$) --- a
-directional hint that \emph{some} memory beats none, but one that does not survive as a
-significant difference.
+(Section~\ref{sec:metrics}). Effect size is rank-biserial $r_{rb}$ and the interval is the
+95\% BCa bootstrap CI on the paired difference in resolution rate.
+Table~\ref{tab:main-results} reports the five contrasts once the rerun completes; the
+direction and significance of each are \texttt{[RESULT: pending]}.
 
 \begin{table}[htbp]
   \centering
   \caption{H1 primary test. Wilcoxon signed-rank on $N=8$ sequence means, each policy vs
   \texttt{full\_memory}, Holm-corrected over the five contrasts. Effect size is
   rank-biserial $r_{rb}$; the interval is the 95\% BCa bootstrap CI on the paired
-  difference in resolution rate. No contrast is significant.}
+  difference in resolution rate. \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}}
   \label{tab:main-results}
   \begin{tabular}{lrrrrlc}
     \toprule
     Contrast (vs \texttt{full\_memory}) & $W$ & $p$ & Holm $p$ & $r_{rb}$ & 95\% BCa CI & Sig. \\
     \midrule
-    random\_prune      & 17.0 & 0.945 & 1.000 & $-0.056$ & $[-0.113,\ 0.031]$ & No \\
-    recency\_prune     & 11.0 & 0.383 & 1.000 & $+0.389$ & $[-0.044,\ 0.076]$ & No \\
-    type\_aware\_decay & 10.0 & 0.313 & 1.000 & $-0.444$ & $[-0.048,\ 0.021]$ & No \\
-    cls\_consolidation & 10.0 & 0.313 & 1.000 & $-0.444$ & $[-0.053,\ 0.006]$ & No \\
-    no\_memory         &  6.0 & 0.109 & 0.547 & $-0.667$ & $[-0.053,\ 0.000]$ & No \\
+    random\_prune      & --- & --- & --- & --- & --- & --- \\
+    recency\_prune     & --- & --- & --- & --- & --- & --- \\
+    type\_aware\_decay & --- & --- & --- & --- & --- & --- \\
+    cls\_consolidation & --- & --- & --- & --- & --- & --- \\
+    no\_memory         & --- & --- & --- & --- & --- & --- \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\subsection{The null is bounded and powered, not a bare ``no difference''}
+\subsection{Bounding and powering the result}
 
-A non-significant result is only informative if the test could have detected an effect
-worth caring about. Two sensitivity analyses establish that it could, and bound what the
-null actually rules out. We report these in the estimation spirit advocated by
+A non-significant result is informative only if the test could have detected an effect
+worth caring about; a significant one needs its magnitude bounded. We therefore report,
+alongside the primary test, the aggregate full-memory-minus-no-memory difference with its
+bootstrap interval and the detectable-effect (power) profile of the $N=8$ Wilcoxon design
+under the observed sequence-level noise. These are presented in the estimation spirit of
 \cite{cumming2014} and \cite{wasserstein2019} --- as intervals and detectable-effect
-sizes, not as a second significance verdict.
+sizes that bound what the null does or does not rule out, \emph{not} as a second
+significance verdict, and with no test-switching to manufacture significance (Invariant
+\#11). The magnitudes (the bounded memory benefit, the per-percentage-point power, and the
+per-task memory-churn versus seed-noise comparison) are
+\texttt{[RESULT: pending runs\_144\_seq\_cceb325]}.
 
-\emph{First, the memory benefit is bounded.} The aggregate advantage of full memory over
-no memory is small but real: a mean difference of \textbf{+2.40 percentage points}
-(bootstrap 95\% CI $[+0.47,\ +4.35]$ pp), positive in 6 of 8 sequences. Memory helps a
-little; we can rule out an aggregate benefit larger than roughly 4.4 pp.
+\subsection{The two-axis frontier: compute versus footprint}
 
-\emph{Second, the test is well powered for any effect that size or larger.} Under the
-observed sequence-level noise, the $N=8$ Wilcoxon design has power 0.29 to detect a 2 pp
-per-sequence difference, 0.68 at 3 pp, and \textbf{1.00 at 4 pp or more}. Two readings
-follow. The policy-null is \emph{meaningful}: any forgetting policy that cost (or saved)
-4 pp or more relative to full memory would have been detected, and none did. And the
-$\approx$2.4 pp memory benefit sits \emph{below} the pre-registered test's resolution ---
-which is precisely why the primary Wilcoxon is non-significant while the bootstrap
-interval excludes zero. We therefore report the Wilcoxon result as primary and treat the
-bootstrap and power analyses as a sensitivity bound on a small effect, rather than
-re-labelling the effect as significant under a more favourable test.
+The efficiency contribution (H1b) is read on two separate axes, because forgetting can
+behave very differently on each.
 
-\emph{Third, per task the memory effect is within the agent's own noise.} Switching
-memory on or off flips 19.1\% of individual task outcomes (71 rescued, 59 broken), but
-the within-policy, seed-to-seed flip rate is already 17--20\% (e.g.\ \texttt{no\_memory}
-19.8\%, \texttt{full\_memory} 18.5\%). Per-task memory churn is thus indistinguishable
-from the agent's stochastic noise floor; 80.9\% of tasks are memory-invariant
-(23\% solved under both regimes --- a capability ceiling --- and 58\% solved under
-neither --- too hard regardless). The correct reading is multi-scale: a \emph{small,
-systematic} sequence-level tilt toward memory (+2.4 pp) riding on top of \emph{large}
-per-task noise. This also validates the design --- a single-seed comparison would have
-been uninterpretable.
+\paragraph{Compute.}
+On total token cost (Figure~\ref{fig:pareto-compute}) the question is whether the six
+policies separate at all, given that cost is dominated by the agent loop --- each task
+runs up to 20 ReAct steps whose growing conversation is resent every step, so the memory
+payload is a small fraction of the per-task token bill. The per-policy spread relative to
+the paired standard deviation is \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}.
 
-\subsection{The two-axis frontier: a compute null and a footprint win}
-
-The efficiency contribution (H1b) is best read on two separate axes, because forgetting
-behaves very differently on each.
-
-\paragraph{Compute: a null.}
-On total token cost (Figure~\ref{fig:pareto-compute}) the six policies are
-\emph{indistinguishable}. Per-policy gaps are on the order of 0.2--0.5M tokens against a
-paired standard deviation of $\approx$2.2M --- so far inside the noise that
-\texttt{full\_memory} actually consumed \emph{more} tokens than \texttt{recency\_prune}
-in 16 of 24 paired cells. The reason is structural: cost is dominated by the agent loop,
-not by memory. Each task runs up to 20 ReAct steps whose growing conversation is resent
-every step, so the prompt alone averages $\approx$151K tokens per task; the memory
-payload is $\approx$0.4--1\% of that, and the tool-call budget ($\approx$21.5/task) is
-flat across policies. Pruning a few hundred tokens of memory cannot move a six-million-token
-bill. The compute frontier is therefore a tangle of overlapping confidence ellipses, not
-a ranking.
-
-\paragraph{Footprint: where forgetting wins.}
-The picture inverts on the memory-footprint axis (Figure~\ref{fig:pareto-footprint}),
-the quantity that governs storage and retrieval-index growth over a long-running agent's
-lifetime. Here \texttt{full\_memory} carries $\approx$2{,}986 tokens/task and is
-\emph{Pareto-dominated}: \texttt{recency\_prune} reaches a \emph{higher} resolution rate
-(0.330 vs 0.311) while carrying $\approx$4$\times$ less memory ($\approx$698 tokens), and
-\texttt{no\_memory} anchors the zero-footprint corner. The Pareto-optimal set is the
-light-footprint policies; full accumulation buys nothing on outcomes that the pruners do
-not also deliver, while paying a $4\times$ footprint premium.
+\paragraph{Footprint.}
+The memory-footprint axis (Figure~\ref{fig:pareto-footprint}) measures the memory tokens
+carried per task --- the quantity that governs storage and retrieval-index growth over a
+long-running agent's lifetime, and the axis on which the pruning policies are designed to
+differ from \texttt{full\_memory}. The footprint ratio between full accumulation and the
+pruners, and whether any policy is Pareto-dominated, are
+\texttt{[RESULT: pending runs\_144\_seq\_cceb325]}.
 
 \begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.82\textwidth]{pareto_compute.png}
-  \caption{Performance vs compute. CL-F1 (resolution rate) against total tokens per run,
-  with 95\% confidence ellipses. The six policies overlap almost completely: on the
-  compute axis the forgetting policies are statistically indistinguishable from
-  full memory --- a null. Cost is dominated by the agent loop, not by memory.}
-  \label{fig:pareto-compute}
+\centering
+\begin{figurestub}{Performance vs compute (pending)}
+Two-axis Pareto: CL-F1 (resolution rate) against total tokens per run, with 95\%
+confidence ellipses per policy. Regenerated from \texttt{results/plots/pareto\_compute.png}
+once the trustworthy rerun (\texttt{runs\_144\_seq\_cceb325}) is aggregated.
+\end{figurestub}
+\caption{Performance versus compute (total tokens per run).
+\texttt{[RESULT: pending runs\_144\_seq\_cceb325]}}
+\label{fig:pareto-compute}
 \end{figure}
 
 \begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.82\textwidth]{pareto_footprint.png}
-  \caption{Performance vs memory footprint. CL-F1 against memory tokens carried per task.
-  \texttt{full\_memory} (far right, $\approx$2{,}986 tok) is Pareto-dominated:
-  \texttt{recency\_prune} reaches a higher resolution rate at $\approx$4$\times$ smaller
-  footprint, and \texttt{no\_memory} holds the zero-footprint corner. This is the axis on
-  which forgetting wins.}
-  \label{fig:pareto-footprint}
+\centering
+\begin{figurestub}{Performance vs memory footprint (pending)}
+Two-axis Pareto: CL-F1 against memory tokens carried per task. \texttt{full\_memory} sits
+at the high-footprint end; the pruning policies and \texttt{no\_memory} populate the
+light-footprint corner. Regenerated from
+\texttt{results/plots/pareto\_footprint.png} once the rerun is aggregated.
+\end{figurestub}
+\caption{Performance versus memory footprint (tokens carried per task).
+\texttt{[RESULT: pending runs\_144\_seq\_cceb325]}}
+\label{fig:pareto-footprint}
 \end{figure}
 
 \paragraph{The combined claim.}
-Non-inferior on the value axis, indistinguishable on compute, and dominant on footprint:
-aggressive forgetting matches full-memory accumulation on task resolution at roughly a
-quarter of the memory footprint and no compute penalty. ``Not every task needs memory''
-begins to pay off here --- and the rest of the chapter explains \emph{why} the value-axis
-gap is so small that throwing memory away costs nothing.
-
-% NOTE TO SELF / USER: the section title says "Performance–Cost Frontier", but the data
-% show forgetting wins on the FOOTPRINT axis, not the compute/cost axis (which is a null).
-% Recommend retitling to "Performance–Footprint Frontier" or "...Cost and Footprint
-% Frontiers" — flagged in chat, not silently changed.
+Read together, the value axis and the two cost axes determine whether aggressive
+forgetting matches full-memory accumulation on task resolution while carrying a smaller
+footprint, and at what compute cost. The synthesised statement is deferred until the
+numbers land \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}; the rest of the chapter
+quantifies \emph{why} the value-axis gap is the size it is.

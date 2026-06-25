@@ -1,40 +1,49 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% NOTE: LightMem (2510.18866) and Mem0 (2504.19413) were [VERIFY+ADD] in the scaffold but
+% are NOT in references.bib -- omitted to avoid uncited claims. Add to bib + cite if desired.
 
 % ── 3.1  Memory Management and Forgetting in LLM Agents ──────────────────
 % PURPOSE: Survey agent-memory systems thematically; demarcate forgetting layers.
-% MOVE: Per-work critique → close-positioning (thematic, one critique per nug).
-% BEATS: store-everything bias · explicit forgetting/consolidation · KV-cache layer.
-% FIGURES/TABLES: none.
-% CITATIONS: packer2024, zhong2024, xu2025, gutierrez2024hipporag, alqithami2025,
-%   zhang2023h2o, xiao2024streamingllm; [VERIFY+ADD] LightMem 2510.18866,
-%   [VERIFY+ADD] Mem0 2504.19413.
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Memory Management and Forgetting in LLM Agents}
 
-\begin{todobox}
-Expand the beats below into prose using the per-work-critique \textrightarrow{} positioning MOVE. Organize THEMATICALLY (three sub-themes); embed a one-line critique in each prior-work mention; close each theme by positioning our work. Thread "retrieval held constant" and "footprint". No fabricated numbers.
-\end{todobox}
+\subsection{Agent memory systems and the store-everything bias}
 
-% THEME A — Agent memory systems (store-everything bias):
-% - MemGPT (packer2024): OS-style paging of context; critique — paging grows store,
-%   never proactively forgets at the application layer.
-% - MemoryBank (zhong2024): Ebbinghaus-styled decay over dialogue memory; critique —
-%   conversational, retrieval not held constant across compared variants.
-% - A-MEM (xu2025): self-organizing linked notes; critique — adds structure, still
-%   accretion-biased, no controlled forgetting comparison.
-% - HippoRAG (gutierrez2024hipporag): hippocampal-indexed retrieval; critique —
-%   improves recall, orthogonal to *whether* to retain. Close: these default to
-%   accumulation; none isolate storage from retrieval.
-% THEME B — Explicit forgetting / consolidation:
-% - Alqithami (alqithami2025): six-policy budget sweep; critique — conversational and
-%   does NOT hold retrieval constant (NOVELTY-THREAT, differentiate early).
-% - LightMem (2510.18866) [VERIFY+ADD]: sleep-time consolidation; critique — efficiency-
-%   framed, not a controlled non-inferiority test on coding.
-% - Mem0 (2504.19413) [VERIFY+ADD]: ADD/UPDATE/DELETE memory ops; critique — operations
-%   defined, policy effect on task outcome not isolated. Close: motivates our control.
-% THEME C — KV-cache eviction (DIFFERENT layer):
-% - H2O (zhang2023h2o), StreamingLLM (xiao2024streamingllm): token-level cache eviction;
-%   critique — demarcate as a token/attention layer, NOT application memory; close —
-%   our six policies act on the application store, complementary not competing.
+The first wave of agent-memory systems treats memory as something to grow, not to prune.
+MemGPT~\cite{packer2024} borrows the operating-system metaphor, paging information between
+a bounded context and external storage so the agent can ``recall'' beyond its window; the
+mechanism is elegant, but it pages material in and out rather than deciding what is no
+longer worth keeping, so the store only grows. MemoryBank~\cite{zhong2024} does introduce
+forgetting --- an Ebbinghaus-style decay over dialogue memories --- but it is built for
+conversation and, like most such systems, does not hold retrieval constant across the
+variants it compares, so any benefit blends storage with search. A-MEM~\cite{xu2025} adds
+structure, organising memories into self-linking notes, yet the design remains
+accretion-biased and offers no controlled comparison of \emph{whether} to retain.
+HippoRAG~\cite{gutierrez2024hipporag} improves recall with a hippocampally-inspired index,
+but indexing is orthogonal to the retention question --- it changes how the store is
+searched, not how large it should be allowed to grow. Across this family the default is
+accumulation, and storage is never isolated from retrieval.
+
+\subsection{Explicit forgetting and consolidation}
+
+A smaller body of work makes forgetting a first-class operation. The closest to this thesis
+is Alqithami's six-policy comparison~\cite{alqithami2025}, which sweeps a comparable breadth
+of forgetting behaviours in a privacy-aware cognitive-memory architecture. It is, however,
+conversational, and --- decisively for our purposes --- it does not hold retrieval constant
+across the compared policies, so its conditions differ in both what they store and how they
+search. It demonstrates that forgetting policies are worth comparing without isolating the
+forgetting decision itself, which is precisely the control this thesis adds.
+
+\subsection{KV-cache eviction: a different layer}
+
+Finally, a related-sounding literature on cache eviction --- H2O's heavy-hitter
+oracle~\cite{zhang2023h2o} and StreamingLLM's attention sinks~\cite{xiao2024streamingllm}
+--- ``forgets'' at the level of the attention key--value cache, dropping tokens to keep
+decoding cheap over long inputs. It is important to demarcate this clearly: that work
+operates inside a single forward pass on the token/attention layer, whereas the six policies
+here act on the application-level \texttt{MemoryStore} of past tasks. The two are
+complementary rather than competing --- one bounds the context, the other bounds the
+experience base --- and conflating them would misattribute footprint savings to the wrong
+mechanism.

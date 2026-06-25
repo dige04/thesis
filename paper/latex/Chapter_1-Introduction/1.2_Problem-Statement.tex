@@ -1,29 +1,42 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 
 % ── 1.2  Problem Statement ──────────────────────────────────────────────────
 % PURPOSE: Name the pain, its consequence, and the unmet research gap.
-% MOVE: Pain → Consequence → Gap ("therefore there exists a need …").
-% BEATS: pain (bloat vs lossy pruning) · consequence (cost + entanglement) · gap.
-% FIGURES/TABLES: none.
-% CITATIONS: xiong2025 (more memory can hurt — experience-following),
-%            alqithami2025 (closest six-policy prior — NOVELTY-THREAT).
+% MOVE: Pain -> Consequence -> Gap ("therefore there exists a need ...").
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Problem Statement}
 
-\begin{todobox}
-Expand the beats below using Pain \textrightarrow{} Consequence \textrightarrow{} Gap, ending on an explicit "therefore there exists a need …". Pre-empt Alqithami (alqithami2025) as a novelty threat: conversational domain, retrieval not isolated.
-\end{todobox}
+The agent designer faces a genuine dilemma with two real failure modes. Keep all memory,
+and the context window bloats: token cost and latency climb with every completed task, and
+the prompt fills with material that is at best irrelevant and at worst
+distracting~\cite{liu2024,du2025}. Prune aggressively, and the agent may discard exactly
+the record it needed --- the prior fix to the very subsystem the current issue touches.
+Neither extreme is safe, and the harm is not only economic: because agents follow
+retrieved experience even when it is wrong, a larger store can lower the resolution rate
+rather than raise it~\cite{xiong2025}. ``More memory'' is therefore not a free lever, and
+``less memory'' is not a free saving; both directions carry risk.
 
-% - PAIN: full memory bloats the context window; but naive pruning may drop
-%   task-critical knowledge — both failure modes are real.
-% - more memory can actively hurt via experience-following / interference,
-%   not merely cost @xiong2025.
-% - CONSEQUENCE: cost and latency rise with accumulation; worse, prior work
-%   *entangles* the storage (forgetting) policy with the retrieval policy, so
-%   no benefit is cleanly attributable — and none is demonstrated on coding.
-% - NOVELTY-THREAT: @alqithami2025 is the closest six-policy comparison, but it
-%   is conversational and does *not* hold retrieval constant — differentiate now.
-% - GAP (therefore): there exists no controlled, *retrieval-fixed* comparison of
-%   forgetting policies for coding agents — the central control this thesis adds.
+The consequence is that the field lacks a clean answer to a basic engineering question:
+how much does memory actually help, and which forgetting policy --- if any --- best
+navigates the trade-off? The deeper obstacle is methodological. In most prior systems the
+storage policy is \emph{entangled} with the retrieval policy: a method that ``remembers
+better'' usually also retrieves differently, embeds differently, or ranks differently, so
+any measured benefit cannot be attributed to forgetting as opposed to search. No benefit
+is cleanly attributable, and for coding agents specifically, none has been demonstrated
+under a controlled comparison at all.
+
+The closest prior comparison underscores the gap rather than closing it. Alqithami's
+six-policy cognitive-memory study~\cite{alqithami2025} evaluates a comparable breadth of
+forgetting behaviours, but in a \emph{conversational}, privacy-aware setting and without
+holding retrieval constant across policies --- so its conditions differ in both what they
+store and how they search, and its domain is not software engineering. It establishes that
+forgetting policies are worth comparing; it does not establish what they do for a coding
+agent when retrieval is fixed.
+
+Therefore there exists a need for a controlled, \emph{retrieval-fixed} comparison of
+forgetting policies for coding agents --- one in which the only thing that varies between
+conditions is what the agent keeps versus forgets, so that the effect of the storage
+policy can be measured rather than inferred. Supplying that control is the central problem
+this thesis addresses.

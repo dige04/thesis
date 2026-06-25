@@ -1,23 +1,14 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
-
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 % ── 4.2.2  Full Memory ───────────────────────────────────────────────────
-% PURPOSE: Define the ceiling boundary baseline (unbounded retention).
-% MOVE: Boundary-baseline definition (the upper bracket of the dose-ladder).
-% BEATS: see // bullets below.
-% FIGURES/TABLES: (none new; row in six-policy summary table; upper bound on fig:footprint-time).
-% CITATIONS: (none required).
-% ─────────────────────────────────────────────────────────────────────────
 
 \subsection{Full Memory}
 
-\begin{todobox}
-Expand the beats below into prose. Frame as the upper bracket of the dose-ladder; thread "footprint" as the cost axis where this policy is the ceiling.
-\end{todobox}
-
-% - Boundary baseline: the maximum-dose ceiling of the dose-ladder.
-% - All records are retained; the cap = 10 (A1) is IGNORED by design — no eviction ever fires.
-% - Upper-bound footprint: defines the largest memory footprint any policy can reach and
-%   anchors the high end of fig:footprint-time.
-% - The accumulation condition that proactive forgetting must match (non-inferiority, H1)
-%   or beat on the footprint axis (H1b, A4).
+Full Memory is the maximum-dose ceiling. Every completed task appends a record and none is
+ever evicted: the cap of ten (A1) is ignored by design, so the store grows monotonically
+over the sequence. This makes Full Memory the upper bound on memory \emph{footprint} --- it
+carries the largest store any condition reaches and anchors the heavy end of the footprint
+axis --- and it is the accumulation strategy the rest of the field defaults to. It is
+therefore the natural comparison target: proactive forgetting succeeds if it matches Full
+Memory on task resolution (the non-inferiority hypothesis, H1) while carrying a smaller
+footprint (H1b).

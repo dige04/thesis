@@ -1,30 +1,50 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% INTEGRITY: model = deepseek-v4-flash (D8), single model all roles. NOT MiniMax M3.
+% Full deviation chain GPT-5.4 -> ... -> deepseek-v4-flash disclosed in Section 6.3.
 
 % ── 4.5  Agent, Benchmark, and Frozen Model ──────────────────────────────
-% PURPOSE: Pin down the three held-constant factors — the agent, the benchmark, and
-%          the generative/embedding models — and disclose the model deviation chain.
-% MOVE: Pain -> Consequence -> Gap is not needed here; straight declarative + disclosure.
-% BEATS: see ordered bullets below.
-% FIGURES/TABLES: fig:architecture (agent <-> store), tab:deviations (D6, D2).
-% CITATIONS: joshi2025.
+% PURPOSE: Pin the three held-constant factors and disclose the model deviation chain.
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Agent, Benchmark, and Frozen Model}
 
-\begin{todobox}
-Expand the beats below into prose. State that the model is a FIXED factor held constant across all 144 runs, so between-policy comparisons stay valid even though absolute resolution rates are not leaderboard-comparable.
-\end{todobox}
+Three factors are held constant across all 144 runs: the agent, the benchmark, and the
+models. The agent is a LangGraph ReAct coding agent that plans, reads and edits files, and
+runs tests, with a hard cap of 20 steps per task and a force-fail on overrun
+(Invariant~\#3). The benchmark is SWE-Bench-CL~\cite{joshi2025}: all eight official
+sequences, in fixed order, with no reordering and no self-generated tasks (Invariant~\#1).
+Correctness is scored with the standard \texttt{eval\_v3} harness, so a task counts as
+resolved only if the official test suite passes.
 
-% - The agent is a LangGraph ReAct coding agent with a hard cap of 20 steps per task
-%   (Invariant #3, force-fail on overrun).
-% - The benchmark is SWE-Bench-CL (joshi2025): all 8 official sequences, no reordering and
-%   no self-generated tasks (Invariant #1).
-% - The frozen generative model is MiniMax M3 (deviation D6) — a reasoning model whose
-%   `<think>` chain-of-thought is stripped before parsing and before embedding; served via
-%   the 0G router with tolerant JSON extraction and 16-key rotation.
-% - The model is a FIXED factor held constant across all conditions x seeds; the deviation
-%   chain is GPT-5.4 -> Kimi -> M3 (D1). Absolute resolution rates are therefore NOT
-%   comparable to GPT-5.4 / SWE-Bench leaderboards; between-policy contrasts remain valid.
-% - Embeddings are local nomic-embed-text-v2-moe, 768-d (deviation D2).
-% - Correctness is scored with the standard eval_v3 harness.
+The generative model is frozen: a single \texttt{deepseek-v4-flash} instance serves every
+model role in the system --- the coding agent, the five-type classifier, the reflection
+step, and the CLS consolidation summariser. Using one model for all roles, held identical
+across every condition and seed, makes the model a fixed factor: between-policy contrasts
+(H1--H5) remain valid even though, as a consequence, the absolute resolution rates are not
+comparable to public SWE-Bench leaderboards. This model is the final link in a disclosed
+deviation chain from the pre-registered GPT-5.4 (the chain and its rationale are laid out in
+Section~\ref{sec:deviations}); \texttt{deepseek-v4-flash} is a light reasoning model, which
+has a uniform, between-condition-neutral effect on the token-cost axis that is disclosed
+there. Embeddings are computed by a separate local \texttt{nomic-embed-text-v2-moe} model
+(768-dimensional), also held constant across conditions.
+
+A structural property of the benchmark bounds how much any of this can matter. Within each
+sequence only a minority of tasks share gold-patch files with a predecessor --- the only
+tasks for which a stored record could be structurally relevant --- so for most tasks there
+is, by construction, nothing useful to remember (Figure~\ref{fig:interdependence}). This
+interdependence ceiling frames the entire memory question and is quantified in
+Chapter~\ref{ch:results}.
+
+\begin{figure}[htbp]
+\centering
+\begin{figurestub}{task interdependence in SWE-Bench-CL}
+Per-sequence structural interdependence: the fraction of tasks whose gold-patch files
+overlap an earlier task in the same sequence (mean prior-overlap and
+fraction-with-dependency per sequence). Regenerated from the structural-interdependence
+analysis once the rerun is aggregated. \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}
+\end{figurestub}
+\caption{Per-sequence task interdependence in SWE-Bench-CL: only a minority of tasks
+structurally depend on a predecessor. \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}}
+\label{fig:interdependence}
+\end{figure}

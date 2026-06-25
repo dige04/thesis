@@ -1,33 +1,28 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
-
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 % ── 4.2.5  Type-Aware Decay ──────────────────────────────────────────────
-% PURPOSE: Define the content-aware forgetting policy and its frozen score formula.
-% MOVE: Cognitive-grounding ("forgetting as adaptive rational decay") + frozen-by-design.
-% BEATS: see // bullets below.
-% FIGURES/TABLES: (none new; row in six-policy summary table).
-% CITATIONS: anderson1991.
-% ─────────────────────────────────────────────────────────────────────────
 
 \subsection{Type-Aware Decay}
+\label{sec:type-decay}
 
-\begin{todobox}
-Expand the beats below into prose. Ground in Anderson--Schooler rational analysis [@anderson1991]; stress that d(type) is frozen at design time, NOT calibrated.
-\end{todobox}
-
-% - Content-aware forgetting: each record gets a retention score combining age, per-type
-%   decay rate, and how often it was retrieved; the lowest-scoring record is evicted at cap.
-% - Multiplicative Anderson–Schooler score (Invariant #8):
-
+Type-Aware Decay is the content-aware policy at the top of the ladder's interior. Each
+record carries a retention score that combines how old it is, how fast records of its kind
+should decay, and how often it has been retrieved; when the store is over the cap of ten
+(A1), the lowest-scoring records are evicted. The score is the multiplicative
+Anderson--Schooler form~\cite{anderson1991} (Invariant~\#8):
 \[
   \mathrm{score} = \mathrm{base}\times\mathrm{age}^{-d(\mathrm{type})}
-  \times(1+\mathrm{retrieval\_count})^{0.5}
+  \times(1+\mathrm{retrieval\_count})^{0.5}.
 \]
+Age pulls the score down, retrieval pulls it back up (the square root giving diminishing
+returns), and the per-type exponent $d(\mathrm{type})$ sets how quickly each kind of record
+ages. The exponent is keyed to the five-type taxonomy --- \texttt{architectural},
+\texttt{api\_change}, \texttt{bug\_fix}, \texttt{test\_update}, \texttt{config}
+(Invariant~\#7) --- so durable structural knowledge decays slowly while ephemeral records
+fade fast. Forgetting is thus driven by content and use, not by age alone.
 
-% - The per-type decay rate d(type) is keyed to the 5-type taxonomy
-%   {architectural, api_change, bug_fix, test_update, config} (#7) — slower decay for
-%   durable types, faster for ephemeral ones.
-% - d(type) is FROZEN at design time and is NOT calibrated from pilot data (pre-registration
-%   integrity); it is never re-tuned per type.
-% - Eviction rule: when over cap = 10 (A1), drop the lowest-score record(s) — forgetting is
-%   driven by content (type) and use, not by age alone.
+Crucially, $d(\mathrm{type})$ is \emph{frozen at design time} from the theoretical values
+and is never calibrated or re-tuned per type from pilot data. This is a pre-registration
+integrity choice: fitting one decay exponent per type on a handful of sequences would
+overfit and turn a hypothesis test into a curve fit. The policy as evaluated therefore
+tests the cognitive hypothesis, not a benchmark-tuned variant of it.

@@ -1,30 +1,29 @@
 % Generated from the matching Typst scaffold by
-% scripts/migrate_typst_report_to_latex.py.
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
 
 % ── 4.4  Retrieval as a Fixed Invariant ──────────────────────────────────
-% PURPOSE: Establish retrieval as THE central experimental control — frozen so that
-%          any between-policy difference is attributable to storage, not retrieval.
-% MOVE: Counter-intuitive lead emphasis — the most load-bearing design decision.
-% BEATS: see ordered bullets below.
-% FIGURES/TABLES: fig:architecture (cosine, fixed path).
-% CITATIONS: liu2024.
+% PURPOSE: Retrieval as THE central control -- frozen so differences are storage-only.
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Retrieval as a Fixed Invariant}
 
-\begin{todobox}
-Expand the beats below into prose. This is the linchpin of internal validity: state plainly that "retrieval held constant" is what licenses the causal reading.
-\end{todobox}
+The most load-bearing decision in this design is the one that does \emph{not} vary.
+Retrieval scoring is pure cosine similarity, identical across all six conditions --- no
+bonuses, no penalties, no policy-specific reranking --- and it is enforced in a single
+shared code path (\texttt{retriever.py::shared\_retrieve}, Invariant~\#5). Every policy
+queries the store the same way; the only thing that differs is what is in the store to be
+found.
 
-% - Retrieval scoring = pure cosine similarity, IDENTICAL across all six conditions
-%   (Invariant #5) — no bonuses, no penalties, no policy-specific reranking; enforced in
-%   `retriever.py::shared_retrieve`.
-% - top_k = 5 items returned per query; same-repo retrieval only (Invariant #16),
-%   so a sequence never pulls memories from a foreign repository.
-% - Injection order is relevance-sorted with the BEST item placed LAST (Invariant #6) —
-%   the Lost-in-the-Middle fix, motivated by liu2024's finding that models attend most to
-%   the ends of long contexts.
-% - Because retrieval is frozen byte-for-byte across conditions, the ONLY thing that
-%   varies between policies is what each chose to store and forget. Therefore any
-%   between-policy difference in CL-F1 or footprint is attributable to storage alone —
-%   this is the control that makes H1-H5 interpretable.
+The retrieval parameters are likewise fixed. Each query returns the top $k=5$ records
+(Invariant~\#16), restricted to the same repository, so a sequence never pulls memories from
+a foreign project. The retrieved records are injected in relevance order with the
+\emph{best} record placed last, nearest the generation point --- the lost-in-the-middle fix,
+motivated by the finding that models attend most strongly to the ends of a long
+context~\cite{liu2024} (Invariant~\#6).
+
+Freezing retrieval byte-for-byte across conditions is what licenses the causal reading of
+the experiment. If two policies retrieve through the same fixed function, then any
+difference between them in resolution or footprint cannot be a retrieval difference --- it
+can only be a consequence of what each policy chose to store and forget. This is the single
+control that turns six otherwise-confounded systems into a clean single-factor comparison
+and makes H1--H5 interpretable as statements about forgetting.
