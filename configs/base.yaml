@@ -4,7 +4,10 @@ experiment:
   sequence_mode: "chronological_by_repo"
   same_repo_retrieval_only: true
   master_seed: 42
-  seeds: [1, 2, 3]  # 3 seeds for ALL 6 conditions (Frozen Invariant #2)
+  seeds: [1, 2, 3]  # PRE-REGISTERED design (Frozen Invariant #2). EXECUTED at 1 seed
+                    # under the submission deadline (AMENDMENTS.md A6); the thesis matrix
+                    # is the 1-seed/48-run set. This array is the pre-registration record,
+                    # deliberately NOT rewritten.
   
   # Pilot mode configuration (Requirement 30)
   pilot_mode:
@@ -16,25 +19,62 @@ experiment:
 
 agent:
   type: "langgraph_coding_agent"
-  main_model: "gpt-5.4"
-  summary_model: "gpt-4o-mini"        # for reflection + consolidation
-  classifier_model: "gpt-4o-mini"     # for type classification
-  embedding_model: "text-embedding-3-small"
-  temperature: 0
+  # Model names are documented defaults. At RUNTIME the provider endpoint
+  # (base_url) + API key come from .env via src/config/llm_factory.py, and env
+  # vars (LLM_MAIN_MODEL, LLM_SUMMARY_MODEL, LLM_CLASSIFIER_MODEL) override
+  # these. See AGENTS.md "Running on OpenCode Zen".
+  # DEVIATION D1 from v5 §0.1 (model frozen to GPT-5.4): switched to OpenCode Zen
+  # "go" tier (OpenAI-compatible), held constant across all 6 conditions × 3 seeds.
+  # D6-revert (2026-06-18): coding agent = Kimi kimi-k2.7-code (sub bulk + go bonus);
+  # auxiliary roles (classifier, reflection, CLS summary) = the much cheaper
+  # deepseek-v4-flash on OpenCode go, routed via AUX_LLM_CHAT_* (per-role aux client).
+  # Held constant across all 6 conditions × seeds. See AMENDMENTS.md.
+  main_model: "deepseek-v4-flash"      # main coding agent (OpenCode go; ALL roles single model, D7→D8)
+  summary_model: "deepseek-v4-flash"   # CLS consolidation summary
+  classifier_model: "deepseek-v4-flash"  # 5-type classification
+  temperature: 1                      # AMENDMENT 2026-06-14 (advisor-approved): reasoning models only accept temp=1 (was 0). Held constant across all conditions; disclose in Methods.
+  # reasoning_effort: default (smoke 2026-06-18: high gave no resolve/stability gain on Flash, +7% tokens → not worth it). Omit = provider default.
   max_steps_per_task: 20              # LOCKED
   max_tool_calls_per_task: 80
   max_test_runs_per_task: 5
   max_wall_time_minutes: 20
+  # Execution backend (decision A+G). "container" runs the 8 tools INSIDE the
+  # per-task swebench instance container via `docker exec`, so run_tests acts
+  # against the repo's installed deps. Required for real SWE-bench solving — the
+  # host LocalBackend cannot run a per-commit test env (smoke 0/3 root cause).
+  # instance_namespace="swebench" + x86_64 => agent runs the SAME prebuilt image
+  # the eval harness pulls. Set execution_backend="local" for host unit tests.
+  execution_backend: "container"
+  instance_arch: "x86_64"
+  instance_namespace: "swebench"
+
+reflection:
+  # Summary model for memory reflection (read at sequence_runner.py:948 → routed to
+  # the AUX endpoint via get_aux_client). D6-revert: deepseek-v4-flash on go (aux).
+  model: "deepseek-v4-flash"
+  temperature: 1                      # AMENDMENT 2026-06-14: temp=1 (Kimi reasoning models); was 0
 
 memory:
   backend: "sqlite_faiss"
   top_k: 5                            # confirm in spike
   max_context_tokens: 2000            # confirm in spike
-  max_records: 100
+  # AMENDMENT 2026-06-14 (THESIS_REVIEW C1, pre-registration amendment — DISCLOSE
+  # in Methods, advisor-approved): was 100. Sequences are 19–50 tasks at 1
+  # record/task, so a cap of 100 never bound → Random/Recency/Type-Aware/CLS were
+  # operationally identical to Full Memory and H2 was untestable. Lowered below the
+  # shortest sequence (19) so pruning actually fires across all 8 sequences.
+  # This is the EFFECTIVE cap: experiment_runner._initialize_policy reads
+  # memory.max_records (the per-policy policies.*.max_records below are NOT read).
+  max_records: 10
   max_storage_tokens: 30000
   retrieve_same_repo_only: true
   embedding_max_tokens: 7500          # hard cap before truncation
   injection_order: "best_last"
+  # Embedder lives here (sequence_runner reads memory.embedding_model). RUNTIME
+  # endpoint + key come from .env (EMBEDDING_* vars) via llm_factory.py.
+  # DEVIATION from v5: local Ollama embedder instead of text-embedding-3-small.
+  embedding_model: "nomic-embed-text-v2-moe"
+  embedding_dim: 768                  # MUST match embedder; rebuild FAISS if changed
 
 retrieval:
   scoring: "pure_cosine"              # IDENTICAL across all conditions
@@ -53,16 +93,16 @@ policies:
 
   random_prune:
     enabled: true
-    max_records: 100
+    max_records: 10                 # mirrors memory.max_records (amendment 2026-06-14); NOTE: not read by the runner, memory.max_records is authoritative
     seeds: [1, 2, 3]
 
   recency_prune:
     enabled: true
-    max_records: 100
+    max_records: 10                 # mirrors memory.max_records (amendment 2026-06-14); NOTE: not read by the runner, memory.max_records is authoritative
 
   type_aware_decay:
     enabled: true
-    max_records: 100
+    max_records: 10                 # mirrors memory.max_records (amendment 2026-06-14); NOTE: not read by the runner, memory.max_records is authoritative
     frequency_exponent: 0.5
     type_params:
       architectural: { base: 1.0, decay: 0.05 }
@@ -73,17 +113,23 @@ policies:
 
   cls_consolidation:
     enabled: true
-    max_records: 100
+    max_records: 10                 # mirrors memory.max_records (amendment 2026-06-14); NOTE: not read by the runner, memory.max_records is authoritative
     interval_tasks: 5                 # fixed schedule
     min_cluster_size: 3
     max_summary_tokens: 350
-    old_memory_threshold: 10
+    old_memory_threshold: 5         # A3 (2026-06-17): 10→5 (= cap/2) so CLS can consolidate at cap=10. Mirrors the code constant (this YAML value is NOT read; the policy uses OLD_MEMORY_THRESHOLD). See AMENDMENTS.md.
     similarity_threshold: 0.70
     fallback_prune: "type_aware_decay"
 
 execution:
-  docker_max_workers: 4               # increase gradually, monitor iostat
-  vps_arch: "x86_64"
+  # D5 (authorized 2026-06-02): the actual host is LOCAL arm64 macOS, NOT the
+  # v5 §0.1 #4/#5 x86_64 VPS. The vps_* keys below are retained as the v5
+  # reference spec (provenance/schema compat); host_arch records the real arch.
+  # Runtime concurrency is sequential-first (decision K) regardless of the
+  # docker_max_workers default; bounded parallelism (<=3) is a post-pilot switch.
+  host_arch: "arm64"                  # actual execution arch (D5); overrides v5 §0.1 #4/#5
+  docker_max_workers: 4               # v5 reference; runner runs sequentially for the pilot
+  vps_arch: "x86_64"                  # v5 reference VPS spec (provenance)
   vps_ram_gb: 32
   vps_disk_gb: 250
   vps_cores: 8
@@ -100,6 +146,13 @@ logging:
 
 evaluation:
   harness: "eval_v3"
+  # Image source for the swebench harness. "swebench" PULLS prebuilt x86_64
+  # instance images from Docker Hub (native x86_64 host — fast, no local build);
+  # "" builds the instance image locally (arm64/D5 path). Native x86_64 host =>
+  # no arm64-unbuildable exclusions; absolute rates comparable to the literature.
+  namespace: "swebench"
+  dataset_name: "princeton-nlp/SWE-bench_Verified"
+  timeout_seconds: 1800               # per-instance test timeout (seconds)
   cl_metric_wrapper: "custom"         # ~100 LOC computing a_{i,j} matrix
   primary_metric: "CL_F1"
   bootstrap_iterations: 5000
@@ -107,6 +160,10 @@ evaluation:
   confidence_level: 0.95
   effect_size: "rank_biserial"
   multiple_comparison_correction: "holm"
+  # DEVIATION from v5: Ollama Cloud is flat-rate (GPU-time), so per-token USD is
+  # not meaningful. The CL-F1-vs-cost Pareto x-axis uses this proxy instead.
+  # One of: usd | tokens | walltime. Also settable via COST_METRIC_MODE in .env.
+  cost_metric_mode: "tokens"
 
 statistical:
   primary_test: "wilcoxon_signed_rank"

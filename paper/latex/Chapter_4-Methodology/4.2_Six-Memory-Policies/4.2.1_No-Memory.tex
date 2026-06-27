@@ -1,0 +1,13 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% ── 4.2.1  No Memory ─────────────────────────────────────────────────────
+
+\subsection{No Memory}
+
+No Memory is the zero-dose floor of the ladder. Nothing is written to or carried across
+tasks: the \texttt{MemoryStore} is empty at every task boundary, so the agent sees only the
+current issue and its repository, with no retrieved prior experience. Retrieval is still
+``held constant'' in the formal sense --- the same cosine search runs --- but it returns
+nothing because there is nothing to return. This condition is the reference against which
+any benefit, or any harm, of remembering is measured; it is the operational meaning of an
+agent for which no task needs memory.

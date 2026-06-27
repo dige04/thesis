@@ -1,0 +1,131 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 6.2  Interpretation and Implications ─────────────────────────────────
+% PURPOSE: Turn the key findings into "when to forget", practitioner guidance, theory.
+% MOVE: Pivot ("Rather than treat memory as always-on, treat forgetting as dosage").
+% BEATS: see ordered bullets below — dosage → practitioner guidance → theory.
+% FIGURES/TABLES: fig:interdependence (memory-lift by position + ~⅓ overlap).
+% CITATIONS: xiong2025; anderson1991, richards2017 (transience as adaptive).
+% SOURCE-DOC: README grounded-facts; docs/defense-qa.md (Q5).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Interpretation and Implications}
+
+\subsection{From always-on memory to footprint-free forgetting}
+
+The dominant assumption in agent-memory engineering is that retention is an
+unalloyed good: store every solved task, retrieve what is similar, and let the
+accumulated experience compound. Our results invite a different default. With
+retrieval held constant across all six policies (Invariant~\#5), no forgetting
+policy is distinguishable from \texttt{full\_memory} on the CL-F1 resolve-rate
+proxy --- every one of the five pre-registered Wilcoxon contrasts is
+non-significant after Holm correction, and every rank-biserial effect carries a
+bootstrap confidence interval that crosses zero. The benefit of unbounded
+accumulation over carrying no memory at all is small (a $+1.6$~pp difference in
+means, $0.445$ versus $0.429$; paired median $\Delta \approx +3.4$~pp) and itself
+non-significant; the $N=8$ sequence-level design cannot resolve effects of this
+magnitude, so we report it as a bounded benefit rather than a confirmed one.
+
+What \emph{does} separate the policies is footprint. \texttt{full\_memory} carries
+roughly $1{,}247$ tokens of injected context per task; the pruners carry between
+$\sim\!600$ and $\sim\!700$ --- about half --- while \texttt{no\_memory} occupies
+the zero-footprint corner (\Cref{fig:pareto-footprint}). Crucially, this saving is
+\emph{not} a saving on compute: total tokens per run vary only from $5.74$M
+(\texttt{no\_memory}) to $6.09$M (\texttt{full\_memory}), the five memory-carrying
+policies fall within $\sim\!2\%$ of one another, and tool-call counts sit at
+$\sim\!21$ for every policy. Cost in this agent is dominated by the
+reasoning--action loop, not by the memory payload (\Cref{fig:pareto-compute}). The
+practical implication reframes the question. Forgetting is not a lever that
+recovers lost performance, nor a way to spend less compute; it is a way to keep the
+injected context \emph{bounded at no measurable cost to the outcome}. Forgetting,
+on this evidence, is close to free --- and ``free'' is precisely why it should be
+the default rather than the exception.
+
+\subsection{Dosage: target memory at the interdependent minority}
+
+If accumulation is not what helps, the useful question is no longer ``store
+everything or nothing'' but \emph{dosage}: how much memory, aimed at which tasks.
+The mechanism behind the diluted average makes this concrete. Only a minority of
+tasks structurally depend on a predecessor --- across the eight sequences the
+fraction of tasks whose gold-patch files overlap an earlier task averages
+$\sim\!0.3$, and ranges from $0.13$ (scikit-learn) to $0.57$ (pydata/xarray)
+(\Cref{fig:interdependence}). This is a property of the benchmark, not of any
+policy. For the file-disjoint majority, prior memory has nothing relevant to
+contribute, so even a perfect retention policy is averaged against a large
+population of tasks it cannot affect. ``Not every task needs memory'' is, on these
+data, a measurable structural fact rather than a slogan.
+
+Interdependence is necessary but not sufficient. Per-sequence memory lift (full
+minus no-memory resolve rate) does \emph{not} track structural overlap: scikit-learn
+has the lowest dependency ($0.13$) yet the highest lift ($+0.073$), while xarray has
+the highest dependency ($0.57$) yet essentially zero lift, and matplotlib and
+astropy show negative lift (\Cref{fig:memory-lift}). A dependency must additionally
+be retrievable and the retrieved item must actually be used before it can flip an
+outcome --- a chain of filters, each of which loses tasks. Forgetting is the
+mechanism that realizes the dosage: by keeping memory small it concentrates the
+limited retrieval budget on the few items most likely to matter, without paying the
+footprint of carrying the rest. The contribution here is less a winning policy than
+the quantification of \emph{why} the average benefit is small.
+
+\subsection{Practitioner guidance}
+
+Three recommendations follow directly. First, a \emph{simple bounded pruner is the
+safe default}. A small memory budget (we used a cap of ten items) combined with a
+content-agnostic eviction rule --- random or recency --- matches full accumulation
+on the proxy at roughly half the footprint and at no compute penalty. There is no
+reason to pay for unbounded storage growth that does not recover performance, and on
+largely file-disjoint task streams an aggressive pruner is non-inferior; richer
+retention should be reserved for repositories with demonstrably high task
+interdependence.
+
+Second, \emph{do not pay for content-awareness}. Neither content-aware policy beat
+random pruning: CLS consolidation ($0.449$) is statistically indistinguishable from
+random ($0.447$), and Type-Aware Decay is the lowest-scoring policy of all six
+($0.427$). There is no evidence in these results that inspecting memory content to
+decide what to keep buys anything over discarding items blindly.
+
+Third, and most concretely, \emph{avoid pure retrieval-frequency decay} --- the
+Type-Aware Decay trap. Its formal Wilcoxon contrast does not reach significance
+(Holm $p = 1.000$), so this is a mechanistic caution rather than a measured loss,
+but the warning signs converge: TAD carries the largest negative effect of any
+policy (medium, $r_{rb} = -0.444$) and is the only policy whose mean falls below
+\texttt{no\_memory}. The cause is structural. The retrieval-count term
+$(1+\text{use\_count})^{0.5}$ in the decay formula (Invariant~\#8) overwhelms the
+age term: early, high-use memories become effectively permanent while newly written
+items are evicted almost immediately, so the store freezes at its first
+$\sim\!10$ items and stops adapting. A decay rule that rewards past retrieval can
+thus entrench stale experience --- precisely the experience-following risk
+identified by \cite{xiong2025} --- and should be avoided in favour of simpler
+bounded eviction.
+
+\subsection{Where the field should look next}
+
+The strongest forward-looking signal in our data is not about storage policy at all.
+The task-level GLMM (Invariant~\#14) finds that none of the policy coefficients
+reach significance, but two factors do: task difficulty and, decisively, sequence
+position (coefficient $-1.49 \pm 0.086$). Agent effectiveness declines as a sequence
+progresses regardless of which memory policy is in force, and accumulating memory
+does not rescue it. This points away from eviction policy as the productive frontier
+and toward the retrieval and trajectory pathway --- the position-dependent decline
+that resembles context dilution rather than a failure of what to remember. If the
+field wants to improve continual performance, the leverage appears to lie in how
+relevant experience is surfaced and woven into a long trajectory, and in the
+structure of task interdependence itself, not in the choice of forgetting rule. The
+storage-policy question, at least under a held-constant retriever on this benchmark,
+is largely settled in the negative; the retrieval-and-position question is open.
+
+\subsection{Theoretical implication: transience as adaptive}
+
+These findings sit comfortably with a long-standing view in cognitive science that
+forgetting is not a defect of memory but a feature of it. The rational analysis of
+memory holds that the decay of an item's availability tracks the declining
+probability that it will be needed, so transience is an adaptation to the statistics
+of the environment rather than a leak \cite{anderson1991}; more recent work argues
+that active forgetting promotes generalisation and flexible behaviour rather than
+degrading it \cite{richards2017}. Our footprint-non-inferiority result is the
+engineering analogue: an agent that proactively discards most of its past pays no
+measurable outcome penalty, because most of that past was never going to be
+retrieved or used. Bounded, forgetful memory is not a compromise forced by resource
+limits; on a task stream where only a minority of items remain relevant, it is the
+rational policy.

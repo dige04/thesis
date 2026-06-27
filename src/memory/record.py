@@ -15,7 +15,7 @@ import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 # Frozen type taxonomy (Requirement 5, Design §2)
 VALID_MEMORY_TYPES = frozenset([

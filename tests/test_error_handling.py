@@ -12,30 +12,31 @@ This module tests all error handling paths specified in task 17.2:
 Requirements: 2, 4, 5, 6, 14, 15, 17, 26
 """
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock
+
 from src.errors import (
-    RepositoryCheckoutError,
-    DockerEvaluationError,
+    AgentTimeoutError,
     ClassifierError,
+    ConfigFrozenError,
+    ConfigValidationError,
+    DockerEvaluationError,
     EmbeddingSizeError,
     MemoryBudgetError,
-    AgentTimeoutError,
-    ConfigValidationError,
-    ConfigFrozenError,
     ReflectionError,
-    handle_repository_checkout_failure,
-    handle_docker_failure,
+    RepositoryCheckoutError,
+    handle_agent_timeout,
     handle_classifier_failure,
+    handle_config_validation_failure,
+    handle_docker_failure,
     handle_embedding_size_violation,
     handle_memory_budget_violation,
-    handle_agent_timeout,
-    handle_config_validation_failure,
     handle_reflection_failure,
+    handle_repository_checkout_failure,
     is_recoverable_error,
     log_error_for_analysis,
 )
-
 
 # ============================================================================
 # Repository Checkout Error Handling Tests (Requirement 2)
@@ -45,7 +46,7 @@ from src.errors import (
 def test_repository_checkout_error_fails_sequence():
     """Test that repository checkout errors fail the entire sequence."""
     original_error = Exception("Git checkout failed")
-    
+
     with pytest.raises(RepositoryCheckoutError) as exc_info:
         handle_repository_checkout_failure(
             error=original_error,
@@ -54,7 +55,7 @@ def test_repository_checkout_error_fails_sequence():
             sequence_name="django",
             run_id="test-run-1"
         )
-    
+
     error = exc_info.value
     assert error.task_id == "test-task-1"
     assert error.repo == "django/django"
@@ -75,13 +76,13 @@ def test_repository_checkout_error_is_not_recoverable():
 def test_docker_failure_returns_failed_result():
     """Test that Docker failures return failed evaluation result."""
     original_error = Exception("Container crashed")
-    
+
     result = handle_docker_failure(
         error=original_error,
         task_id="test-task-1",
         error_type="container_crash"
     )
-    
+
     assert result["success"] is False
     assert result["passed"] is False
     assert result["task_id"] == "test-task-1"
@@ -108,14 +109,14 @@ def test_docker_error_is_recoverable():
 def test_classifier_failure_raises_error():
     """Test that classifier failures raise ClassifierError."""
     original_error = Exception("API timeout")
-    
+
     with pytest.raises(ClassifierError) as exc_info:
         handle_classifier_failure(
             error=original_error,
             task_id="test-task-1",
             retry_count=2
         )
-    
+
     error = exc_info.value
     assert error.task_id == "test-task-1"
     assert error.retry_count == 2
@@ -142,7 +143,7 @@ def test_embedding_size_violation_raises_error():
             original_text="x" * 10000,
             limit=7500
         )
-    
+
     error = exc_info.value
     assert error.token_count == 8000
     assert error.limit == 7500
@@ -174,18 +175,18 @@ def test_memory_budget_drops_lowest_scoring():
         (0.5, Mock(memory_id="mem-3", token_length=500)),
         (0.3, Mock(memory_id="mem-4", token_length=500)),
     ]
-    
+
     # Budget allows only 3 memories (1500 tokens)
     result = handle_memory_budget_violation(
         memories=memories,
         token_budget=1500,
         task_id="test-task-1"
     )
-    
+
     # Should drop lowest-scoring memory (0.3)
     assert len(result) == 3
     assert all(m[0] >= 0.5 for m in result)
-    
+
     # Should be sorted ascending (best LAST)
     scores = [m[0] for m in result]
     assert scores == sorted(scores)
@@ -196,14 +197,14 @@ def test_memory_budget_returns_empty_if_single_exceeds():
     memories = [
         (0.9, Mock(memory_id="mem-1", token_length=2000)),
     ]
-    
+
     with pytest.raises(MemoryBudgetError) as exc_info:
         handle_memory_budget_violation(
             memories=memories,
             token_budget=1500,
             task_id="test-task-1"
         )
-    
+
     error = exc_info.value
     assert error.required_tokens == 2000
     assert error.budget == 1500
@@ -216,13 +217,13 @@ def test_memory_budget_returns_all_if_within_budget():
         (0.7, Mock(memory_id="mem-2", token_length=300)),
         (0.5, Mock(memory_id="mem-3", token_length=300)),
     ]
-    
+
     result = handle_memory_budget_violation(
         memories=memories,
         token_budget=1500,
         task_id="test-task-1"
     )
-    
+
     # Should return all memories
     assert len(result) == 3
 
@@ -251,7 +252,7 @@ def test_agent_timeout_returns_failed_result():
         limit_value=20,
         actual_value=21
     )
-    
+
     assert result["timeout"] is True
     assert result["timeout_type"] == "steps"
     assert result["limit_value"] == 20
@@ -284,13 +285,13 @@ def test_config_validation_failure_raises_error():
         "max_context_tokens must be positive",
         "top_k must be positive"
     ]
-    
+
     with pytest.raises(ConfigValidationError) as exc_info:
         handle_config_validation_failure(
             validation_errors=validation_errors,
             config_path="configs/base.yaml"
         )
-    
+
     error = exc_info.value
     assert error.validation_errors == validation_errors
     assert "max_context_tokens" in str(error)
@@ -317,14 +318,14 @@ def test_config_frozen_error_is_not_recoverable():
 def test_reflection_failure_raises_error_if_not_continue():
     """Test that reflection failures raise ReflectionError if continue_on_failure=False."""
     original_error = Exception("Reflection failed")
-    
+
     with pytest.raises(ReflectionError) as exc_info:
         handle_reflection_failure(
             error=original_error,
             task_id="test-task-1",
             continue_on_failure=False
         )
-    
+
     error = exc_info.value
     assert error.task_id == "test-task-1"
     assert "Reflection failed" in str(error)
@@ -333,7 +334,7 @@ def test_reflection_failure_raises_error_if_not_continue():
 def test_reflection_failure_continues_if_allowed():
     """Test that reflection failures continue if continue_on_failure=True."""
     original_error = Exception("Reflection failed")
-    
+
     # Should not raise
     handle_reflection_failure(
         error=original_error,
@@ -362,7 +363,7 @@ def test_log_error_for_analysis_includes_all_fields():
         limit_value=20,
         actual_value=21
     )
-    
+
     record = log_error_for_analysis(
         error=error,
         task_id="test-1",
@@ -370,7 +371,7 @@ def test_log_error_for_analysis_includes_all_fields():
         run_id="test-run-1",
         error_category="timeout"
     )
-    
+
     assert record["task_id"] == "test-1"
     assert record["sequence_name"] == "django"
     assert record["run_id"] == "test-run-1"
@@ -390,7 +391,7 @@ def test_log_error_for_analysis_handles_different_error_types():
         task_id="test-1",
         repo="django/django"
     )
-    
+
     record = log_error_for_analysis(
         error=error,
         task_id="test-1",
@@ -398,7 +399,7 @@ def test_log_error_for_analysis_handles_different_error_types():
         run_id="test-run-1",
         error_category="repository_error"
     )
-    
+
     assert record["error_type"] == "RepositoryCheckoutError"
     assert record["repo"] == "django/django"
     assert record["is_recoverable"] is False
@@ -418,7 +419,7 @@ def test_error_handling_preserves_frozen_invariants():
         limit_value=20,  # Frozen invariant
         actual_value=21
     )
-    
+
     assert result["limit_value"] == 20
 
 
@@ -430,7 +431,7 @@ def test_error_handling_supports_failure_analysis():
         DockerEvaluationError("Docker failed", "task-2", "container_crash"),
         ClassifierError("Classification failed", "task-3"),
     ]
-    
+
     # Log all errors for analysis
     records = [
         log_error_for_analysis(
@@ -442,7 +443,7 @@ def test_error_handling_supports_failure_analysis():
         )
         for i, e in enumerate(errors, 1)
     ]
-    
+
     # Verify all records have required fields for analysis
     for record in records:
         assert "task_id" in record

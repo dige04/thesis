@@ -1,0 +1,38 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+
+% ── 4.3  Memory Architecture ─────────────────────────────────────────────
+% PURPOSE: Describe the storage substrate every policy shares.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Memory Architecture}
+
+All six conditions share one storage substrate; the policies differ only in how they prune
+it. Each completed task can write a \texttt{MemoryRecord} into a \texttt{MemoryStore} backed
+by a FAISS index, and every condition reads and writes the same store through the same
+interface (Figure~\ref{fig:architecture}). What the policies later act on is the
+\emph{footprint} of this store --- the number and size of records carried forward.
+
+The single most consequential design choice is what gets embedded. Rather than embedding the
+raw trajectory --- which the embedder would silently truncate at its token cap, turning a
+long agent transcript into a meaningless prefix --- each record embeds a compact,
+outcome-bearing triple: the issue text, the final error, and the final diff. This payload is
+capped under 7500 tokens and the bound is enforced at write time
+(\texttt{store.py::\_verify\_embedding\_size}, Invariant~\#4), so a record can never silently
+exceed the embedder's window. The compactness is deliberate: it keeps the embedding faithful
+to the task's outcome and keeps the per-record footprint small.
+
+Each record also carries a \emph{content}-based type drawn from a five-type taxonomy ---
+\texttt{architectural}, \texttt{api\_change}, \texttt{bug\_fix}, \texttt{test\_update},
+\texttt{config} (Invariant~\#7). The type describes what the record is \emph{about}, not
+whether the task succeeded; \texttt{outcome} is a separate, orthogonal axis and is never
+collapsed into the type. A dedicated classifier assigns the type at write time (its
+structured-output handling under the substituted model is disclosed as deviation D4/D6b in
+Section~\ref{sec:deviations}).
+
+The write path is part of the shared per-task loop (Figure~\ref{fig:task-lifecycle}): after
+the agent attempts the task, a reflection step produces one record, the classifier labels
+it, and the maintenance step --- the only policy-specific step --- decides what the store
+keeps. Type-Aware Decay reads the type at this step; the other policies ignore it. The cap of
+ten (A1) bounds the store for the four interior policies, and that bounded footprint is the
+quantity the cost analysis in Section~\ref{sec:metrics} tracks.

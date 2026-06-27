@@ -1,0 +1,25 @@
+{
+  "experiment_sha": "cceb3253d7b7cfeae16123af30197a8271e1d84a",
+  "branch": "rerun/instrument-fix",
+  "baseline_sha": "3abd01c57fc1490cd739f106325ba91931ff325f",
+  "config_hash": "2e7f341cc35d31c2",
+  "config_files": [
+    "configs/base.yaml",
+    "configs/policies/type_aware_decay.yaml"
+  ],
+  "manifest_hash": "1d4f1c172e188d78",
+  "n_runs": 144,
+  "n_task_rows_expected": 4914,
+  "phase_A_complete": true,
+  "suite": "1164 passed, 2 skipped",
+  "agent_code_sha": "cceb3253d7b7cfeae16123af30197a8271e1d84a",
+  "orchestration_sha": "59a44cd",
+  "agent_freeze_note": "experiment_sha (cceb325) freezes src/agents/ (agent behavior + edit_file hotfix). Verified `git diff cceb325..<tip> -- src/agents/` is EMPTY: orchestration/scoring tooling (run_matrix_shard per-unit tool_mode, run_pilot_policy --tool-mode, build_ab_manifest, ab_gate_amended) was added at 59a44cd WITHOUT changing agent behavior; later commits are metadata/docs only. RUN_COMPLETED stamps experiment_sha=cceb325 (the agent freeze); the gate verifies it.",
+  "prior_experiment_sha": "2133b471e07d687dac8ac2ff77b15138c2d48629",
+  "prior_gate_result": "STOP (results/manifest/ab_gate_STOP_2133b47.json)",
+  "hotfix": "cceb325 edit_file path-arg normalization (docs/ab-gate-findings-2026-06-24.md)",
+  "amended_gate": "docs/amended-gate-2026-06-24.md (PRE-RUN; Codex 2026-06-24)",
+  "ab_manifest": "results/manifest/runs_ab_cceb325.json (36 cells) + worker_map_ab_cceb325.json",
+  "ab_runtime_contract": "per worker w in 0..8: EXPERIMENT_SHA=cceb3253d7b7cfeae16123af30197a8271e1d84a RUNS_ROOT=runs_ab_cceb325 MANIFEST=results/manifest/runs_ab_cceb325.json bash scripts/run_matrix_shard.sh w 9",
+  "note": "REFREEZE after post-gate hotfix. Original A/B gate at 2133b47 STOPped (preserved). Phase B re-validation executes THIS SHA (cceb325); set EXPERIMENT_SHA=cceb325... A/B re-run is gated by the AMENDED criteria (instrument-attributable==0, no false rejects, inflation<=1.5x, complete pairing, model-rate fixed<=legacy). 144 only on amended-GO. Thesis must say original gate STOPped + amended after root-cause; never that it passed."
+}

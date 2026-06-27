@@ -1,0 +1,81 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% SOURCE: docs/threats-to-validity.md (setup) + docs/a5-anchor-probe-decision.md /
+% AMENDMENTS.md A5 (RESOLUTION). INTEGRITY: carry A5 THROUGH -- the instrument is NOT
+% measurement-blind; the 1.000 is regime-driven. Model = deepseek-v4-flash. No TOST claim.
+% Cite only bib keys (drop the scaffold's [VERIFY+ADD] refs not in references.bib).
+
+% ── 6.4  Threats to Validity ─────────────────────────────────────────────
+% PURPOSE: Reframe the study's limits as conscious trade-offs across four validity types.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Threats to Validity}
+\label{sec:threats}
+
+\paragraph{Construct and measurement validity.}
+The continual-learning metric's stability dimension is the most delicate construct in this
+study. The pre-registered stability instrument --- anchor-probe re-evaluation of earlier
+tasks against later memory states --- saturated at $1.000$ on the small gate-3 anchor
+sample, which raised a real worry: a saturated metric could mean genuine absence of
+forgetting \emph{or} an instrument too insensitive to register it. We resolved this rather
+than leaving it open (amendment A5). A targeted discrimination sub-study, run on cells
+selected so that Full Memory and an aggressive pruner actually retrieve different records,
+shows the instrument is \emph{not} measurement-blind: on cells where Full retained and
+retrieved a task's own solution memory while the pruner had evicted it, Full re-solved the
+task where the pruner could not (a clean existence proof of one cell at three-of-three versus
+zero-of-three). The saturation is therefore \emph{regime-driven}, not a broken metric: in the
+natural SWE-Bench-CL regime most tasks are solvable without memory, or the relevant memory is
+not cosine-retrieved, so stability is rarely exercised. Two limits bound this sub-study and
+are stated narrowly: its signal is \emph{backward retention only} --- the forward, cross-task
+interdependence cells were at the floor in both conditions, so it gives no support for
+``earlier-task memory helps later tasks'' --- and it carries no p-value, because the cells
+were selected to maximise discrimination. Consequently CL-F1 is reported as a
+resolution-rate proxy and the efficiency claim is carried by the directly-measured footprint
+axis, which is immune to this sensitivity. Relatedly, CLS Consolidation never clustered on
+the benchmark's heterogeneous same-repository memories, so H3 is reported as not-applicable
+rather than supported; we declined to relax the frozen similarity threshold, which would have
+manufactured incoherent summaries. Finally, because the executed model emits reasoning tokens
+counted in completion length, the token-cost axis is inflated relative to a non-reasoning
+model; the inflation is uniform across conditions, so between-policy cost contrasts hold
+while absolute token costs do not transfer across studies.
+
+\paragraph{Internal validity.}
+Retrieval is held identical --- pure cosine, fixed depth --- across all six conditions, so
+the contrast is attributable to the storage and forgetting policy rather than to search. The
+model, embedder, temperature, and memory budget are fixed factors held constant across
+conditions and seeds. The principal residual threat is benchmark contamination: SWE-Bench
+tasks are public and the model's training cutoff is undocumented. Because any contamination
+is constant across conditions, it does not bias the between-policy contrasts; it does render
+absolute solve rates uninterpretable as capability measures, which we disclaim accordingly.
+Per-run provenance --- model alias, configuration hash, and dataset revision --- is logged so
+that any drift under the rotating-key router would be detectable. A more concrete internal
+threat was the agent's own tooling: a trajectory audit found the \texttt{read\_file} and
+\texttt{edit\_file} instruments defective, which could have turned an instrument artefact into
+an apparent between-policy effect. This is a \emph{mitigated} threat rather than a live one
+--- the defect was root-caused, fixed (commit \texttt{cceb325}), and the corrected instrument
+was re-validated by a pre-registered, externally reviewed health gate that must pass before
+the matrix is trusted (Section~\ref{sec:instrument}).
+
+\paragraph{External validity.}
+The results rest on a single base model (\texttt{deepseek-v4-flash}, the final link of the
+disclosed deviation chain), a single benchmark family (SWE-Bench-CL), same-repository
+retrieval only, and a fixed retrieval depth. This is a conscious scope boundary, defended by
+scope and measurement cleanliness rather than by budget --- the move to an unlimited provider
+and a horizontal fleet removed compute as the binding constraint. We make no cross-model or
+cross-benchmark generalisation claim. A deeper boundary is intrinsic to the task
+distribution: only a minority of tasks structurally depend on a predecessor (a
+benchmark-structural property; the exact fractions are reported in Chapter~\ref{ch:results}),
+so any conclusion about memory's \emph{benefit} applies to that interdependent subset rather
+than to sequential coding in general, and the
+experience-following risk~\cite{xiong2025} means an indiscriminate store can hurt the
+remainder.
+
+\paragraph{Statistical-conclusion validity.}
+The primary test is the Wilcoxon signed-rank test on $N=8$ sequence-level means with Holm
+correction over the five pre-registered contrasts, accompanied by rank-biserial effect sizes
+and BCa bootstrap intervals. With $N=8$ the design is honestly underpowered for small
+effects, which we address by leading with estimation --- effect sizes and intervals, plus the
+design's detectable-effect profile --- rather than dichotomous significance, and by not
+switching tests to manufacture a significant verdict (Invariant~\#11). Run-level variance
+from the agent's stochasticity is estimated from the three seeds and reported separately from
+task-level bootstrap intervals; the two are distinct variance sources and are never pooled.

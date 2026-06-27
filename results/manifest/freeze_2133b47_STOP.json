@@ -1,0 +1,16 @@
+{
+  "experiment_sha": "2133b471e07d687dac8ac2ff77b15138c2d48629",
+  "branch": "rerun/instrument-fix",
+  "baseline_sha": "3abd01c57fc1490cd739f106325ba91931ff325f",
+  "config_hash": "2e7f341cc35d31c2",
+  "config_files": [
+    "configs/base.yaml",
+    "configs/policies/type_aware_decay.yaml"
+  ],
+  "manifest_hash": "1d4f1c172e188d78",
+  "n_runs": 144,
+  "n_task_rows_expected": 4914,
+  "phase_A_complete": true,
+  "suite": "1137 passed, 2 skipped (network smoke = Task 4b)",
+  "note": "Code frozen after Phase A + final opus review + fixes. Phase B (smoke, A/B, 144-rerun) executes this SHA only; set EXPERIMENT_SHA=experiment_sha so RUN_COMPLETED/RUN_FAILED sentinels record provenance. No code commits past this point."
+}

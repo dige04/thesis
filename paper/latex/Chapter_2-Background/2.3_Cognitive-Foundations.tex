@@ -1,0 +1,40 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+
+% ── 2.3  Cognitive Foundations of Forgetting ─────────────────────────────────
+% PURPOSE: Ground the two principled policies (Type-Aware Decay, CLS Consolidation) in
+%          cognitive science; transience as adaptive rather than as failure.
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Cognitive Foundations of Forgetting}
+
+Rather than treat forgetting as loss, cognitive science treats it as adaptive --- a memory
+system that discards on a rational schedule generalises and decides better than one that
+retains indiscriminately~\cite{richards2017}. Two principles from that literature ground
+the two content-aware policies this thesis evaluates.
+
+The first is the Anderson--Schooler rational analysis of memory~\cite{anderson1991}. They
+show that the probability a memory will be \emph{needed} again falls predictably with the
+time since it was last used and rises with how often it has been retrieved --- so an
+optimal memory system should let need-probability, not raw age, govern retention. This is
+the direct basis for \textbf{Type-Aware Decay}, whose retention score is the multiplicative
+form $\text{base} \times \text{age}^{-d(\text{type})} \times (1 + \text{retrieval\_count})^{0.5}$:
+age decays the score, retrieval reinforces it, and the per-type exponent $d(\text{type})$
+lets different kinds of record age at different rates
+(Section~\ref{sec:type-decay}).
+
+The second is the Complementary Learning Systems theory~\cite{mcclelland1995}: the brain
+pairs a fast-learning hippocampal store with a slow-learning neocortical one, and
+\emph{consolidation} gradually transfers and summarises the stable structure from the
+former into the latter. This grounds \textbf{CLS Consolidation}, which on a fixed schedule
+(every $k=5$ tasks) clusters older memories and replaces each cluster with an
+LLM-generated summary, compressing repeated structure rather than storing every instance
+verbatim (Section~\ref{sec:cls}).
+
+Both policies treat transience as a feature. Crucially, the parameters that operationalise
+the cognitive theory --- in particular the per-type decay exponents $d(\text{type})$ ---
+are frozen at design time from the theoretical values, \emph{not} calibrated from pilot
+data, so that the policies test the cognitive hypothesis rather than a curve fitted to the
+benchmark. The next two sections of this background motivate why retrieval, not just
+storage, shapes whether any of this helps; the operational definitions follow in
+Chapter~\ref{ch:method}.

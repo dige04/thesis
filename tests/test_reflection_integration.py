@@ -8,25 +8,35 @@ Requirements: 15
 Design: §9 Memory Writing & Reflection Step
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 
-from src.memory.reflection import (
-    reflect_and_write_memory,
-    ReflectionError,
-    _extract_reflection_data,
-    _construct_memory_record,
-    _construct_embedding_text,
-)
+import pytest
+
 from src.memory.classifier import ClassifierError
-from src.memory.record import VALID_MEMORY_TYPES, VALID_OUTCOMES
+from src.memory.reflection import (
+    ReflectionError,
+    _construct_embedding_text,
+    _construct_memory_record,
+    _extract_reflection_data,
+    reflect_and_write_memory,
+)
 
 
 class TestReflectionExtraction:
-    """Test reflection data extraction."""
+    """Test reflection data extraction.
 
-    def test_extract_reflection_data_basic(self):
-        """Test basic reflection data extraction."""
+    NOTE (plan 4.5): _extract_reflection_data now performs a real reflection LLM
+    call. These tests assert the DETERMINISTIC / naive-fallback behaviour, so we
+    force the fallback path with a broken client instead of relying on the LLM
+    being unreachable (previously these tests implicitly depended on the
+    placeholder truncation-only implementation). The LLM-driven path is covered
+    by TestReflectionLLMCall.
+    """
+
+    @patch("src.memory.reflection.get_aux_client")
+    def test_extract_reflection_data_basic(self, mock_get_client):
+        """Test basic reflection data extraction (naive fallback path)."""
+        mock_get_client.side_effect = RuntimeError("no LLM in unit test")
         task = Mock()
         task.task_id = "test-task-1"
         task.repo = "test/repo"
@@ -72,8 +82,10 @@ class TestReflectionExtraction:
         assert "tests/test_foo.py" in data["files_touched"]
         assert data["commands_run"] == ["pytest", "git diff"]
 
-    def test_extract_reflection_data_failed_task(self):
-        """Test reflection data extraction for failed task."""
+    @patch("src.memory.reflection.get_aux_client")
+    def test_extract_reflection_data_failed_task(self, mock_get_client):
+        """Test reflection data extraction for failed task (naive fallback path)."""
+        mock_get_client.side_effect = RuntimeError("no LLM in unit test")
         task = Mock()
         task.task_id = "test-task-2"
         task.repo = "test/repo"
@@ -156,8 +168,11 @@ class TestMemoryRecordConstruction:
         assert record.commands_run == ["pytest"]
         assert record.retrieved_memory_ids_used == ["MEM-001", "MEM-002"]
         assert record.memory_id.startswith("MEM-")
-        assert "Issue:" in record.embedding_text
-        assert "Patch:" in record.embedding_text
+        # embedding_text is now built by MemoryStore.add() (Invariant #4
+        # truncation), NOT pre-set by reflection — see plan 2.4 / repair Task 3
+        # and test_construct_memory_record_leaves_embedding_to_store.
+        assert record.embedding_text == ""
+        assert record.token_length == 0
 
 
 class TestEmbeddingTextConstruction:
@@ -188,11 +203,17 @@ class TestEmbeddingTextConstruction:
         assert "Patch: Modified feature.py: +10 -0 lines" in text
 
 
+# plan 4.5: the reflect_and_write_memory flow tests below focus on orchestration
+# (extraction -> classify -> construct -> write -> usage update), NOT on the
+# reflection summary text. Force the naive fallback by making get_chat_client
+# raise, so they stay deterministic and offline instead of attempting a real
+# reflection LLM call. The LLM path itself is covered by TestReflectionLLMCall.
+@patch("src.memory.reflection.get_aux_client", side_effect=RuntimeError("offline in unit test"))
 class TestReflectAndWriteMemory:
     """Test the complete reflect_and_write_memory workflow."""
 
     @patch('src.memory.reflection.classify_memory_type')
-    def test_reflect_and_write_successful_task(self, mock_classify):
+    def test_reflect_and_write_successful_task(self, mock_classify, _mock_chat):
         """Test complete reflection workflow for successful task."""
         # Setup mocks
         mock_classify.return_value = "bug_fix"
@@ -251,7 +272,7 @@ class TestReflectAndWriteMemory:
         mock_classify.assert_called_once()
 
     @patch('src.memory.reflection.classify_memory_type')
-    def test_reflect_fails_when_classifier_fails(self, mock_classify):
+    def test_reflect_fails_when_classifier_fails(self, mock_classify, _mock_chat):
         """Test that reflection fails entirely when classifier fails."""
         # Setup classifier to fail
         mock_classify.side_effect = ClassifierError("Classifier unavailable")
@@ -296,7 +317,7 @@ class TestReflectAndWriteMemory:
         policy.write.assert_not_called()
 
     @patch('src.memory.reflection.classify_memory_type')
-    def test_reflect_updates_retrieved_memory_usage(self, mock_classify):
+    def test_reflect_updates_retrieved_memory_usage(self, mock_classify, _mock_chat):
         """Test that retrieved memory usage is updated."""
         mock_classify.return_value = "bug_fix"
 
@@ -347,11 +368,15 @@ class TestReflectAndWriteMemory:
             assert calls[i][1]["task_succeeded"] is True
 
 
+# plan 4.5: as with TestReflectAndWriteMemory, force the naive reflection
+# fallback (offline) so these requirement-compliance flow tests stay
+# deterministic; they assert orchestration/structure, not summary text.
+@patch("src.memory.reflection.get_aux_client", side_effect=RuntimeError("offline in unit test"))
 class TestRequirement15Compliance:
     """Test compliance with Requirement 15 acceptance criteria."""
 
     @patch('src.memory.reflection.classify_memory_type')
-    def test_requirement_15_1_generates_structured_record(self, mock_classify):
+    def test_requirement_15_1_generates_structured_record(self, mock_classify, _mock_chat):
         """Requirement 15.1: Generate structured memory record from task."""
         mock_classify.return_value = "bug_fix"
 
@@ -383,8 +408,12 @@ class TestRequirement15Compliance:
         assert hasattr(record, 'failure_summary')
         assert hasattr(record, 'test_summary')
 
-    def test_requirement_15_2_extracts_structural_metadata(self):
-        """Requirement 15.2: Extract files_touched, functions_touched, commands_run."""
+    def test_requirement_15_2_extracts_structural_metadata(self, _mock_chat):
+        """Requirement 15.2: Extract files_touched, functions_touched, commands_run.
+
+        Structural metadata is deterministic; the class-level offline patch
+        forces the naive fallback so functions_touched comes from the trajectory
+        (not the LLM)."""
         task = Mock()
         task.task_id = "test-task"
         task.repo = "test/repo"
@@ -414,7 +443,7 @@ class TestRequirement15Compliance:
         assert data["functions_touched"] == ["foo", "bar"]
 
     @patch('src.memory.reflection.classify_memory_type')
-    def test_requirement_15_3_records_retrieved_memory_ids(self, mock_classify):
+    def test_requirement_15_3_records_retrieved_memory_ids(self, mock_classify, _mock_chat):
         """Requirement 15.3: Record retrieved_memory_ids_used."""
         mock_classify.return_value = "bug_fix"
 
@@ -445,7 +474,7 @@ class TestRequirement15Compliance:
         assert record.retrieved_memory_ids_used == retrieved_ids
 
     @patch('src.memory.reflection.classify_memory_type')
-    def test_requirement_15_4_invokes_type_classifier(self, mock_classify):
+    def test_requirement_15_4_invokes_type_classifier(self, mock_classify, _mock_chat):
         """Requirement 15.4: Invoke type classifier to assign memory_type."""
         mock_classify.return_value = "api_change"
 
@@ -478,7 +507,7 @@ class TestRequirement15Compliance:
         assert record.memory_type == "api_change"
 
     @patch('src.memory.reflection.classify_memory_type')
-    def test_requirement_15_5_fails_if_classifier_unavailable(self, mock_classify):
+    def test_requirement_15_5_fails_if_classifier_unavailable(self, mock_classify, _mock_chat):
         """Requirement 15.5: Fail entirely if classifier unavailable."""
         mock_classify.side_effect = ClassifierError("Classifier unavailable")
 
@@ -506,7 +535,7 @@ class TestRequirement15Compliance:
             )
 
     @patch('src.memory.reflection.classify_memory_type')
-    def test_requirement_15_6_type_assigned_before_write(self, mock_classify):
+    def test_requirement_15_6_type_assigned_before_write(self, mock_classify, _mock_chat):
         """Requirement 15.6: Type assignment completes before write."""
         mock_classify.return_value = "bug_fix"
 
@@ -539,3 +568,192 @@ class TestRequirement15Compliance:
 
         # Verify classify was called before write
         assert call_order == ["classify", "write"]
+
+
+def test_construct_memory_record_leaves_embedding_to_store():
+    """plan 2.4 / repair Task 3: reflection must NOT pre-set embedding_text;
+    MemoryStore.add() owns canonical (truncating) construction (Invariant #4)."""
+    task = Mock()
+    task.task_id = "django__django-1"
+    task.repo = "django/django"
+    task.issue_text = "Fix query bug"
+
+    reflection_data = {
+        "issue_summary": "Fix query bug",
+        "patch_summary": "diff --git a/q.py b/q.py",
+        "failure_summary": None,
+        "test_summary": None,
+        "files_touched": ["q.py"],
+        "functions_touched": [],
+        "commands_run": ["pytest"],
+        "outcome": "pass",
+    }
+
+    record = _construct_memory_record(
+        task=task,
+        reflection_data=reflection_data,
+        memory_type="bug_fix",
+        retrieved_memory_ids=[],
+        sequence_index=0,
+    )
+
+    assert record.embedding_text == ""
+    assert record.token_length == 0
+    # Summaries stay populated so MemoryStore.add() can build the payload.
+    assert record.issue_summary == "Fix query bug"
+    assert record.patch_summary == "diff --git a/q.py b/q.py"
+
+
+def _make_llm_client(content: str) -> Mock:
+    """Build a Mock chat client whose chat.completions.create() returns
+    a single choice carrying ``content`` (mimics the OpenAI SDK shape)."""
+    message = Mock()
+    message.content = content
+    choice = Mock()
+    choice.message = message
+    response = Mock()
+    response.choices = [choice]
+
+    client = Mock()
+    client.chat.completions.create.return_value = response
+    return client
+
+
+class TestReflectionLLMCall:
+    """plan 4.5: _extract_reflection_data must perform a real reflection LLM
+    call (JSON mode + Pydantic validation), with naive fallback on failure."""
+
+    @patch("src.memory.reflection.get_aux_client")
+    def test_uses_llm_summary_when_available(self, mock_get_client):
+        """The LLM's structured JSON summary should populate the summaries
+        and functions_touched, NOT the naive truncation."""
+        llm_json = (
+            '{"issue_summary": "LLM: QuerySet.exclude returns wrong rows when chained", '
+            '"patch_summary": "LLM: short-circuit Q-object combination in query.py:847", '
+            '"failure_summary": null, '
+            '"test_summary": "LLM: added test_exclude_chain; all pass", '
+            '"functions_touched": ["QuerySet.exclude", "_filter_or_exclude_inplace"]}'
+        )
+        mock_get_client.return_value = _make_llm_client(llm_json)
+
+        task = Mock()
+        task.task_id = "django__django-12345"
+        task.repo = "django/django"
+        # Long issue text so the naive path would truncate to 200 chars.
+        task.issue_text = "X" * 500
+
+        trajectory = {
+            "files_modified": ["django/db/models/query.py"],
+            "files_read": ["tests/test_query.py"],
+            "commands_run": ["pytest"],
+            "functions_touched": ["only_from_trajectory"],
+        }
+        patch_diff = "diff --git a/query.py b/query.py\n+short-circuit\n-broken"
+        evaluation_result = {"resolved": True, "error_message": None, "test_output": "5 passed"}
+
+        data = _extract_reflection_data(
+            task=task,
+            trajectory=trajectory,
+            patch=patch_diff,
+            evaluation_result=evaluation_result,
+            model="gpt-oss:20b-cloud",
+            temperature=0.0,
+        )
+
+        # LLM call happened with the right knobs.
+        mock_get_client.return_value.chat.completions.create.assert_called_once()
+        call_kwargs = mock_get_client.return_value.chat.completions.create.call_args.kwargs
+        assert call_kwargs["model"] == "gpt-oss:20b-cloud"
+        assert call_kwargs["temperature"] == 0.0
+        # D4 extended (2026-06-17): no json_object mode (MiniMax M3 returns 400);
+        # prompt-instructed JSON + tolerant extraction recover the summary instead.
+        assert "response_format" not in call_kwargs
+
+        # LLM summaries win over the naive truncation.
+        assert data["issue_summary"] == "LLM: QuerySet.exclude returns wrong rows when chained"
+        assert data["patch_summary"] == "LLM: short-circuit Q-object combination in query.py:847"
+        assert data["test_summary"] == "LLM: added test_exclude_chain; all pass"
+        assert data["functions_touched"] == ["QuerySet.exclude", "_filter_or_exclude_inplace"]
+
+        # Deterministic fields are NOT taken from the LLM.
+        assert data["outcome"] == "pass"
+        assert "django/db/models/query.py" in data["files_touched"]
+        assert "tests/test_query.py" in data["files_touched"]
+        assert data["commands_run"] == ["pytest"]
+
+    @patch("src.memory.reflection.get_aux_client")
+    def test_falls_back_to_naive_on_broken_client(self, mock_get_client, caplog):
+        """A broken client (raises on create) must NOT raise — fall back to the
+        naive extraction so the must-succeed classifier step downstream runs."""
+        broken_client = Mock()
+        broken_client.chat.completions.create.side_effect = RuntimeError("API down")
+        mock_get_client.return_value = broken_client
+
+        task = Mock()
+        task.task_id = "test-task"
+        task.repo = "test/repo"
+        long_issue = "Y" * 500
+        task.issue_text = long_issue
+
+        trajectory = {
+            "files_modified": ["src/foo.py"],
+            "files_read": [],
+            "commands_run": ["pytest"],
+            "functions_touched": ["foo", "bar"],
+        }
+        patch_diff = "+line1\n+line2\n+line3\n+line4\n+line5\n+line6\n+line7"
+        evaluation_result = {"resolved": True, "error_message": None, "test_output": "ok"}
+
+        with caplog.at_level("WARNING"):
+            data = _extract_reflection_data(
+                task=task,
+                trajectory=trajectory,
+                patch=patch_diff,
+                evaluation_result=evaluation_result,
+                model="gpt-oss:20b-cloud",
+                temperature=0.0,
+            )
+
+        # No raise; naive issue truncation kicks in (200 chars + ellipsis).
+        assert data["issue_summary"] == long_issue[:200] + "..."
+        # Naive functions fall back to the trajectory's list.
+        assert data["functions_touched"] == ["foo", "bar"]
+        # Deterministic fields still correct.
+        assert data["outcome"] == "pass"
+        assert data["files_touched"] == ["src/foo.py"]
+        # A warning was logged about the fallback.
+        assert any("fall" in r.message.lower() or "fallback" in r.message.lower()
+                   for r in caplog.records)
+
+    @patch("src.memory.reflection.get_aux_client")
+    def test_falls_back_to_naive_on_invalid_json(self, mock_get_client):
+        """Invalid / non-JSON content must fall back to naive extraction."""
+        mock_get_client.return_value = _make_llm_client("this is not json at all")
+
+        task = Mock()
+        task.task_id = "test-task"
+        task.repo = "test/repo"
+        task.issue_text = "Short issue"
+
+        trajectory = {
+            "files_modified": ["src/foo.py"],
+            "files_read": [],
+            "commands_run": [],
+            "functions_touched": ["foo"],
+        }
+        evaluation_result = {"resolved": False, "error_message": "boom", "test_output": None}
+
+        data = _extract_reflection_data(
+            task=task,
+            trajectory=trajectory,
+            patch="+attempted fix",
+            evaluation_result=evaluation_result,
+            model="gpt-oss:20b-cloud",
+            temperature=0.0,
+        )
+
+        # Naive path: short issue passes through unchanged.
+        assert data["issue_summary"] == "Short issue"
+        assert data["functions_touched"] == ["foo"]
+        assert data["outcome"] == "fail"
+        assert data["failure_summary"] == "boom"

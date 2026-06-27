@@ -6,13 +6,29 @@
 
 Research code for a master's thesis: **Memory Pruning and Forgetting Policies for AI Coding Agents — Impact on Performance Across Sequential Tasks**.
 
-We run six memory policies (No Memory, Full Memory, Random Prune, Recency Prune, Type-Aware Decay, CLS Consolidation) across all 8 SWE-Bench-CL sequences × 3 seeds = **144 controlled runs** on GPT-5.4, evaluate with the standard `eval_v3` harness, and analyze with sequence-level non-parametric statistics and task-level GLMM. The thesis tests whether proactive forgetting matches or beats full-memory accumulation on the Pareto frontier of CL-F1 vs cost.
+We run six memory policies (No Memory, Full Memory, Random Prune, Recency Prune, Type-Aware Decay, CLS Consolidation) across all 8 SWE-Bench-CL sequences × 3 seeds = **144 controlled runs** on a single frozen LLM (originally GPT-5.4 in v5 — **now OpenCode Zen go**, OpenAI-compatible; was briefly Ollama Cloud, switched 2026-06-08; see *Runtime deviations from pre-registration* below), evaluate with the standard `eval_v3` harness, and analyze with sequence-level non-parametric statistics and task-level GLMM. The thesis tests whether proactive forgetting matches or beats full-memory accumulation on the Pareto frontier of CL-F1 vs cost.
 
 ## Single source of truth
 
 **`THESIS_FINAL_v5.md`** is authoritative for every design question. When in doubt, read it — do not invent. Specific cross-references appear throughout this file.
 
 If you (Claude Code) ever feel inclined to add a condition, change a formula, swap a statistical test, or modify a frozen decision: STOP and ask the user. Section 0.1 of v5 lists 26 frozen decisions; Section 24 (Anti-creep manifesto) lists what is explicitly out of scope.
+
+## Runtime deviations from pre-registration (2026-06-01, user-authorized)
+
+The experiment is being executed on **OpenCode Zen "go"** (OpenAI-compatible) instead of GPT-5.4. The user authorized this explicitly (resource/access constraint). *History: the provider was Ollama Cloud (chosen 2026-06-01), then switched to OpenCode Zen go on 2026-06-08 — both are OpenAI-compatible, so the `llm_factory` seam is unchanged; the switch is config-only.* These are **declared deviations** from v5's frozen decisions — they must be disclosed in the thesis Methods ("Deviations from pre-registration") and are NOT silent design changes. The full operational runbook lives in **`AGENTS.md`**.
+
+| # | Deviation | What changed | Why it stays valid / how to disclose |
+|---|---|---|---|
+| D1 | **Model**: GPT-5.4 → **OpenCode Zen go** `kimi-k2.6` (agent), `kimi-k2.5` (summary + classifier). *(Was Ollama Cloud `qwen3-coder:480b-cloud`/`gpt-oss:20b-cloud` 2026-06-01→06-08.)* | `configs/base.yaml` model names; clients via `src/config/llm_factory.py` | Model is held **constant across all 6 conditions × 3 seeds**, so it is a fixed factor — between-policy comparisons (H1–H5) remain valid. Absolute resolution rates are **not** comparable to GPT-5.4 / SWE-Bench leaderboards. Note: on the go tier the Qwen models are Anthropic-endpoint-only (not OpenAI-compatible); `kimi` is non-reasoning, keeping the D3 token-cost axis and H4 behavioral metric clean. Disclose. |
+| D2 | **Embedder**: `text-embedding-3-small` (1536-d) → local Ollama `nomic-embed-text-v2-moe` (768-d) | `memory.embedding_model` + `memory.embedding_dim`; FAISS index dim | Does NOT violate Invariant #4 (which bounds the <7500-token *payload*, not embedder identity). Invariant #5 still holds **iff** the same embedder is used across all 6 conditions + 3 seeds. Re-validate `top_k`/`max_context_tokens` under the new embedder during calibration. Disclose embedder + dim. |
+| D3 | **Cost metric**: per-token USD → token-count (`tokens`) proxy | `evaluation.cost_metric_mode`; `cost_tracker`; Pareto x-axis | Ollama is flat-rate (GPU-time); per-call USD is meaningless. Pareto CL-F1-vs-cost uses total tokens (a provider-independent compute proxy); wall-time is secondary. Disclose the cost operationalization. |
+| D4 | **Classifier structured output**: OpenAI `beta.chat.completions.parse` → JSON-mode / Ollama-native `format` + Pydantic validation | `src/memory/classifier.py` | Ollama ignores OpenAI `json_schema` `response_format` (ollama/ollama #10001). Same 5-type, temp-0 task (Invariant #7). Log + report the classifier failure rate; handle failures identically across conditions. |
+| D5 | **Compute host + architecture**: x86_64 VPS (v5 §0.1 #4/#5) → local **arm64 macOS**, Docker `linux/arm64`; swebench **arm64** instance images; Spike-Week build-probe (Phase 5.0) → deterministic exclusion list | `configs/base.yaml` `execution.*`; `src/benchmark/evaluator.py` + container backend; build-probe artifact | Architecture is held **constant across all 6 conditions × 3 seeds**, so it is a fixed factor — between-policy comparisons (H1–H5) remain valid. Absolute resolution rates are **not** comparable to x86_64 / SWE-Bench leaderboards. arm64-unbuildable tasks are excluded **identically across all conditions** (sanctioned by v5 §0.1 #6 "documented compute trade-off"); disclose exact per-sequence counts. Escalate to an x86_64 host if >15% of any sequence is unbuildable. Disclose architecture + exclusion list. |
+
+**Provider config is env-driven.** Endpoints/keys/models come from `.env` (template: `.env.example`) via `src/config/llm_factory.py`; env vars override `base.yaml`. Never set a global `OPENAI_BASE_URL` — chat and embeddings use **separate** clients (the chat provider, OpenCode Zen go, has no embedding model; embeddings stay on local Ollama). The code remains runnable on OpenAI/GPT-5.4 or any OpenAI-compatible provider by editing `.env` only, so the deviation is reversible.
+
+Everything else in v5 stays frozen. The 16 invariants below are unaffected by D1–D5 except as noted (D2 touches the embedder used at #4/#5; D5 overrides the host/architecture at #4/#5; the *rules* at #4/#5 are unchanged).
 
 ## Frozen invariants — never violate without asking
 
@@ -104,10 +120,10 @@ These commands are placeholders. Implement them in `Makefile` during Spike Week.
 
 Two things are **TBD until calibration** and should not be hard-coded prematurely:
 
-1. **`top_k` and `max_context_tokens`** — confirmed at end of **Spike Week (Friday gate)**. Defaults: `top_k=5`, `max_context_tokens=2000`. If pilot shows different optima, change *once*, then lock.
-2. **Type-Aware Decay `decay_d` per type** — confirmed at end of **Week 4 pilot**. Initial values in v5 §8 P4. One-parameter-per-type calibration only; do not grid-search.
+1. **`top_k` and `max_context_tokens`** — confirmed at end of **Spike Week (Friday gate)**. Defaults: `top_k=5`, `max_context_tokens=2000`. If pilot shows different optima, change *once*, then lock. **Re-validate under the D2 embedder (`nomic-embed-text-v2-moe`, 768-d).**
+2. **Type-Aware Decay `decay_d` per type** — **NOT calibrated.** Frozen at the theoretical v5 §8 P4 values (locked per v5 D-0.3, §796/§1721/§1783). The Week-4 pilot is a *sanity check only*; `decay_d` is **never re-tuned** from pilot data (one-knob-per-type fitting on 2 sequences would overfit and break pre-registration). The earlier "confirmed at end of Week 4 pilot / one-parameter-per-type calibration" wording was an error (it contradicted v5 D-0.3) — corrected 2026-06-02. v5 is authoritative.
 
-After Week 4, all hyperparameters are frozen for the full 144 runs. Any later change requires re-running everything.
+After Spike Week, the only calibrated hyperparameters (`top_k`, `max_context_tokens`) are frozen for the full 144 runs. `decay_d` is frozen at design time, not calibrated. Any later change to a frozen value requires re-running everything.
 
 ## Logging is mandatory
 

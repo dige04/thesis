@@ -12,10 +12,11 @@ Frozen Invariants Tested:
 Requirements: 6, 7
 """
 
+import hashlib
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -38,9 +39,39 @@ class MockTask:
     issue_text: str
 
 
+def _deterministic_embedding(self, text: str) -> np.ndarray:
+    """Offline, deterministic stand-in for ``MemoryStore._generate_embedding``.
+
+    Mirrors the real method's contract exactly: an **L2-normalized float32**
+    vector of length ``self.embedding_dim``. The vector is a deterministic
+    function of ``text`` (hashlib-seeded RNG), so FAISS cosine ranking is
+    stable and reproducible without a live embedder. Distinct texts get
+    distinct directions; identical texts get identical vectors — this keeps
+    the pure-cosine (#5) and best-item-LAST (#6) ordering assertions valid
+    while removing the network dependency on ``localhost:11434``.
+    """
+    seed = int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "little")
+    rng = np.random.default_rng(seed)
+    # Non-negative components (like real text embeddings, which are
+    # non-negatively correlated) so cosine similarity stays in [0, 1] —
+    # standard-normal directions could be anti-correlated and yield negative
+    # inner products, which violates the [0, 1] cosine invariant the tests assert.
+    vec = rng.random(self.embedding_dim).astype(np.float32)
+    norm = np.linalg.norm(vec)
+    if norm > 0:
+        vec = vec / norm
+    return vec
+
+
 @pytest.fixture
 def temp_memory_store():
-    """Create a temporary memory store for testing."""
+    """Create a temporary memory store for testing.
+
+    Patches ``_generate_embedding`` with a deterministic offline stand-in so
+    both ``store.add()`` and the retrieval query path run without a live
+    embedder (the real method would hit ``localhost:11434``). The patch is at
+    the class level, so it covers every store created inside the fixture.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create runs directory structure
         run_dir = Path(tmpdir) / "runs" / "test_run"
@@ -52,12 +83,15 @@ def temp_memory_store():
         os.chdir(tmpdir)
 
         try:
-            store = MemoryStore(
-                run_id="test_run",
-                policy_name="test_policy"
-            )
-            yield store
-            store.close()
+            with patch.object(
+                MemoryStore, "_generate_embedding", _deterministic_embedding
+            ):
+                store = MemoryStore(
+                    run_id="test_run",
+                    policy_name="test_policy"
+                )
+                yield store
+                store.close()
         finally:
             os.chdir(original_cwd)
 
@@ -186,20 +220,18 @@ class TestTrimToTokenBudget:
 class TestSharedRetrieve:
     """Test shared retrieval function."""
 
-    @patch('src.memory.retriever.MemoryStore._generate_embedding')
     def test_shared_retrieve_pure_cosine_scoring(
         self,
-        mock_embed,
         temp_memory_store,
         sample_memories
     ):
-        """Test that retrieval uses pure cosine similarity with NO bonuses."""
+        """Test that retrieval uses pure cosine similarity with NO bonuses.
+
+        Embeddings come from the fixture's deterministic offline stand-in.
+        """
         # Add memories to store
         for memory in sample_memories:
             temp_memory_store.add(memory)
-
-        # Mock embedding to return fixed vector
-        mock_embed.return_value = np.array([1.0] * 1536, dtype=np.float32)
 
         task = MockTask(
             task_id="django__django-99999",

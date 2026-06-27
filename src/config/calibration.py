@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Any
 
 from src.config.loader import ConfigLoader
-from src.errors import ConfigFrozenError
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +64,7 @@ def analyze_pilot_results(
     per_policy_metrics = {}
 
     for metrics_file in metrics_files:
-        with open(metrics_file, "r", encoding="utf-8") as f:
+        with open(metrics_file, encoding="utf-8") as f:
             data = json.load(f)
 
         policy_name = data.get("policy_name", "unknown")

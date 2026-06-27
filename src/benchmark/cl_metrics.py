@@ -492,3 +492,156 @@ def compute_cl_metrics_from_run(
     """
     task_results = load_task_results(run_dir)
     return compute_cl_metrics(task_results, validate_learning, min_diagonal_mean)
+
+
+# ---------------------------------------------------------------------------
+# Anchor-probe CL metrics (THESIS_FINAL_v5.md §14.2 — PRIMARY estimator)
+# ---------------------------------------------------------------------------
+#
+# The full a_{i,j} matrix above (build_accuracy_matrix) forward-fills the
+# off-diagonal under an "assumes no forgetting" optimistic shortcut, which is
+# only valid as a SUPPLEMENTARY full-matrix construction once real
+# re-evaluation data exists (§14.3). The PRIMARY Stability estimator in v5 is
+# the anchor-probe schedule (§14.2): k=5 anchors re-evaluated at 4 probe points
+# against the memory snapshot after each probe task. The function below
+# implements the §14.2 formulas exactly, taking the probed a_{i,p} cells as an
+# explicit input (collected by the eval harness / runner, which is a separate
+# phase) plus the always-collected online diagonal a_{i,i}.
+
+
+@dataclass
+class AnchorProbeCLMetrics:
+    """Continual-learning metrics from the §14.2 anchor-probe schedule.
+
+    Attributes:
+        plasticity: CL_Plasticity = mean(a_{i,i}) over ALL tasks (online diag).
+        stability: CL_Stability_anchor = 1 - mean(forgetting_i for anchors).
+        cl_f1: 2 * P * S / max(P + S, 1e-8) (PRIMARY metric).
+        end_accuracy: mean(a_{i,T}) over anchors only.
+        mean_forgetting: mean(forgetting_i) over anchors.
+        n_tasks: sequence length T.
+        n_anchors: number of anchors |A|.
+    """
+
+    plasticity: float
+    stability: float
+    cl_f1: float
+    end_accuracy: float
+    mean_forgetting: float
+    n_tasks: int
+    n_anchors: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a JSON-serializable dictionary."""
+        return {
+            "plasticity": float(self.plasticity),
+            "stability": float(self.stability),
+            "cl_f1": float(self.cl_f1),
+            "end_accuracy": float(self.end_accuracy),
+            "mean_forgetting": float(self.mean_forgetting),
+            "n_tasks": int(self.n_tasks),
+            "n_anchors": int(self.n_anchors),
+        }
+
+
+def compute_anchor_probe_cl_metrics(
+    online_resolved: list[float] | list[int] | npt.NDArray[np.float64],
+    anchor_indices: list[int],
+    probe_points: list[int],
+    probed_accuracy: dict[tuple[int, int], float],
+    n_tasks: int,
+) -> AnchorProbeCLMetrics:
+    """Compute CL metrics from anchor-probe inputs per THESIS_FINAL_v5.md §14.2.
+
+    This is the PRIMARY Stability/CL-F1 estimator (locked invariant §0.1 #29).
+    It does NOT forward-fill an "assumes no forgetting" matrix; it uses the
+    real probed off-diagonal cells a_{i,p} collected by the re-evaluation
+    harness.
+
+    §14.2 formulas (verbatim):
+
+        CL_Plasticity       = mean(a_{i,i} for i in range(T))
+        end_acc             = mean(a_{i,T} for i in A)
+        forgetting_i        = max(a_{i,p} for p in PROBES with p >= i) - a_{i,T}
+        CL_Stability_anchor = 1 - mean(forgetting_i for i in A)
+        CL_F1               = 2 * P * S / max(P + S, 1e-8)
+
+    Args:
+        online_resolved: Online diagonal a_{i,i} for ALL tasks i in [0, T),
+            i.e. whether each task was resolved when first encountered. Length
+            must equal n_tasks. Source: per-task online results (always
+            collected).
+        anchor_indices: The deterministic anchor index set A (§14.2 positions).
+        probe_points: The probe column indices p (0-indexed task positions at
+            which anchors are re-evaluated). The final probe (largest value)
+            is treated as T, the end-of-sequence probe used for a_{i,T}.
+        probed_accuracy: Mapping (i, p) -> a_{i,p} for anchors i in A and probe
+            points p >= i. Must include the final-probe cell (i, T) for every
+            anchor i in A (that cell defines a_{i,T}).
+        n_tasks: Sequence length T.
+
+    Returns:
+        AnchorProbeCLMetrics with the §14.2 quantities.
+
+    Raises:
+        ValueError: If inputs are inconsistent (no anchors, length mismatch, or
+            a missing mandatory final-probe cell).
+    """
+    if not anchor_indices:
+        raise ValueError(
+            "Anchor-probe CL metrics require at least one anchor index "
+            "(A must be non-empty per §14.2 k=5 anchor schedule)."
+        )
+
+    diagonal = np.asarray(online_resolved, dtype=np.float64)
+    if diagonal.shape[0] != n_tasks:
+        raise ValueError(
+            f"online_resolved has length {diagonal.shape[0]} but n_tasks={n_tasks}. "
+            f"The online diagonal a_{{i,i}} must cover all T tasks."
+        )
+
+    # CL_Plasticity — uses ALL tasks (online diagonal a_{i,i}).
+    plasticity = float(np.mean(diagonal))
+
+    # Final probe column index is the end-of-sequence T.
+    final_probe = max(probe_points)
+
+    forgetting_per_anchor: list[float] = []
+    end_acc_per_anchor: list[float] = []
+
+    for i in anchor_indices:
+        # a_{i,T}: final-probe accuracy on anchor i (mandatory).
+        if (i, final_probe) not in probed_accuracy:
+            raise ValueError(
+                f"Missing final-probe accuracy a_{{{i},{final_probe}}} for anchor {i}. "
+                f"Every anchor must have an end-of-sequence (T) probe cell."
+            )
+        a_iT = float(probed_accuracy[(i, final_probe)])
+        end_acc_per_anchor.append(a_iT)
+
+        # max(a_{i,p} for p in PROBES with p >= i). The final probe is always
+        # included (final_probe >= i for valid anchors), so the peak is >= a_iT
+        # and forgetting is non-negative without an explicit clamp.
+        peaks = [
+            float(probed_accuracy[(i, p)])
+            for p in probe_points
+            if p >= i and (i, p) in probed_accuracy
+        ]
+        max_acc = max(peaks) if peaks else a_iT
+        forgetting_per_anchor.append(max_acc - a_iT)
+
+    mean_forgetting = float(np.mean(forgetting_per_anchor))
+    stability = 1.0 - mean_forgetting
+    end_accuracy = float(np.mean(end_acc_per_anchor))
+
+    cl_f1 = compute_cl_f1(plasticity, stability)
+
+    return AnchorProbeCLMetrics(
+        plasticity=plasticity,
+        stability=stability,
+        cl_f1=cl_f1,
+        end_accuracy=end_accuracy,
+        mean_forgetting=mean_forgetting,
+        n_tasks=int(n_tasks),
+        n_anchors=len(anchor_indices),
+    )

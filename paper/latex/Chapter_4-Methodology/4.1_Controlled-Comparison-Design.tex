@@ -1,0 +1,82 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+
+% ── 4.1  Controlled-Comparison Design ────────────────────────────────────
+% PURPOSE: Establish the single-factor experimental logic that makes H1-H5 valid.
+% Model is deepseek-v4-flash (D8) -- NOT MiniMax M3 (stale D6 in scaffold beats).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Controlled-Comparison Design}
+
+Rather than co-vary model, retrieval, dataset, and storage at once --- as most prior memory
+systems do --- this study varies \emph{exactly one} factor, the storage and forgetting
+policy, and holds everything else fixed. The logic is that of a single-factor experiment:
+if six conditions differ in one and only one component, any between-condition difference is
+attributable to that component. Everything that is not the forgetting policy is therefore an
+invariant, frozen and shared across all six conditions and all three seeds.
+
+The held-constant factors are enumerated as design invariants. The task stream is the eight
+official SWE-Bench-CL sequences, run in their fixed order with no reordering (Invariant~\#1).
+The model is frozen: a single \texttt{deepseek-v4-flash} instance serves every model role
+across all conditions (the deviation chain from the pre-registered model is disclosed in
+Section~\ref{sec:deviations}). Retrieval is the central control --- pure cosine similarity,
+identical across all six policies, with no per-policy bonuses or penalties (Invariant~\#5)
+--- at a fixed depth $k=5$, same-repository only (Invariant~\#16), with the best-scoring
+record injected last to mitigate the lost-in-the-middle effect (Invariant~\#6). The agent
+runs at most 20 steps per task (Invariant~\#3), and the embedding payload is the compact
+\texttt{[Issue + Final Error + Final Diff]} under the embedder's token cap (Invariant~\#4).
+A memory budget cap of ten records (amendment A1) binds the four interior policies. The
+single manipulated factor is what the \texttt{MemoryStore} keeps versus forgets between
+tasks.
+
+This design buys a specific, bounded kind of validity. Because the model, retrieval,
+dataset, and agent loop are constants, the between-policy contrasts (H1--H5) are valid as
+statements about forgetting. They are \emph{not}, however, statements about absolute
+capability: holding a substituted model and host fixed (Section~\ref{sec:deviations}) means
+the absolute resolution rates are not comparable to public SWE-Bench leaderboards. That is a
+consequence of the design to be disclosed, not defended --- the comparison is internal by
+construction, and its strength is precisely that it does not depend on the absolute numbers.
+Figure~\ref{fig:architecture} shows the pipeline with the policy box as the only swappable
+component.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  font=\small,
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=9mm,
+              minimum width=22mm, inner sep=4pt, thick},
+  fixed/.style={box, draw=cFixed},
+  agent/.style={box, draw=cAgent, line width=0.6pt},
+  flow/.style={-{Stealth[length=2.2mm]}, thick},
+  hold/.style={-{Stealth[length=2.2mm]}, thick, dashed, draw=cPolicy},
+  node distance=10mm and 16mm,
+]
+  \node[box]                   (data)   {SWE-Bench-CL\\\scriptsize task sequence};
+  \node[agent, right=of data]  (agent)  {Coding Agent\\\scriptsize LangGraph ReAct, $\le$20 steps};
+  \node[fixed, right=of agent] (retr)   {Cosine Retriever\\\scriptsize fixed top-$k$, identical};
+  \node[fixed, right=of retr]  (store)  {MemoryStore\\\scriptsize FAISS index};
+  \node[box, above=of agent]   (llm)    {deepseek-v4-flash\\\scriptsize frozen, all roles};
+  \node[box, below=of agent]   (eval)   {eval\_v3 harness\\\scriptsize scores the patch};
+  \node[fixed, draw=cPolicy, line width=1pt, above=of store] (policy)
+        {Forgetting Policy\\\scriptsize 1 of 6 -- swappable};
+  \node[fixed, below=of store] (refl)   {Reflection + Classifier\\\scriptsize 5-type taxonomy};
+  \draw[flow] (data)  -- (agent);
+  \draw[flow] (agent) -- node[above,font=\scriptsize]{retrieve} (retr);
+  \draw[flow] (retr)  -- node[above,font=\scriptsize]{top-$k$} (store);
+  \draw[flow] (agent) -- node[right,font=\scriptsize]{LLM calls} (llm);
+  \draw[flow] (agent) -- node[right,font=\scriptsize]{patch} (eval);
+  \draw[flow] (refl)  -- node[right,font=\scriptsize]{store record} (store);
+  \draw[hold] (policy) -- node[right,font=\scriptsize]{maintain / forget} (store);
+  \begin{scope}[on background layer]
+    \node[draw=cFixed!60, dashed, rounded corners, inner sep=6mm,
+          label={[font=\scriptsize, text=cFixed]above:Memory subsystem (retrieval held constant)},
+          fit=(retr)(store)(policy)(refl)] {};
+  \end{scope}
+\end{tikzpicture}
+\caption{The memory-equipped coding agent. The agent interacts with a \texttt{MemoryStore}
+through a fixed cosine retriever (identical across all six conditions) over the task
+sequence; the storage/forgetting \emph{policy} is the single swappable component, one of the
+six. The model (\texttt{deepseek-v4-flash}), embedder, retrieval, dataset, and agent loop
+are held constant --- the memory subsystem (shaded) operates under retrieval held constant.}
+\label{fig:architecture}
+\end{figure}

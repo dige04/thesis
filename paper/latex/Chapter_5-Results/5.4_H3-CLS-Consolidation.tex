@@ -1,0 +1,85 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 5.4  H3: Compressive Consolidation (A Negative Result) ───────────────
+% PURPOSE: Report, honestly, that CLS Consolidation never fired on SWE-Bench-CL and
+%          reframe the non-event as a finding about WHEN consolidation applies.
+% MOVE: Honest negative — state the null up front, then mine it for insight.
+% BEATS: see ordered bullets below.
+% FIGURES/TABLES: none.
+% CITATIONS: mcclelland1995 (CLS theory — why consolidation needs redundancy to bite).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{H3: Compressive Consolidation (A Negative Result)}
+\label{sec:h3}
+
+\paragraph{The null, stated plainly.}
+H3 asked whether the CLS Consolidation policy, which periodically abstracts groups of
+related memories into a compact gist, would shift the CL-F1-versus-cost frontier relative
+to undifferentiated accumulation. It does not. Across the eight SWE-Bench-CL sequences,
+\texttt{cls\_consolidation} resolves $0.449$ of tasks on average against $0.445$ for
+\texttt{full\_memory} --- a difference of less than half a percentage point. The
+pre-registered Wilcoxon signed-rank test over the $N=8$ sequence-level means (Invariant
+\#11) returns $W = 13$, $p = 0.938$, Holm-adjusted $p = 1.000$, with a negligible
+rank-biserial effect size $r_{rb} = -0.071$ and a $95\%$ BCa confidence interval on the
+paired difference of $[-0.042,\ 0.034]$. The interval straddles zero, the paired median
+difference is $-0.0100$, and the Holm-corrected $p$ is at the ceiling. \textbf{H3 is not
+supported.} CLS Consolidation is statistically \emph{indistinguishable} from full memory;
+it is neither better nor worse. Its marginally higher mean carries no inferential weight
+and we make no claim of superiority --- consistent with the chapter's overall result that
+no policy separates from full-memory accumulation on this resolved-rate proxy.
+
+Note that CL-F1 here is operationalised as the per-sequence resolved rate, a proxy for
+continual-learning performance rather than a direct forgetting curve; a policy could in
+principle reshape the memory store in ways this scalar cannot see. The construct-validity
+boundary of that proxy is examined separately in the anchor-probe sub-study
+(Section~\ref{sec:a5}); the present section concerns only the pre-registered outcome test.
+
+\paragraph{Why consolidation stayed quiet: the gate-3 mechanism.}
+The reason for the null is mechanical rather than statistical, and it was identified during
+the gate-3 diagnostics. CLS Consolidation is \emph{scheduled} on a fixed cadence --- the
+consolidation routine is invoked every $k=5$ tasks (Invariant \#9), not triggered by store
+overflow --- so the policy was given regular opportunities to act. What it lacked was
+material to act on. The consolidation step first runs DBSCAN over the stored memory
+embeddings and only summarises a cluster once at least three memories fall within a
+$\geq 0.70$ cosine neighbourhood. On SWE-Bench-CL that density criterion is rarely met:
+even within a single repository (retrieval is same-repo only, Invariant \#16), the stored
+experiences span distinct issues, files, and error signatures, so the embeddings are too
+heterogeneous to form a dense enough cluster. The clustering step therefore seldom yields a
+group large and tight enough to compress, and the consolidation branch fires only
+occasionally over the matrix.
+
+\paragraph{Integrity: the threshold was not relaxed.}
+The obvious way to manufacture a positive result would have been to lower the $\geq 0.70$
+cosine threshold (or the minimum cluster size) until DBSCAN began producing clusters. We
+did not do this. The threshold is a frozen pre-registered parameter (Invariant \#23), and
+tuning a policy's trigger post hoc to force activation would invalidate the comparison and
+the pre-registration it rests on. We report the policy as it was specified and let the null
+stand. The decision to preserve the frozen trigger over a flattering but engineered
+outcome is itself part of the result.
+
+\paragraph{A boundary condition, not a dead end.}
+Read as a boundary condition, the non-event is informative. Complementary Learning Systems
+theory motivates consolidation precisely as the slow abstraction of \emph{repeated,
+overlapping} experience into a stable gist~\cite{mcclelland1995}; redundancy is the
+precondition that makes compression worthwhile. A coding-agent workload in which each task
+is a distinct bug in a distinct part of the codebase supplies little such redundancy, so
+the precondition for compressive consolidation is largely absent here. This does not refute
+the mechanism; it locates where it would and would not be expected to bite. Consolidation
+should pay off on workloads with genuinely recurring structure --- repeated invocations of
+the same API, families of near-duplicate fixes, or tasks that revisit the same modules ---
+and SWE-Bench-CL, by construction, is not such a workload.
+
+\paragraph{Convergent evidence from the task-level model.}
+The sequence-level null is echoed at the task level. In the binomial/logit GLMM with a
+crossed random effect on \texttt{task\_id} (Invariant \#14, $4{,}914$ observations),
+\texttt{cls\_consolidation} serves as the reference policy. With CLS as the baseline, none
+of the remaining policy coefficients is significant (every $|\text{coef}| < 2\,\mathrm{SE}$:
+\texttt{full\_memory} $+0.116 \pm 0.118$, \texttt{no\_memory} $-0.133 \pm 0.117$,
+\texttt{random\_prune} $+0.033 \pm 0.117$, \texttt{recency\_prune} $-0.092 \pm 0.117$,
+\texttt{type\_aware\_decay} $-0.188 \pm 0.117$). No policy is distinguishable from CLS once
+task difficulty and sequence position are accounted for, corroborating the H3 null from an
+independent modelling angle. (The GLMM fit is approximate, obtained via a
+\texttt{statsmodels} variational procedure rather than the canonical \texttt{lme4}
+estimator; we therefore report coefficient signs and the null, and a sensitivity check
+confirms the direction.)

@@ -19,19 +19,18 @@ Design: THESIS_FINAL_v5.md §12, §16
 """
 
 import json
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 from src.benchmark.experiment_runner import (
     ExperimentRunner,
-    ExperimentSummary,
     RunConfig,
 )
 from src.benchmark.models import Sequence, Task
 from src.benchmark.sequence_runner import SequenceResult
+from src.errors import UsageLimitError
 from src.memory.policies.cls_consolidation import CLSConsolidationPolicy
 from src.memory.policies.full_memory import FullMemoryPolicy
 from src.memory.policies.no_memory import NoMemoryPolicy
@@ -672,3 +671,265 @@ class TestFrozenInvariants:
         # Verify different seeds produce different RNG states
         assert policy1.seed != policy2.seed
         assert policy1.rng.random() != policy2.rng.random()
+
+
+class TestUsageLimitFailClosed:
+    """C5 (THESIS_REVIEW): provider quota must ABORT the matrix, not continue it.
+
+    Before the fix, the matrix loop's generic ``except Exception`` swallowed
+    UsageLimitError, incremented failed_runs, and marched through all 144 runs —
+    producing an apparently-complete but invalid 0-resolved matrix.
+    """
+
+    def test_run_full_experiment_aborts_on_usage_limit(
+        self, mock_config, mock_curriculum_file, monkeypatch
+    ):
+        runner = ExperimentRunner(
+            config=mock_config,
+            curriculum_path=mock_curriculum_file,
+        )
+
+        calls = {"n": 0}
+
+        def _raise(run_config, sequence):
+            calls["n"] += 1
+            raise UsageLimitError("429 weekly usage limit reached")
+
+        monkeypatch.setattr(runner, "_execute_run", _raise)
+
+        with pytest.raises(UsageLimitError):
+            runner.run_full_experiment()
+
+        # Aborted on the FIRST quota error — did not iterate the rest of the matrix.
+        assert calls["n"] == 1
+
+    def test_run_pilot_aborts_on_usage_limit(
+        self, mock_config, mock_curriculum_file, monkeypatch
+    ):
+        runner = ExperimentRunner(
+            config=mock_config,
+            curriculum_path=mock_curriculum_file,
+        )
+
+        def _raise(run_config, sequence):
+            raise UsageLimitError("429 weekly usage limit reached")
+
+        monkeypatch.setattr(runner, "_execute_run", _raise)
+
+        with pytest.raises(UsageLimitError):
+            runner.run_pilot_experiment(num_sequences=2)
+
+
+class TestSentinelGatedCompletion:
+    """Task 5d: orchestrators must gate completed_runs on RUN_COMPLETED.json.
+
+    Before the fix, any returned run_sequence() was counted as completed and
+    a success {run_id}_result.json was written, regardless of whether the run
+    produced the RUN_COMPLETED.json sentinel.  That is how the old matrix logged
+    "144 complete" with 28 partial units.
+
+    Fix: after run_sequence() returns, check (runs_root / run_id /
+    RUN_COMPLETED.json).exists(); only then count + write the success result.
+    If absent: increment failed_runs, record the run_id, skip the success write.
+    """
+
+    def _make_result(self, run_id: str, seq_name: str = "repo0") -> SequenceResult:
+        return SequenceResult(
+            sequence_name=seq_name,
+            repo=f"{seq_name}/{seq_name}",
+            policy_name="no_memory",
+            seed=1,
+            total_tasks=15,
+            completed_tasks=15,
+            resolved_tasks=10,
+            failed_tasks=5,
+            timeout_tasks=0,
+            total_wall_time=100.0,
+            total_cost_usd=5.0,
+            error_message=None,
+            run_id=run_id,
+        )
+
+    # ------------------------------------------------------------------
+    # run_full_experiment
+    # ------------------------------------------------------------------
+
+    def test_full_experiment_incomplete_run_not_counted(
+        self, mock_config, mock_curriculum_file, tmp_path, monkeypatch
+    ):
+        """run_full_experiment: a run that returned but has NO sentinel is
+        counted as failed, NOT completed, and no success result is written."""
+        monkeypatch.setenv("RUNS_ROOT", str(tmp_path / "runs"))
+        runner = ExperimentRunner(
+            config=mock_config,
+            curriculum_path=mock_curriculum_file,
+        )
+        runner.results_dir = tmp_path / "raw"
+        runner.results_dir.mkdir(parents=True, exist_ok=True)
+
+        def _fake_execute(run_config, sequence):
+            # Return a result but do NOT write RUN_COMPLETED.json → incomplete.
+            return self._make_result(run_config.run_id, sequence.sequence_name)
+
+        monkeypatch.setattr(runner, "_execute_run", _fake_execute)
+
+        summary = runner.run_full_experiment()
+
+        # None of the 144 runs wrote a sentinel → all should be failed/incomplete.
+        assert summary.completed_runs == 0
+        assert summary.failed_runs == 144
+        assert len(summary.failed_run_ids) == 144
+        # No success result files should exist.
+        result_files = list(runner.results_dir.glob("*_result.json"))
+        assert result_files == [], f"Unexpected result files: {result_files}"
+
+    def test_full_experiment_complete_run_counted(
+        self, mock_config, mock_curriculum_file, tmp_path, monkeypatch
+    ):
+        """run_full_experiment: a run WITH RUN_COMPLETED.json is counted
+        as completed and its success result file is written."""
+        runs_root = tmp_path / "runs"
+        monkeypatch.setenv("RUNS_ROOT", str(runs_root))
+        runner = ExperimentRunner(
+            config=mock_config,
+            curriculum_path=mock_curriculum_file,
+        )
+        runner.results_dir = tmp_path / "raw"
+        runner.results_dir.mkdir(parents=True, exist_ok=True)
+
+        def _fake_execute(run_config, sequence):
+            # Write the sentinel so the orchestrator gate passes.
+            run_dir = runs_root / run_config.run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "RUN_COMPLETED.json").write_text(
+                '{"validated_at": "2026-01-01T00:00:00+00:00"}', encoding="utf-8"
+            )
+            return self._make_result(run_config.run_id, sequence.sequence_name)
+
+        monkeypatch.setattr(runner, "_execute_run", _fake_execute)
+
+        summary = runner.run_full_experiment()
+
+        assert summary.completed_runs == 144
+        assert summary.failed_runs == 0
+        assert summary.failed_run_ids == []
+        result_files = list(runner.results_dir.glob("*_result.json"))
+        assert len(result_files) == 144
+
+    # ------------------------------------------------------------------
+    # run_pilot_experiment
+    # ------------------------------------------------------------------
+
+    def test_pilot_incomplete_run_not_counted(
+        self, mock_config, mock_curriculum_file, tmp_path, monkeypatch
+    ):
+        """run_pilot_experiment: incomplete run (no sentinel) counted as failed."""
+        monkeypatch.setenv("RUNS_ROOT", str(tmp_path / "runs"))
+        runner = ExperimentRunner(
+            config=mock_config,
+            curriculum_path=mock_curriculum_file,
+        )
+        runner.results_dir = tmp_path / "raw"
+        runner.results_dir.mkdir(parents=True, exist_ok=True)
+
+        def _fake_execute(run_config, sequence):
+            return self._make_result(run_config.run_id, sequence.sequence_name)
+
+        monkeypatch.setattr(runner, "_execute_run", _fake_execute)
+
+        summary = runner.run_pilot_experiment(num_sequences=2)
+
+        # 2 seqs × 6 policies × 1 seed = 12 runs, none complete.
+        assert summary.total_runs == 12
+        assert summary.completed_runs == 0
+        assert summary.failed_runs == 12
+
+    def test_pilot_complete_run_counted(
+        self, mock_config, mock_curriculum_file, tmp_path, monkeypatch
+    ):
+        """run_pilot_experiment: run WITH sentinel counted, result file written."""
+        runs_root = tmp_path / "runs"
+        monkeypatch.setenv("RUNS_ROOT", str(runs_root))
+        runner = ExperimentRunner(
+            config=mock_config,
+            curriculum_path=mock_curriculum_file,
+        )
+        runner.results_dir = tmp_path / "raw"
+        runner.results_dir.mkdir(parents=True, exist_ok=True)
+
+        def _fake_execute(run_config, sequence):
+            run_dir = runs_root / run_config.run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "RUN_COMPLETED.json").write_text(
+                '{"validated_at": "2026-01-01T00:00:00+00:00"}', encoding="utf-8"
+            )
+            return self._make_result(run_config.run_id, sequence.sequence_name)
+
+        monkeypatch.setattr(runner, "_execute_run", _fake_execute)
+
+        summary = runner.run_pilot_experiment(num_sequences=2)
+
+        assert summary.total_runs == 12
+        assert summary.completed_runs == 12
+        assert summary.failed_runs == 0
+        result_files = list(runner.results_dir.glob("*_result.json"))
+        assert len(result_files) == 12
+
+    # ------------------------------------------------------------------
+    # run_condition
+    # ------------------------------------------------------------------
+
+    def test_condition_incomplete_run_not_counted(
+        self, mock_config, mock_curriculum_file, tmp_path, monkeypatch
+    ):
+        """run_condition: incomplete run (no sentinel) counted as failed."""
+        monkeypatch.setenv("RUNS_ROOT", str(tmp_path / "runs"))
+        runner = ExperimentRunner(
+            config=mock_config,
+            curriculum_path=mock_curriculum_file,
+        )
+        runner.results_dir = tmp_path / "raw"
+        runner.results_dir.mkdir(parents=True, exist_ok=True)
+
+        def _fake_execute(run_config, sequence):
+            return self._make_result(run_config.run_id, sequence.sequence_name)
+
+        monkeypatch.setattr(runner, "_execute_run", _fake_execute)
+
+        summary = runner.run_condition(policy_name="no_memory", seed=1)
+
+        # 8 sequences × 1 policy × 1 seed = 8 runs, none complete.
+        assert summary.total_runs == 8
+        assert summary.completed_runs == 0
+        assert summary.failed_runs == 8
+
+    def test_condition_complete_run_counted(
+        self, mock_config, mock_curriculum_file, tmp_path, monkeypatch
+    ):
+        """run_condition: run WITH sentinel counted, result file written."""
+        runs_root = tmp_path / "runs"
+        monkeypatch.setenv("RUNS_ROOT", str(runs_root))
+        runner = ExperimentRunner(
+            config=mock_config,
+            curriculum_path=mock_curriculum_file,
+        )
+        runner.results_dir = tmp_path / "raw"
+        runner.results_dir.mkdir(parents=True, exist_ok=True)
+
+        def _fake_execute(run_config, sequence):
+            run_dir = runs_root / run_config.run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "RUN_COMPLETED.json").write_text(
+                '{"validated_at": "2026-01-01T00:00:00+00:00"}', encoding="utf-8"
+            )
+            return self._make_result(run_config.run_id, sequence.sequence_name)
+
+        monkeypatch.setattr(runner, "_execute_run", _fake_execute)
+
+        summary = runner.run_condition(policy_name="no_memory", seed=1)
+
+        assert summary.total_runs == 8
+        assert summary.completed_runs == 8
+        assert summary.failed_runs == 0
+        result_files = list(runner.results_dir.glob("*_result.json"))
+        assert len(result_files) == 8

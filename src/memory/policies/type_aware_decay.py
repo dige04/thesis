@@ -268,6 +268,7 @@ class TypeAwareDecayPolicy(MemoryPolicy):
 
             # Update record's importance_score field
             record.importance_score = score
+            memory_store.update_importance_score(record.memory_id, score)
 
             scored.append((score, record))
 

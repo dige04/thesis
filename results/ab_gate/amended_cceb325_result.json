@@ -1,0 +1,28 @@
+{
+  "gate": "GO",
+  "metrics": {
+    "fixed": {
+      "edit_calls": 532,
+      "instrument_failures": 0,
+      "model_failures": 81,
+      "correct_rejects": 4,
+      "model_quality_rate": 0.15225563909774437,
+      "prompt_median": 174900.0,
+      "total_median": 178825.0
+    },
+    "legacy": {
+      "edit_calls": 339,
+      "instrument_failures": 0,
+      "model_failures": 62,
+      "correct_rejects": 0,
+      "model_quality_rate": 0.18289085545722714,
+      "prompt_median": 177322.0,
+      "total_median": 180352.0
+    },
+    "prompt_inflation_ratio": 0.9863,
+    "total_inflation_ratio": 0.9915
+  },
+  "reasons": [],
+  "criteria": "complete+paired+provenance, instrument-attributable==0, inflation<=1.5x, model-quality fixed<=legacy (NOT 0.15 total-ratio)",
+  "note": "Amended gate (docs/amended-gate-2026-06-24.md): instrument-attributable failures==0; the 0.15 total-ratio is NOT a criterion."
+}

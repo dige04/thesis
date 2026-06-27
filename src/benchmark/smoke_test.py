@@ -19,6 +19,7 @@ from typing import Any
 
 from src.benchmark.models import Sequence, Task
 from src.benchmark.sequence_runner import SequenceRunner
+from src.benchmark.swebenchcl_loader import SWEBenchCLLoader
 from src.config.loader import load_config
 from src.memory.policies.no_memory import NoMemoryPolicy
 
@@ -201,20 +202,25 @@ def verify_logging_schemas(run_dir: Path) -> tuple[bool, list[str]]:
                     with open(snapshot_file, encoding="utf-8") as f:
                         snapshot = json.load(f)
 
-                        # Check required fields
-                        required_fields = [
+                        # Check required fields. Per v5 §11.4 the snapshot
+                        # schema (MemorySnapshotLogger) keeps run-level identity
+                        # (run_id, policy_name) under "metadata", not at top level.
+                        required_top = [
                             "step",
                             "boundary",
                             "active_records",
-                            "run_id",
-                            "policy_name",
                             "timestamp",
+                            "metadata",
                         ]
+                        required_meta = ["run_id", "policy_name"]
 
+                        meta = snapshot.get("metadata", {})
                         missing_fields = [
-                            field
-                            for field in required_fields
-                            if field not in snapshot
+                            field for field in required_top if field not in snapshot
+                        ] + [
+                            f"metadata.{field}"
+                            for field in required_meta
+                            if field not in meta
                         ]
                         if missing_fields:
                             errors.append(
@@ -432,42 +438,26 @@ def main():
         logger.info("Loading configuration...")
         config = load_config()
 
-        # For smoke test, we need a sample sequence
-        # Since we don't have the actual curriculum file yet, we'll create a mock sequence
-        # In production, this would load from SWEBenchCLLoader
-
-        # TODO: Replace with actual sequence loading when curriculum file is available
-        logger.warning(
-            "Using mock sequence for smoke test. "
-            "Replace with actual SWEBenchCLLoader when curriculum file is available."
+        # Load the REAL curriculum and run the pilot repo's easy tasks.
+        # Decision I pins the pilot pair to django + pytest; django's sequence
+        # is 100% easy, so its first `num_tasks` are guaranteed easy and satisfy
+        # Sequence validation (>=15 tasks, contiguous indices). NoMemory is the
+        # policy (hard-wired inside run_smoke_test) — the plumbing-first lane.
+        curriculum_path = config.get("experiment", {}).get(
+            "curriculum_path", "data/SWE-Bench-CL-Curriculum.json"
         )
-
-        # Create mock sequence for testing (need at least 15 tasks for Sequence validation)
-        mock_tasks = []
-        for i in range(15):
-            task = Task(
-                task_id=f"test-repo__test-{i+1}",
-                repo="test/repo",
-                base_commit="abc123",
-                issue_text=f"Test issue {i+1}",
-                test_patch="",
-                gold_patch="",
-                created_at="2024-01-01T00:00:00Z",
-                sequence_index=i,
-                difficulty_label="easy",
+        logger.info(f"Loading curriculum from {curriculum_path}")
+        loader = SWEBenchCLLoader(curriculum_path)
+        sequence = loader.get_sequence_by_name("django_django_sequence")
+        if sequence is None:
+            raise RuntimeError(
+                f"django_django_sequence not found in curriculum ({curriculum_path}). "
+                "Run scripts/build_curriculum.py."
             )
-            mock_tasks.append(task)
 
-        mock_sequence = Sequence(
-            sequence_name="test_sequence",
-            repo="test/repo",
-            tasks=mock_tasks,
-            task_count=15,
-        )
-
-        # Run smoke test
+        # Run smoke test (first num_tasks easy tasks of django, NoMemory)
         result = run_smoke_test(
-            sequence=mock_sequence,
+            sequence=sequence,
             config=config,
             seed=42,
             num_tasks=3,

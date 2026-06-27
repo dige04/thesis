@@ -29,6 +29,8 @@ MANIFEST
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
 .venv
 venv/
 env/
@@ -74,10 +76,16 @@ coverage.xml
 # ─────────────────────────────────────────────────────────────────
 # Per-run logs and memory state. 144 runs × per-task logs adds up fast.
 runs/
+runs_k27/
+runs_k27_merged/
+runs_legacy_merged/
 
 # Raw aggregated results. Plots and final tables in results/ committed manually.
 results/raw/
 results/cache/
+# Fabricated dress-rehearsal data — regenerated deterministically by
+# scripts/simulate/generate_synthetic_runs.py (NOT a measurement, do not commit).
+results/simulated/
 
 # Vector indices and metadata stores
 *.faiss
@@ -130,3 +138,20 @@ $RECYCLE.BIN/
 !results/tables/
 !results/aggregated/*.json
 !results/aggregated/*.csv
+
+# Keep otherwise-empty (gitignored) dirs tracked via .gitkeep placeholders.
+# A bare `!dir/.gitkeep` is not enough when `dir/` is excluded by a dir
+# pattern, so re-include the directory first, then re-exclude its contents.
+!runs/
+runs/*
+!runs/.gitkeep
+!logs/
+logs/*
+!logs/.gitkeep
+!results/raw/
+results/raw/*
+!results/raw/.gitkeep
+
+# Local agent/tooling state (oh-my-claudecode, antigravity) — not thesis code
+.omc/
+.antigravitycli/

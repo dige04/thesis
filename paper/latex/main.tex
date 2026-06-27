@@ -1,0 +1,106 @@
+\documentclass[11pt,oneside]{book}
+
+\input{preamble}
+
+\title{Memory Pruning and Forgetting Policies for AI Coding Agents\\
+\large Impact on Performance Across Sequential Tasks}
+\author{}
+\date{Bachelor's Thesis}
+
+\begin{document}
+
+\frontmatter
+\begin{titlepage}
+  \centering
+  {\large\scshape University of Science and Technology of Hanoi\par}
+  \vspace*{2cm}
+  {\LARGE\bfseries Memory Pruning and Forgetting Policies\\
+   for AI Coding Agents\par}
+  \vspace{0.6em}
+  {\large Impact on Performance Across Sequential Tasks\par}
+  \vspace{2.2cm}
+  {\large A thesis submitted in partial fulfillment\\
+   of the requirements for the degree of\\
+   Bachelor of Science\par}
+  \vspace{2cm}
+  {\large\itshape Dinh Thanh Hieu\par}
+  \vspace{0.2em}
+  {\normalsize Student ID: 22BA13132\par}
+  \vspace{1.2em}
+  {\normalsize Internal Supervisor: Dr.\ Nguyen Hoang Ha\par}
+  \vspace{0.2em}
+  {\normalsize External Supervisor: Mr.\ Ho Trong Duc\par}
+  \vfill
+  {\normalsize \today\par}
+\end{titlepage}
+
+\input{Abstract/Abstract}
+\clearpage
+\tableofcontents\clearpage
+\listoffigures\clearpage
+\listoftables\clearpage
+
+\mainmatter
+\chapter{Introduction}\label{ch:intro}
+\input{Chapter_1-Introduction/1.1_Background-and-Motivation}
+\input{Chapter_1-Introduction/1.2_Problem-Statement}
+\input{Chapter_1-Introduction/1.3_Research-Questions-and-Scope}
+\input{Chapter_1-Introduction/1.4_Contributions}
+
+\chapter{Background}\label{ch:background}
+\input{Chapter_2-Background/2.1_Memory-and-Continual-Learning}
+\input{Chapter_2-Background/2.2_Plasticity-Stability-and-Forgetting}
+\input{Chapter_2-Background/2.3_Cognitive-Foundations}
+\input{Chapter_2-Background/2.4_Retrieval-and-Context-Rot}
+
+\chapter{Related Work}\label{ch:related}
+\input{Chapter_3-Related-Work/3.1_Forgetting-in-LLM-Agents}
+\input{Chapter_3-Related-Work/3.2_CL-Benchmarks-for-Coding}
+\input{Chapter_3-Related-Work/3.3_Positioning-the-Gap}
+
+\chapter{Methodology}\label{ch:method}
+\input{Chapter_4-Methodology/4.1_Controlled-Comparison-Design}
+\input{Chapter_4-Methodology/4.2_Six-Memory-Policies/4.2.0_Overview}
+\input{Chapter_4-Methodology/4.2_Six-Memory-Policies/4.2.1_No-Memory}
+\input{Chapter_4-Methodology/4.2_Six-Memory-Policies/4.2.2_Full-Memory}
+\input{Chapter_4-Methodology/4.2_Six-Memory-Policies/4.2.3_Random-Prune}
+\input{Chapter_4-Methodology/4.2_Six-Memory-Policies/4.2.4_Recency-Prune}
+\input{Chapter_4-Methodology/4.2_Six-Memory-Policies/4.2.5_Type-Aware-Decay}
+\input{Chapter_4-Methodology/4.2_Six-Memory-Policies/4.2.6_CLS-Consolidation}
+\input{Chapter_4-Methodology/4.3_Memory-Architecture}
+\input{Chapter_4-Methodology/4.4_Retrieval-Fixed-Invariant}
+\input{Chapter_4-Methodology/4.5_Agent-Benchmark-and-Model}
+\input{Chapter_4-Methodology/4.6_Metrics-and-Statistical-Plan}
+\input{Chapter_4-Methodology/4.7_Instrument-Validation}
+
+\chapter{Results}\label{ch:results}
+\input{Chapter_5-Results/5.0_Instrument-Validation}
+\input{Chapter_5-Results/5.1_Setup-and-Descriptives}
+\input{Chapter_5-Results/5.2_H1-NonInferiority-and-Pareto}
+\input{Chapter_5-Results/5.3_H2-Content-vs-Random}
+\input{Chapter_5-Results/5.4_H3-CLS-Consolidation}
+\input{Chapter_5-Results/5.5_H4-Behavioral}
+\input{Chapter_5-Results/5.6_H5-and-Interdependence}
+\input{Chapter_5-Results/5.7_Manipulation-Checks}
+
+\chapter{Discussion}\label{ch:discussion}
+\input{Chapter_6-Discussion/6.1_Key-Findings}
+\input{Chapter_6-Discussion/6.2_Implications}
+\input{Chapter_6-Discussion/6.3_Deviations-from-Preregistration}
+\input{Chapter_6-Discussion/6.4_Threats-to-Validity}
+
+\chapter{Conclusion and Future Work}\label{ch:conclusion}
+\input{Chapter_7-Conclusion/7.1_Conclusion}
+\input{Chapter_7-Conclusion/7.2_Future-Work}
+
+\appendix
+\chapter{Appendices}\label{ch:appendix}
+\input{Appendix/A_Reproducibility-and-Provenance}
+\input{Appendix/B_Extended-Results}
+
+\backmatter
+\nocite{*}
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

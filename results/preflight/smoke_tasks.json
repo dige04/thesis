@@ -1,0 +1,28 @@
+{
+  "smoke_tasks": [
+    {
+      "task_id": "sympy__sympy-13091",
+      "repo": "sympy/sympy",
+      "target_file": "sympy/core/basic.py",
+      "approx_hunk_start_line": 6700,
+      "sequence_name": "sympy_sympy_sequence"
+    },
+    {
+      "task_id": "matplotlib__matplotlib-13989",
+      "repo": "matplotlib/matplotlib",
+      "target_file": "lib/matplotlib/axes/_axes.py",
+      "approx_hunk_start_line": 6686,
+      "sequence_name": "matplotlib_matplotlib_sequence"
+    },
+    {
+      "task_id": "pydata__xarray-3993",
+      "repo": "pydata/xarray",
+      "target_file": "xarray/core/dataarray.py",
+      "approx_hunk_start_line": 5972,
+      "sequence_name": "pydata_xarray_sequence"
+    }
+  ],
+  "heuristic": "Approximate file size heuristic (no Docker/base_commit checkout available): parse all '@@ -N' hunk start lines from gold_patch; require max(N) > 200. A patch that starts at line >200 implies the file has at least 200+ lines of context before the change, reliably indicating >4000 chars for typical Python source files. Tasks are ranked by max hunk start (descending) and top \u22653 selected. Evidence from trajectory read_file observations (truncated at \u22653990 chars) would provide direct confirmation but was not required to select candidates.",
+  "n_total_candidates_line_gt_200": 196,
+  "n_selected": 3
+}

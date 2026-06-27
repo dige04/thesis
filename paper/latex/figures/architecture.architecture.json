@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Memory-Equipped Coding Agent",
+    "subtitle": "the forgetting policy is the only swappable component",
+    "output": "architecture.html"
+  },
+  "components": [
+    { "id": "tasks", "type": "external", "label": "SWE-Bench-CL", "sublabel": "task sequence", "pos": [40, 360], "size": [130, 64] },
+    { "id": "agent", "type": "backend", "label": "Coding Agent", "sublabel": "LangGraph ReAct", "tag": "<= 20 steps", "pos": [250, 356], "size": [140, 70] },
+    { "id": "model", "type": "cloud", "label": "deepseek-v4-flash", "sublabel": "frozen model, all roles", "pos": [240, 150], "size": [160, 64] },
+    { "id": "eval", "type": "external", "label": "eval_v3 harness", "sublabel": "scores the patch", "pos": [250, 560], "size": [140, 60] },
+    { "id": "retriever", "type": "backend", "label": "Cosine Retriever", "sublabel": "fixed top-k = 5", "tag": "IDENTICAL across conditions", "pos": [480, 356], "size": [170, 70] },
+    { "id": "embedder", "type": "cloud", "label": "Embedder", "sublabel": "nomic-embed-text-v2-moe", "tag": "768-d", "pos": [480, 150], "size": [170, 64] },
+    { "id": "store", "type": "database", "label": "MemoryStore", "sublabel": "FAISS index", "pos": [740, 356], "size": [150, 64] },
+    { "id": "policy", "type": "security", "label": "Forgetting Policy", "sublabel": "1 of 6", "tag": "the ONLY swappable component", "pos": [730, 150], "size": [170, 70] },
+    { "id": "classifier", "type": "backend", "label": "Reflection + Classifier", "sublabel": "5-type taxonomy", "pos": [730, 560], "size": [170, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Memory subsystem (retrieval held constant)", "wraps": ["retriever", "embedder", "store", "policy", "classifier"] }
+  ],
+  "connections": [
+    { "from": "tasks", "to": "agent", "label": "tasks", "variant": "default" },
+    { "from": "agent", "to": "model", "label": "LLM calls", "variant": "default", "fromSide": "top", "toSide": "bottom", "labelDy": -64 },
+    { "from": "agent", "to": "eval", "label": "patch", "variant": "default", "fromSide": "bottom", "toSide": "top", "labelDy": 56 },
+    { "from": "agent", "to": "retriever", "label": "retrieve", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "from": "retriever", "to": "store", "label": "cosine top-k", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "from": "retriever", "to": "embedder", "label": "embed query", "variant": "dashed", "fromSide": "top", "toSide": "bottom", "labelDy": -64 },
+    { "from": "agent", "to": "classifier", "label": "write record", "variant": "default", "fromSide": "bottom", "toSide": "left", "route": "orthogonal-h" },
+    { "from": "classifier", "to": "store", "label": "store record", "variant": "default", "fromSide": "top", "toSide": "bottom", "labelDy": -56 },
+    { "from": "policy", "to": "store", "label": "maintain / forget", "variant": "security", "fromSide": "bottom", "toSide": "top", "labelDy": 56 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Agent loop", "items": ["LangGraph ReAct agent, max 20 steps per task", "Single frozen model (deepseek-v4-flash) for all roles", "Patch scored by the eval_v3 harness"] },
+    { "dot": "emerald", "title": "Retrieval held constant", "items": ["Pure cosine similarity, fixed top-k = 5", "Identical across all six conditions", "Same embedder (nomic-embed-text-v2-moe, 768-d) for query + write"] },
+    { "dot": "rose", "title": "The only variable", "items": ["The forgetting policy is the sole swappable component", "1 of 6 policies acts at the maintain step", "Everything else is shared infrastructure"] }
+  ]
+}

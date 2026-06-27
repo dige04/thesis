@@ -26,6 +26,38 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _as_int(value: Any) -> int:
+    """Coerce a usage field to a non-negative int, or 0 if it isn't numeric.
+
+    Provider responses (or test Mocks) may carry a ``usage`` whose token fields
+    are absent, ``None``, or a Mock attribute. Cost tracking is auxiliary and
+    must never raise, so anything non-numeric is reported as 0 rather than
+    propagated. ``bool`` is an ``int`` subclass but is never a token count.
+    """
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, float):
+        return max(0, int(value))
+    return 0
+
+
+def usage_from_chat_response(response: Any) -> tuple[int, int]:
+    """Best-effort ``(prompt_tokens, completion_tokens)`` from an OpenAI-compatible
+    chat-completions response.
+
+    Returns ``(0, 0)`` when ``usage`` is missing or non-numeric (a provider that
+    omits usage, or a unit-test Mock) so callers can surface usage unconditionally
+    without guarding every call site. E1 (complete cost telemetry).
+    """
+    usage = getattr(response, "usage", None)
+    return (
+        _as_int(getattr(usage, "prompt_tokens", None)),
+        _as_int(getattr(usage, "completion_tokens", None)),
+    )
+
+
 # OpenAI pricing (as of implementation date)
 # Source: https://openai.com/api/pricing/
 PRICING = {
@@ -159,15 +191,18 @@ class TaskCostSummary:
     agent_llm_cost: float = 0.0
     classifier_cost: float = 0.0
     consolidation_cost: float = 0.0
+    reflection_cost: float = 0.0
     embedding_cost: float = 0.0
     total_cost: float = 0.0
     agent_llm_calls: int = 0
     classifier_calls: int = 0
     consolidation_calls: int = 0
+    reflection_calls: int = 0
     embedding_calls: int = 0
     agent_tokens: int = 0
     classifier_tokens: int = 0
     consolidation_tokens: int = 0
+    reflection_tokens: int = 0
     embedding_tokens: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -177,15 +212,18 @@ class TaskCostSummary:
             "agent_llm_cost": self.agent_llm_cost,
             "classifier_cost": self.classifier_cost,
             "consolidation_cost": self.consolidation_cost,
+            "reflection_cost": self.reflection_cost,
             "embedding_cost": self.embedding_cost,
             "total_cost": self.total_cost,
             "agent_llm_calls": self.agent_llm_calls,
             "classifier_calls": self.classifier_calls,
             "consolidation_calls": self.consolidation_calls,
+            "reflection_calls": self.reflection_calls,
             "embedding_calls": self.embedding_calls,
             "agent_tokens": self.agent_tokens,
             "classifier_tokens": self.classifier_tokens,
             "consolidation_tokens": self.consolidation_tokens,
+            "reflection_tokens": self.reflection_tokens,
             "embedding_tokens": self.embedding_tokens,
         }
 
@@ -221,6 +259,7 @@ class RunCostSummary:
     agent_llm_cost: float = 0.0
     classifier_cost: float = 0.0
     consolidation_cost: float = 0.0
+    reflection_cost: float = 0.0
     embedding_cost: float = 0.0
     total_llm_calls: int = 0
     total_embedding_calls: int = 0
@@ -228,6 +267,14 @@ class RunCostSummary:
     tasks_completed: int = 0
     start_time: str | None = None
     end_time: str | None = None
+    # Provenance: True only when ALL v5 §1582 cost-axis call types (agent +
+    # reflection + classifier + consolidation + embedding) are tracked.
+    # Defaults False (honest for a bare tracker). The SequenceRunner surfaces
+    # every call type (E1) and flips this to True via
+    # CostTracker.mark_pareto_cost_complete() once a run starts; downstream
+    # Pareto/H1b/H3 analysis MUST NOT treat total_tokens as the complete cost
+    # axis while this is False. Mirrors cl_f1_source honesty.
+    pareto_cost_complete: bool = False
     task_costs: list[TaskCostSummary] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -241,6 +288,7 @@ class RunCostSummary:
             "agent_llm_cost": self.agent_llm_cost,
             "classifier_cost": self.classifier_cost,
             "consolidation_cost": self.consolidation_cost,
+            "reflection_cost": self.reflection_cost,
             "embedding_cost": self.embedding_cost,
             "total_llm_calls": self.total_llm_calls,
             "total_embedding_calls": self.total_embedding_calls,
@@ -248,6 +296,7 @@ class RunCostSummary:
             "tasks_completed": self.tasks_completed,
             "start_time": self.start_time,
             "end_time": self.end_time,
+            "pareto_cost_complete": self.pareto_cost_complete,
             "task_costs": [tc.to_dict() for tc in self.task_costs],
         }
 
@@ -292,15 +341,20 @@ class CostTracker:
     Requirements: 27
     """
 
-    def __init__(self, run_id: str, run_dir: str | Path):
+    def __init__(self, run_id: str, run_dir: str | Path, cost_metric_mode: str = "usd"):
         """Initialize cost tracker for a run.
 
         Args:
             run_id: Unique identifier for this run
             run_dir: Directory for this run (e.g., runs/{run_id})
+            cost_metric_mode: One of "usd" | "tokens" | "walltime". Under a
+                non-USD mode (e.g. Ollama flat-rate, deviation D3) tokens are the
+                authoritative cost proxy and unknown model names do NOT raise
+                (per-token USD is meaningless); cost is recorded as 0.0.
         """
         self.run_id = run_id
         self.run_dir = Path(run_dir)
+        self.cost_metric_mode = cost_metric_mode
 
         # Ensure run directory exists
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -341,6 +395,22 @@ class CostTracker:
             f"sequence={sequence_name}, seed={seed}"
         )
 
+    def mark_pareto_cost_complete(self, value: bool = True) -> None:
+        """Declare that this run tracks every v5 §1582 cost-axis call type.
+
+        Set by the SequenceRunner after E1 wiring (agent + reflection +
+        classifier + CLS consolidation + embedding usage are all surfaced into
+        this tracker), making ``total_tokens`` a valid complete cost axis for the
+        Pareto / H1b / H3 analysis. No-op (with a warning) if the run hasn't
+        started — ``start_run`` must be called first.
+        """
+        if not self.run_summary:
+            logger.warning(
+                "mark_pareto_cost_complete called before start_run; ignored."
+            )
+            return
+        self.run_summary.pareto_cost_complete = value
+
     def track_llm_call(
         self,
         call_type: str,
@@ -367,20 +437,24 @@ class CostTracker:
             ValueError: If model pricing is not available
         """
         # Validate call type
-        if call_type not in ("agent", "classifier", "consolidation"):
+        if call_type not in ("agent", "classifier", "consolidation", "reflection"):
             logger.warning(
                 f"Unknown call_type '{call_type}', should be one of: "
-                f"agent, classifier, consolidation"
+                f"agent, classifier, consolidation, reflection"
             )
 
-        # Get pricing for model
-        if model not in PRICING:
+        # Get pricing for model. Under a non-USD cost metric (e.g. Ollama
+        # flat-rate, deviation D3) tokens are authoritative and per-token USD is
+        # meaningless, so unknown models do NOT raise — cost is recorded as 0.
+        if model in PRICING:
+            pricing = PRICING[model]
+        elif self.cost_metric_mode != "usd":
+            pricing = {"input": 0.0, "output": 0.0}
+        else:
             raise ValueError(
                 f"No pricing available for model '{model}'. "
                 f"Available models: {sorted(PRICING.keys())}"
             )
-
-        pricing = PRICING[model]
 
         # Compute cost
         input_cost = (prompt_tokens / 1_000_000) * pricing["input"]
@@ -422,6 +496,8 @@ class CostTracker:
                 self.run_summary.classifier_cost += total_cost
             elif call_type == "consolidation":
                 self.run_summary.consolidation_cost += total_cost
+            elif call_type == "reflection":
+                self.run_summary.reflection_cost += total_cost
 
             self.run_summary.total_cost += total_cost
 
@@ -455,14 +531,18 @@ class CostTracker:
         Raises:
             ValueError: If model pricing is not available
         """
-        # Get pricing for model
-        if model not in PRICING:
+        # Get pricing for model. Under a non-USD cost metric (e.g. Ollama
+        # flat-rate, deviation D3) tokens are authoritative and per-token USD is
+        # meaningless, so unknown models do NOT raise — cost is recorded as 0.
+        if model in PRICING:
+            pricing = PRICING[model]
+        elif self.cost_metric_mode != "usd":
+            pricing = {"input": 0.0, "output": 0.0}
+        else:
             raise ValueError(
                 f"No pricing available for model '{model}'. "
                 f"Available models: {sorted(PRICING.keys())}"
             )
-
-        pricing = PRICING[model]
 
         # Compute cost (embeddings only have input tokens)
         total_cost = (tokens / 1_000_000) * pricing["input"]
@@ -536,6 +616,10 @@ class CostTracker:
                 task_cost.consolidation_cost += llm_call.estimated_cost_usd
                 task_cost.consolidation_calls += 1
                 task_cost.consolidation_tokens += llm_call.total_tokens
+            elif llm_call.call_type == "reflection":
+                task_cost.reflection_cost += llm_call.estimated_cost_usd
+                task_cost.reflection_calls += 1
+                task_cost.reflection_tokens += llm_call.total_tokens
 
             task_cost.total_cost += llm_call.estimated_cost_usd
 

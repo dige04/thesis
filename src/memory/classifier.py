@@ -17,12 +17,17 @@ Design: §6 Type Classification System
 
 import logging
 from enum import StrEnum
+from typing import Any
 
 from openai import OpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+
+from src.config.llm_factory import chat_base_url, classifier_model, get_aux_client
+from src.errors import ClassifierError, UsageLimitError, is_usage_limit_error
+from src.metrics.cost_tracker import usage_from_chat_response
+from src.model_output import extract_json_object
 
 from .record import VALID_MEMORY_TYPES
-from src.errors import ClassifierError, handle_classifier_failure
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +74,20 @@ class MemoryClassifier:
     Design: §6 Type Classification System
     """
 
-    # Frozen model choice (cheapest for classification)
-    MODEL = "gpt-4o-mini"
+    # Temperature held constant across conditions. AMENDMENT 2026-06-14: Kimi
+    # reasoning models (via CLIProxyAPI) only accept temp=1 (was 0); disclose.
+    TEMPERATURE = 1
 
-    # Frozen temperature (deterministic)
-    TEMPERATURE = 0
+    # Appended to the system prompt. Ollama's OpenAI-compatible endpoint ignores
+    # the OpenAI json_schema response_format (ollama/ollama #10001), so we use
+    # plain JSON mode + explicit schema instructions + Pydantic validation
+    # instead of beta.chat.completions.parse (deviation D4, see CLAUDE.md).
+    JSON_FORMAT_INSTRUCTIONS = (
+        "\n\nRespond with ONLY a JSON object of exactly this shape "
+        "(no markdown fences, no commentary):\n"
+        '{"memory_type": "<one of: architectural, api_change, bug_fix, '
+        'test_update, config>", "reasoning": "<brief explanation>"}'
+    )
 
     # Classification prompt template
     CLASSIFICATION_PROMPT = """You are a code change classifier for a research system studying memory management in AI coding agents.
@@ -109,21 +123,31 @@ You will be given:
 
 Classify the change into ONE of the 5 types above."""
 
-    def __init__(self, api_key: str | None = None):
+    def __init__(self, model: str | None = None, api_key: str | None = None):
         """
         Initialize the memory classifier.
 
         Args:
-            api_key: OpenAI API key (if None, uses environment variable)
+            model: Chat model id (defaults to llm_factory.classifier_model()).
+            api_key: Optional explicit key. If given, builds a client against the
+                configured chat endpoint with that key; otherwise uses the shared
+                llm_factory chat client (Ollama Cloud by default).
 
         Raises:
-            ClassifierError: If OpenAI client initialization fails
+            ClassifierError: If chat client initialization fails
         """
+        self.model = model or classifier_model()
         try:
-            self.client = OpenAI(api_key=api_key)
-            logger.info(f"Initialized MemoryClassifier with model={self.MODEL}, temp={self.TEMPERATURE}")
+            if api_key is not None:
+                self.client = OpenAI(base_url=chat_base_url(), api_key=api_key)
+            else:
+                self.client = get_aux_client()
+            logger.info(
+                f"Initialized MemoryClassifier with model={self.model}, "
+                f"temp={self.TEMPERATURE}"
+            )
         except Exception as e:
-            logger.error(f"Failed to initialize OpenAI client: {e}")
+            logger.error(f"Failed to initialize chat client: {e}")
             raise ClassifierError(f"Failed to initialize classifier: {e}") from e
 
     def classify(
@@ -133,7 +157,9 @@ Classify the change into ONE of the 5 types above."""
         files_touched: list[str],
         functions_touched: list[str],
         task_id: str | None = None,
-        retry_count: int = 0
+        retry_count: int = 0,
+        max_retries: int = 2,
+        usage_sink: list[dict[str, Any]] | None = None,
     ) -> str:
         """
         Classify a memory record into one of 5 content types.
@@ -148,6 +174,11 @@ Classify the change into ONE of the 5 types above."""
             functions_touched: List of modified functions
             task_id: Optional task ID for logging
             retry_count: Number of retries attempted (for logging)
+            usage_sink: Optional list; when provided, each underlying LLM call
+                appends a dict ``{"call_type": "classifier", "model", ...,
+                "prompt_tokens", "completion_tokens"}`` so the caller can
+                aggregate token cost (E1). Every attempt (incl. retries) is
+                recorded — retries consume real tokens.
 
         Returns:
             One of the 5 valid memory types: architectural, api_change,
@@ -166,52 +197,100 @@ Classify the change into ONE of the 5 types above."""
             functions_touched=functions_touched
         )
 
-        try:
-            # Call OpenAI with Structured Outputs
-            # Temperature is ALWAYS 0 (frozen invariant)
-            response = self.client.beta.chat.completions.parse(
-                model=self.MODEL,
-                messages=[
-                    {"role": "system", "content": self.CLASSIFICATION_PROMPT},
-                    {"role": "user", "content": classification_input}
-                ],
-                response_format=MemoryTypeClassification,
-                temperature=self.TEMPERATURE  # FROZEN: Always 0
-            )
+        messages = [
+            {
+                "role": "system",
+                "content": self.CLASSIFICATION_PROMPT + self.JSON_FORMAT_INSTRUCTIONS,
+            },
+            {"role": "user", "content": classification_input},
+        ]
 
-            # Extract classification
-            classification = response.choices[0].message.parsed
-
-            if classification is None:
-                raise ClassifierError("Classifier returned None (parsing failed)")
-
-            memory_type = classification.memory_type.value
-            reasoning = classification.reasoning
-
-            # Validate that returned type is valid (should always be true with enum)
-            if memory_type not in VALID_MEMORY_TYPES:
-                raise ClassifierError(
-                    f"Classifier returned invalid type '{memory_type}'. "
-                    f"Valid types: {sorted(VALID_MEMORY_TYPES)}"
+        last_error: Exception | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                # Prompt-instructed JSON + tolerant extraction + Pydantic
+                # validation. No response_format: MiniMax M3 returns 400
+                # model_not_capable for json_object mode (D4 extended 2026-06-17).
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=self.TEMPERATURE,
                 )
 
-            # Log successful classification
-            logger.info(
-                f"Classified memory type={memory_type} "
-                f"(task_id={task_id}, retry={retry_count}): {reasoning}"
-            )
+                # Surface token usage for cost telemetry (E1). Recorded BEFORE
+                # validation so a malformed-then-retried response still counts
+                # its tokens (retries are real spend).
+                if usage_sink is not None:
+                    prompt_tokens, completion_tokens = usage_from_chat_response(response)
+                    usage_sink.append(
+                        {
+                            "call_type": "classifier",
+                            "model": self.model,
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                        }
+                    )
 
-            return memory_type
+                content = response.choices[0].message.content
+                if not content or not isinstance(content, str):
+                    raise ValueError("classifier returned empty/non-string content")
 
-        except Exception as e:
-            # Log classifier error with context
-            error_msg = (
-                f"Classifier failed for task_id={task_id}, retry={retry_count}: {e}"
-            )
-            logger.error(error_msg)
+                classification = MemoryTypeClassification.model_validate(
+                    extract_json_object(content)
+                )
+                memory_type = classification.memory_type.value
 
-            # Raise ClassifierError to signal reflection step should fail
-            raise ClassifierError(error_msg) from e
+                # Redundant with the enum, but explicit per Invariant #7.
+                if memory_type not in VALID_MEMORY_TYPES:
+                    raise ValueError(
+                        f"invalid memory_type '{memory_type}' "
+                        f"(valid: {sorted(VALID_MEMORY_TYPES)})"
+                    )
+
+                logger.info(
+                    f"Classified memory type={memory_type} "
+                    f"(task_id={task_id}, attempt={attempt}): {classification.reasoning}"
+                )
+                return memory_type
+
+            except (ValidationError, ValueError) as e:
+                # Malformed/invalid output — retry with a corrective nudge.
+                last_error = e
+                logger.warning(
+                    f"Classifier attempt {attempt} produced invalid output "
+                    f"(task_id={task_id}): {e}"
+                )
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your previous response was not valid."
+                            + self.JSON_FORMAT_INSTRUCTIONS
+                        ),
+                    }
+                )
+            except Exception as e:
+                # A provider quota/usage-limit error is FATAL and will not clear
+                # on retry — abort the whole run rather than emit invalid tasks.
+                if is_usage_limit_error(e):
+                    raise UsageLimitError(
+                        f"Provider usage limit hit during classification "
+                        f"(task_id={task_id}): {e}"
+                    ) from e
+                # Other transport/API errors — do not silently swallow, fail fast.
+                last_error = e
+                logger.error(
+                    f"Classifier API call failed "
+                    f"(task_id={task_id}, attempt={attempt}): {e}"
+                )
+                break
+
+        error_msg = (
+            f"Classifier failed for task_id={task_id} after "
+            f"{max_retries + 1} attempt(s): {last_error}"
+        )
+        logger.error(error_msg)
+        raise ClassifierError(error_msg) from last_error
 
     def _build_classification_input(
         self,
@@ -258,7 +337,8 @@ def classify_memory_type(
     functions_touched: list[str],
     task_id: str | None = None,
     retry_count: int = 0,
-    api_key: str | None = None
+    api_key: str | None = None,
+    usage_sink: list[dict[str, Any]] | None = None,
 ) -> str:
     """
     Convenience function to classify a memory type without creating a classifier instance.
@@ -290,5 +370,6 @@ def classify_memory_type(
         files_touched=files_touched,
         functions_touched=functions_touched,
         task_id=task_id,
-        retry_count=retry_count
+        retry_count=retry_count,
+        usage_sink=usage_sink,
     )

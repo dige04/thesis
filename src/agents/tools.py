@@ -11,14 +11,47 @@ This module provides all tools available to the coding agent:
 - run_tests: Run test commands
 - get_patch: Generate a git diff patch
 
+Execution backend seam (Phase 4.8, decisions A+G)
+-------------------------------------------------
+``AgentTools`` keeps the tracker, validation, and diff-application logic and
+delegates the raw I/O + command execution to an ``ExecutionBackend``:
+
+- ``LocalBackend``     — subprocess + filesystem against a checked-out working
+  directory (the original behavior; the default; used by unit tests).
+- ``ContainerBackend`` — ``docker exec`` / ``docker cp`` against one live
+  per-task container started from the swebench **arm64 instance image** (deps
+  installed). Only the tool *effects* relocate into the container; the ReAct
+  loop, LimitTracker, trajectory logging, and the Ollama LLM path are unchanged.
+
 Tool call tracking is implemented for behavioral metrics (Requirement 29).
 """
 
 import os
+import re
+import shlex
 import subprocess
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# read_file budget constants
+MAX_READ_LINES: int = 400
+MAX_READ_CHARS: int = 12000
+
+# Legacy obs cap (pre-task-3 head-truncation)
+_LEGACY_OBS_CAP: int = 4000
+
+
+def tool_mode() -> str:
+    """Return the active tool-behavior mode from the environment.
+
+    AGENT_TOOL_MODE=legacy  → reproduce pre-fix behavior (Task 5c, A/B comparison).
+    AGENT_TOOL_MODE=fixed   → new behavior (default; used in all 144 production runs).
+    Any other / absent      → "fixed".
+    """
+    raw = os.environ.get("AGENT_TOOL_MODE", "fixed").strip().lower()
+    return "legacy" if raw == "legacy" else "fixed"
 
 
 @dataclass
@@ -63,300 +96,704 @@ class ToolCallTracker:
         return breakdown
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Execution backends
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ExecutionBackend(ABC):
+    """Raw I/O + command execution against a repository checkout.
+
+    All paths are RELATIVE to the repository root. Implementations relocate
+    *where* the effects happen (host filesystem vs. inside a Docker container)
+    without changing the agent's tool semantics.
+    """
+
+    @abstractmethod
+    def exists(self, rel_path: str) -> bool: ...
+
+    @abstractmethod
+    def is_file(self, rel_path: str) -> bool: ...
+
+    @abstractmethod
+    def is_dir(self, rel_path: str) -> bool: ...
+
+    @abstractmethod
+    def read_text(self, rel_path: str) -> str: ...
+
+    @abstractmethod
+    def write_text(self, rel_path: str, content: str) -> None: ...
+
+    @abstractmethod
+    def list_files(self, rel_dir: str, pattern: str) -> list[str]:
+        """Return sorted repo-relative paths of files in rel_dir matching pattern
+        (non-recursive, like ``Path.glob(pattern)``)."""
+
+    @abstractmethod
+    def run(self, command: str, timeout: int) -> dict[str, Any]:
+        """Run a shell command at the repo root.
+
+        Returns {stdout, stderr, return_code}. Raises subprocess.TimeoutExpired
+        on timeout (the caller maps it to a failure dict)."""
+
+    @abstractmethod
+    def search_code(self, query: str, file_pattern: str) -> list[dict[str, Any]]:
+        """grep -rn -E <query> for repo-relative matches [{file, line, content}]."""
+
+    @abstractmethod
+    def git_diff(self) -> str:
+        """Unified diff of all changes vs HEAD, including untracked files."""
+
+
+class LocalBackend(ExecutionBackend):
+    """Host filesystem + subprocess backend (original behavior; unit-test default)."""
+
+    def __init__(self, working_dir: str | Path):
+        self.working_dir = Path(working_dir)
+        if not self.working_dir.exists():
+            raise ValueError(f"Working directory does not exist: {working_dir}")
+
+    def _p(self, rel_path: str) -> Path:
+        return self.working_dir / rel_path
+
+    def exists(self, rel_path: str) -> bool:
+        return self._p(rel_path).exists()
+
+    def is_file(self, rel_path: str) -> bool:
+        return self._p(rel_path).is_file()
+
+    def is_dir(self, rel_path: str) -> bool:
+        return self._p(rel_path).is_dir()
+
+    def read_text(self, rel_path: str) -> str:
+        with open(self._p(rel_path), encoding="utf-8") as f:
+            return f.read()
+
+    def write_text(self, rel_path: str, content: str) -> None:
+        file_path = self._p(rel_path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+    def list_files(self, rel_dir: str, pattern: str) -> list[str]:
+        dir_path = self._p(rel_dir)
+        files = []
+        for file_path in dir_path.glob(pattern):
+            if file_path.is_file():
+                files.append(os.path.relpath(file_path, self.working_dir))
+        return sorted(files)
+
+    def run(self, command: str, timeout: int) -> dict[str, Any]:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            cwd=self.working_dir,
+            timeout=timeout,
+        )
+        return {
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "return_code": result.returncode,
+        }
+
+    def search_code(self, query: str, file_pattern: str) -> list[dict[str, Any]]:
+        cmd = ["grep", "-rn", "-E", query, str(self.working_dir)]
+        if file_pattern != "*":
+            cmd.extend(["--include", file_pattern])
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=self.working_dir)
+        matches = []
+        for line in result.stdout.split("\n"):
+            if not line:
+                continue
+            parts = line.split(":", 2)
+            if len(parts) >= 3:
+                rel_path = os.path.relpath(parts[0], self.working_dir)
+                matches.append({
+                    "file": rel_path,
+                    "line": int(parts[1]),
+                    "content": parts[2].strip(),
+                })
+        return matches
+
+    def git_diff(self) -> str:
+        # Stage everything (incl. new files) then `git diff --cached HEAD` so the
+        # patch carries proper `diff --git`/`new file`/`@@` headers that
+        # swebench's `git apply` accepts. The previous hand-built untracked diff
+        # lacked hunk headers and was rejected, silently dropping new files from
+        # the evaluated patch. The checkout is throwaway, so staging is safe.
+        subprocess.run(["git", "add", "-A"], capture_output=True, text=True, cwd=self.working_dir)
+        result = subprocess.run(
+            ["git", "diff", "--cached", "HEAD"],
+            capture_output=True, text=True, cwd=self.working_dir,
+        )
+        return result.stdout
+
+
+class ContainerBackend(ExecutionBackend):
+    """``docker exec``/``docker cp`` backend against one live per-task container.
+
+    The container is started elsewhere (the per-task lifecycle, shared with the
+    eval harness — decision A) from the swebench arm64 instance image, which has
+    the repo checked out at ``repo_dir`` (default ``/testbed``) with deps
+    installed. This backend only *acts inside* it.
+
+    NOTE: requires a running Docker daemon + the instance container; it cannot be
+    exercised by the host-only unit tests beyond command-construction checks.
+    """
+
+    def __init__(self, container_id: str, repo_dir: str = "/testbed", docker_bin: str = "docker"):
+        self.container_id = container_id
+        self.repo_dir = repo_dir.rstrip("/")
+        self.docker_bin = docker_bin
+
+    # -- docker plumbing -----------------------------------------------------
+    def _abs(self, rel_path: str) -> str:
+        # Accept BOTH repo-relative paths and absolute container paths. The agent
+        # frequently references absolute paths (e.g. "/testbed/sympy/core/basic.py")
+        # because run_command output shows them; blindly prefixing repo_dir would
+        # produce "/testbed//testbed/..." and break edit/read (empty-patch bug).
+        if rel_path in (".", ""):
+            return self.repo_dir
+        if rel_path.startswith("/"):
+            return rel_path.rstrip("/")
+        return f"{self.repo_dir}/{rel_path}".rstrip("/")
+
+    def _exec(self, shell_cmd: str, timeout: int | None = None, stdin: str | None = None) -> subprocess.CompletedProcess:
+        """Run ``sh -c shell_cmd`` inside the container at repo_dir."""
+        argv = [self.docker_bin, "exec", "-i", self.container_id, "sh", "-c",
+                f"cd {shlex.quote(self.repo_dir)} && {shell_cmd}"]
+        return subprocess.run(
+            argv, capture_output=True, text=True, timeout=timeout,
+            input=stdin if stdin is not None else None,
+        )
+
+    def exists(self, rel_path: str) -> bool:
+        return self._exec(f"test -e {shlex.quote(self._abs(rel_path))}").returncode == 0
+
+    def is_file(self, rel_path: str) -> bool:
+        return self._exec(f"test -f {shlex.quote(self._abs(rel_path))}").returncode == 0
+
+    def is_dir(self, rel_path: str) -> bool:
+        return self._exec(f"test -d {shlex.quote(self._abs(rel_path))}").returncode == 0
+
+    def read_text(self, rel_path: str) -> str:
+        proc = self._exec(f"cat {shlex.quote(self._abs(rel_path))}")
+        if proc.returncode != 0:
+            raise FileNotFoundError(f"File not found in container: {rel_path}")
+        return proc.stdout
+
+    def write_text(self, rel_path: str, content: str) -> None:
+        abs = self._abs(rel_path)
+        proc = self._exec(
+            f"mkdir -p \"$(dirname {shlex.quote(abs)})\" && cat > {shlex.quote(abs)}",
+            stdin=content,
+        )
+        if proc.returncode != 0:
+            raise OSError(f"write_text failed in container: {proc.stderr}")
+
+    def list_files(self, rel_dir: str, pattern: str) -> list[str]:
+        # Non-recursive (maxdepth 1), like Path.glob(pattern). Paths are made
+        # repo-relative to match LocalBackend output.
+        abs_dir = self._abs(rel_dir)
+        proc = self._exec(
+            f"find {shlex.quote(abs_dir)} -maxdepth 1 -type f -name {shlex.quote(pattern)}"
+        )
+        files = []
+        for line in proc.stdout.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            rel = os.path.relpath(line, self.repo_dir)
+            files.append(rel)
+        return sorted(files)
+
+    def run(self, command: str, timeout: int) -> dict[str, Any]:
+        proc = self._exec(command, timeout=timeout)
+        return {"stdout": proc.stdout, "stderr": proc.stderr, "return_code": proc.returncode}
+
+    def search_code(self, query: str, file_pattern: str) -> list[dict[str, Any]]:
+        include = f" --include {shlex.quote(file_pattern)}" if file_pattern != "*" else ""
+        proc = self._exec(f"grep -rn -E {shlex.quote(query)}{include} .")
+        matches = []
+        for line in proc.stdout.split("\n"):
+            if not line:
+                continue
+            parts = line.split(":", 2)
+            if len(parts) >= 3:
+                matches.append({
+                    "file": parts[0].lstrip("./"),
+                    "line": int(parts[1]),
+                    "content": parts[2].strip(),
+                })
+        return matches
+
+    def git_diff(self) -> str:
+        # Same approach as LocalBackend: stage all, then diff --cached for a
+        # valid, git-apply-able patch that includes new files with proper headers.
+        self._exec("git add -A")
+        return self._exec("git diff --cached HEAD").stdout
+
+
+class ContainerSession:
+    """Lifecycle for one per-task swebench instance container (decision A).
+
+    Starts a detached container from the arm64 instance image (repo checked out
+    at ``repo_dir`` with deps installed), keeps it alive (``sleep infinity``),
+    hands a ``ContainerBackend`` to AgentTools, and removes it on ``stop()``.
+
+    The local-build image name follows the swebench convention
+    ``sweb.eval.{arch}.{instance_id.lower()}:{tag}`` (built by the Phase 5.0
+    build-probe with ``--namespace ""``). Requires a Docker daemon + the image.
+    """
+
+    def __init__(self, image: str, repo_dir: str = "/testbed", docker_bin: str = "docker"):
+        self.image = image
+        self.repo_dir = repo_dir
+        self.docker_bin = docker_bin
+        self.container_id: str | None = None
+
+    @staticmethod
+    def image_for(
+        instance_id: str,
+        arch: str = "x86_64",
+        tag: str = "latest",
+        namespace: str | None = None,
+    ) -> str:
+        """Instance-image name matching swebench's ``TestSpec.instance_image_key``.
+
+        Local build (``namespace`` falsy): ``sweb.eval.{arch}.{id.lower()}:{tag}``.
+        Pulled (``namespace`` set, e.g. ``"swebench"``): the name is namespaced
+        AND ``__`` is rewritten to ``_1776_`` — exactly as swebench encodes the
+        published Docker Hub tag (test_spec.py:107-110). Must match so the agent
+        runs the same image the eval harness pulls.
+        """
+        key = f"sweb.eval.{arch}.{instance_id.lower()}:{tag}"
+        if namespace:
+            key = f"{namespace}/{key}".replace("__", "_1776_")
+        return key
+
+    def start(self) -> str:
+        proc = subprocess.run(
+            [self.docker_bin, "run", "-d", "--rm", self.image, "sleep", "infinity"],
+            capture_output=True, text=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to start container from {self.image}: {proc.stderr.strip()}")
+        self.container_id = proc.stdout.strip()
+        return self.container_id
+
+    def backend(self) -> "ContainerBackend":
+        if self.container_id is None:
+            raise RuntimeError("ContainerSession not started")
+        return ContainerBackend(self.container_id, self.repo_dir, self.docker_bin)
+
+    def stop(self) -> None:
+        if self.container_id:
+            subprocess.run(
+                [self.docker_bin, "rm", "-f", self.container_id],
+                capture_output=True, text=True,
+            )
+            self.container_id = None
+
+    def __enter__(self) -> "ContainerSession":
+        self.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.stop()
+
+
+def _strip_container_prefix(token: str, repo_root: str | None = None) -> str:
+    """Strip git-diff and container-root prefixes, returning a repo-relative path.
+
+    Handles, in order: the git ``a/``|``b/`` diff prefix (stripped ONCE), any
+    leading slashes (absolute → relative — this also re-exposes a prefix hidden
+    behind ``a/``), the ``testbed/`` container working-dir prefix, and an explicit
+    ``repo_root``.
+
+    The ordering and the ``lstrip("/")`` fix the 2026-06-24 A/B normalize gap:
+    ``a//testbed/x`` (git ``a/`` prefix + absolute ``/testbed/...`` path → double
+    slash) previously survived because the leading slash was stripped BEFORE
+    ``a/``, so after removing ``a/`` the path was ``/testbed/x`` and the
+    ``testbed/`` check (no leading slash expected) never fired. ``/dev/null`` is
+    preserved verbatim (pure add / pure delete diffs).
+    """
+    if token in ("/dev/null", "dev/null"):
+        return token
+    p = token
+    # 1. git diff prefix a/ or b/ — stripped ONCE (it is the -p1 prefix; do not
+    #    iterate, or a real leading directory literally named 'a'/'b' is lost).
+    if p.startswith(("a/", "b/")):
+        p = p[2:]
+    # 2. leading slash(es): absolute → relative; also handles 'a//testbed/...'
+    #    where stripping 'a/' re-exposed a leading '/'.
+    p = p.lstrip("/")
+    # 3. container working-dir prefix
+    if p.startswith("testbed/"):
+        p = p[len("testbed/"):]
+    # 4. backend-resolved repo root (absolute working dir, e.g. 'home/user/repo/')
+    if repo_root:
+        root = repo_root.strip("/") + "/"
+        if root != "/" and p.startswith(root):
+            p = p[len(root):]
+    return p
+
+
+def _normalize_diff_paths(diff: str, repo_root: str | None) -> str:
+    """Rewrite diff path headers so that ``git apply -p1`` can apply them.
+
+    The model running inside a container sees absolute paths like
+    ``/testbed/sympy/core/basic.py`` and emits them verbatim in the
+    ``diff --git``, ``---``, and ``+++`` lines.  ``git apply`` (running on the
+    host or inside the container's repo) expects ``a/<relpath>``/``b/<relpath>``
+    for ``-p1``.  This function delegates per-token stripping to
+    :func:`_strip_container_prefix` and re-anchors to the ``a/``/``b/`` form.
+
+    Per-token strip order (see ``_strip_container_prefix``):
+      1. ``a/`` or ``b/`` (``git diff`` prefix — stripped ONCE, re-added cleanly)
+      2. leading ``/`` (absolute → relative; also re-exposes a prefix hidden
+         behind ``a/``, e.g. ``a//testbed/x``)
+      3. ``testbed/`` (default container working dir)
+      4. ``<repo_root>/`` (backend-resolved absolute working directory, if provided)
+
+    ``/dev/null`` tokens are preserved verbatim (pure add / pure delete diffs).
+    """
+
+    def _strip_path(token: str) -> str:
+        """Strip known prefixes and return a repo-relative path (module helper)."""
+        return _strip_container_prefix(token, repo_root)
+
+    def _reanchor(prefix: str, token: str) -> str:
+        """Return ``prefix/<relpath>`` preserving /dev/null verbatim."""
+        rel = _strip_path(token)
+        if rel in ("/dev/null", "dev/null"):
+            return "/dev/null"
+        return f"{prefix}/{rel}"
+
+    lines = diff.split("\n")
+    out: list[str] = []
+    for line in lines:
+        # diff --git a/... b/...
+        m = re.match(r"^(diff --git )(\S+) (\S+)$", line)
+        if m:
+            out.append(m.group(1) + _reanchor("a", m.group(2)) + " " + _reanchor("b", m.group(3)))
+            continue
+        # --- a/... or --- /testbed/... or --- /dev/null
+        m = re.match(r"^(--- )(\S+)$", line)
+        if m:
+            out.append(m.group(1) + _reanchor("a", m.group(2)))
+            continue
+        # +++ b/... or +++ /testbed/... or +++ /dev/null
+        m = re.match(r"^(\+\+\+ )(\S+)$", line)
+        if m:
+            out.append(m.group(1) + _reanchor("b", m.group(2)))
+            continue
+        # rename from / rename to headers (optional whitespace form)
+        m = re.match(r"^(rename from )(\S+)$", line)
+        if m:
+            out.append(m.group(1) + _strip_path(m.group(2)))
+            continue
+        m = re.match(r"^(rename to )(\S+)$", line)
+        if m:
+            out.append(m.group(1) + _strip_path(m.group(2)))
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _collect_diff_paths(diff: str) -> list[str]:
+    """Return the set of normalised file paths referenced in a (already-normalised) diff.
+
+    Prefers ``diff --git a/<p> b/<p>`` lines (canonical, authoritative). When no
+    such header exists (plain unified diff without ``diff --git``), falls back to
+    ``---`` / ``+++`` lines.  ``/dev/null`` is excluded (pure add/delete is fine
+    — only one side is a real file).
+    """
+    paths: list[str] = []
+    has_git_header = False
+
+    for line in diff.split("\n"):
+        m = re.match(r"^diff --git (\S+) (\S+)$", line)
+        if m:
+            has_git_header = True
+            for token in (m.group(1), m.group(2)):
+                if token == "/dev/null":
+                    continue
+                # strip a/ or b/
+                p = token[2:] if token.startswith(("a/", "b/")) else token
+                if p not in paths:
+                    paths.append(p)
+
+    if not has_git_header:
+        # Fall back to --- / +++ lines for plain unified diffs
+        for line in diff.split("\n"):
+            m = re.match(r"^(?:---|\+\+\+) (\S+)", line)
+            if m:
+                token = m.group(1)
+                if token == "/dev/null":
+                    continue
+                # strip a/ or b/ (already normalised by _normalize_diff_paths)
+                p = token[2:] if token.startswith(("a/", "b/")) else token
+                if p not in paths:
+                    paths.append(p)
+
+    return paths
+
+
 class AgentTools:
     """
     Collection of tools available to the coding agent.
 
-    All tools operate within a working directory (repository checkout).
-    Tool calls are tracked for behavioral metrics analysis.
+    Tool semantics are backend-agnostic: validation, tracking, and diff
+    application live here, while raw I/O + command execution are delegated to an
+    ``ExecutionBackend``. Pass ``working_dir`` for the default ``LocalBackend``,
+    or an explicit ``backend`` (e.g. ``ContainerBackend``) for in-container runs.
     """
 
-    def __init__(self, working_dir: str, tracker: ToolCallTracker | None = None):
+    def __init__(
+        self,
+        working_dir: str | None = None,
+        tracker: ToolCallTracker | None = None,
+        backend: ExecutionBackend | None = None,
+    ):
         """
         Initialize agent tools.
 
         Args:
-            working_dir: Path to the repository working directory
-            tracker: Optional tool call tracker for behavioral metrics
+            working_dir: Repository working directory (used to build a default
+                LocalBackend when ``backend`` is not provided).
+            tracker: Optional tool call tracker for behavioral metrics.
+            backend: Optional explicit execution backend (overrides working_dir).
         """
-        self.working_dir = Path(working_dir)
+        if backend is None:
+            if working_dir is None:
+                raise ValueError("AgentTools requires either working_dir or backend")
+            backend = LocalBackend(working_dir)
+        self.backend = backend
+        # Preserve the original attribute for callers/tests that read it.
+        self.working_dir = getattr(backend, "working_dir", None)
         self.tracker = tracker or ToolCallTracker()
 
-        # Ensure working directory exists
-        if not self.working_dir.exists():
-            raise ValueError(f"Working directory does not exist: {working_dir}")
+    def read_file(self, path: str, start_line: int | None = None,
+                  end_line: int | None = None) -> str:
+        """Read the contents of a file (relative to the repo root).
 
-    def read_file(self, path: str) -> str:
+        **fixed mode** (default): supports optional line ranges with
+        line-number prefixes and a hard budget cap (MAX_READ_LINES /
+        MAX_READ_CHARS).  When the output would exceed the budget a
+        continuation hint is appended so the caller knows which range to
+        request next.
+
+        **legacy mode** (AGENT_TOOL_MODE=legacy): ignores start_line /
+        end_line, returns the raw whole-file content with no line numbering
+        and no budget cap — exactly the pre-task-1 behavior.
         """
-        Read the contents of a file.
-
-        Args:
-            path: Relative path to the file within the working directory
-
-        Returns:
-            File contents as a string
-
-        Raises:
-            FileNotFoundError: If the file does not exist
-            PermissionError: If the file cannot be read
-        """
-        args = {"path": path}
-        file_path = self.working_dir / path
-
-        if not file_path.exists():
-            error = f"File not found: {path}"
-            self.tracker.record_call("read_file", args, None, error)
+        args = {"path": path, "start_line": start_line, "end_line": end_line}
+        if not self.backend.exists(path):
+            error = f"File not found: {path}"; self.tracker.record_call("read_file", args, None, error)
             raise FileNotFoundError(error)
-
-        if not file_path.is_file():
-            error = f"Path is not a file: {path}"
-            self.tracker.record_call("read_file", args, None, error)
+        if not self.backend.is_file(path):
+            error = f"Path is not a file: {path}"; self.tracker.record_call("read_file", args, None, error)
             raise ValueError(error)
-
         try:
-            with open(file_path, encoding="utf-8") as f:
-                content = f.read()
+            content = self.backend.read_text(path)
+        except Exception as ex:
+            self.tracker.record_call("read_file", args, None, str(ex)); raise
 
+        # ── legacy: raw whole-file, no numbering, ignore range args ──────────
+        if tool_mode() == "legacy":
             self.tracker.record_call("read_file", args, len(content))
             return content
 
-        except Exception as e:
-            # Only track unexpected errors (file system errors, encoding errors, etc.)
-            self.tracker.record_call("read_file", args, None, str(e))
-            raise
+        # ── fixed: ranged + numbered + budget ────────────────────────────────
+        lines = content.splitlines(); n = len(lines)
+        self.tracker.record_call("read_file", args, len(content))
+        s = max(1, int(start_line)) if start_line else 1
+        e = n if end_line is None else int(end_line)
+        if s > n:
+            return f"# {path} ({n} lines): requested start_line {s} is past end of file."
+        if e < s:
+            return f"# {path} ({n} lines): invalid range start_line={s} > end_line={e}."
+        e = min(n, e)
+        def header(last: int) -> str:
+            if last < e:
+                return (f"# {path} (lines {s}-{last} of {n}; showing through {last} of requested "
+                        f"{s}-{e}. Call read_file(path, {last + 1}, {e}) to continue.)\n")
+            return f"# {path} (lines {s}-{last} of {n})\n"
+        rows = [f"{i}\t{lines[i-1]}" for i in range(s, min(e, s + MAX_READ_LINES - 1) + 1)]
+        while rows:
+            last = s + len(rows) - 1
+            out = header(last) + "\n".join(rows)
+            if len(out) <= MAX_READ_CHARS:
+                return out
+            if len(rows) == 1:
+                hdr = header(s); suffix = f" …[line {s} truncated]"
+                avail = max(0, MAX_READ_CHARS - len(hdr) - len(f"{s}\t") - len(suffix))
+                return hdr + f"{s}\t{lines[s - 1][:avail]}{suffix}"
+            rows.pop()
+        return header(s)
 
     def write_file(self, path: str, content: str) -> None:
-        """
-        Write content to a file, creating it if it doesn't exist.
-
-        Args:
-            path: Relative path to the file within the working directory
-            content: Content to write to the file
-
-        Raises:
-            PermissionError: If the file cannot be written
-        """
+        """Write content to a file, creating parents if needed."""
         args = {"path": path, "content_length": len(content)}
         try:
-            file_path = self.working_dir / path
-
-            # Create parent directories if they don't exist
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-
+            self.backend.write_text(path, content)
             self.tracker.record_call("write_file", args, "success")
-
         except Exception as e:
             self.tracker.record_call("write_file", args, None, str(e))
             raise
 
     def edit_file(self, path: str, diff: str) -> None:
-        """
-        Apply diff-style edits to a file.
+        """Apply a unified diff to a file via ``git apply`` (robust; fails loudly).
 
-        The diff format is a simplified unified diff:
-        - Lines starting with '-' are removed
-        - Lines starting with '+' are added
-        - Lines starting with ' ' (space) are context lines
+        The model emits standard unified diffs (``diff --git``/``@@`` headers). We
+        apply them with ``git apply`` (with ``--recount``/``--3way`` fallbacks for
+        line-number drift) rather than a hand-rolled parser. The previous parser had
+        no hunk positioning and mis-handled ``+++``/``---``/``@@`` header lines —
+        it wrote diff headers INTO the file and silently produced empty/garbage
+        patches (the smoke empty-patch bug). On failure we raise with the git error
+        so the agent sees it (the ReAct loop surfaces tool errors as observations)
+        and can retry or fall back to ``write_file`` — instead of corrupting silently.
 
-        Args:
-            path: Relative path to the file within the working directory
-            diff: Diff string to apply
-
-        Raises:
-            FileNotFoundError: If the file does not exist
-            ValueError: If the diff cannot be applied
+        Security contract (Task 2b):
+        - ``path`` is the SOLE authority for what may change.
+        - diff headers are normalised (strip ``/testbed/`` and repo-root prefixes)
+          so ``git apply -p1`` can apply them cleanly.
+        - If the diff touches any file other than ``path``, contains ``..``, or
+          would resolve outside the repo root, a ``ValueError`` is raised BEFORE
+          touching disk.
         """
         args = {"path": path, "diff_length": len(diff)}
-        file_path = self.working_dir / path
 
-        if not file_path.exists():
+        # ── 0. (fixed mode) normalise the path ARG up-front ───────────────────
+        # The model usually passes the absolute container path ('/testbed/src/x.py')
+        # while the diff headers are relative ('a/src/x.py'). Normalising path here
+        # (BEFORE the existence check and the security comparison) ensures all three
+        # — exists(), the `p != path` guard, and git apply — see the same
+        # repo-relative path. Without this, the guard compared the normalised diff
+        # path against the RAW absolute arg → 77/78 false rejections in the
+        # 2026-06-24 A/B. `args` keeps the original path for logging fidelity.
+        repo_root: str | None = None
+        if tool_mode() == "fixed":
+            raw_root = getattr(self.backend, "working_dir", None) or getattr(self.backend, "repo_dir", None)
+            if raw_root is not None:
+                repo_root = str(raw_root).rstrip("/")
+            path = _strip_container_prefix(path, repo_root)
+            # Reject a traversal in the path arg itself (defence in depth: the
+            # diff-path guard below also checks, but `path` is the authority for
+            # what may change, so guard it directly, before the existence check).
+            if ".." in path.split("/"):
+                error = (
+                    f"Security: path '{path}' contains a '..' traversal component "
+                    f"and is not allowed."
+                )
+                self.tracker.record_call("edit_file", args, None, error)
+                raise ValueError(error)
+
+        # ── 1. existence check (on the normalised path in fixed mode) ──────────
+        if not self.backend.exists(path):
             error = f"File not found: {path}"
             self.tracker.record_call("edit_file", args, None, error)
             raise FileNotFoundError(error)
 
+        if not diff.endswith("\n"):
+            diff += "\n"
+
+        if tool_mode() == "fixed":
+            # ── 2. normalise container-root / absolute path headers ───────────
+            diff = _normalize_diff_paths(diff, repo_root)
+
+            # ── 3. security validation — before any disk write ────────────────
+            touched = _collect_diff_paths(diff)
+            for p in touched:
+                # Reject path traversal attempts
+                if ".." in p.split("/"):
+                    error = (
+                        f"Security: diff path '{p}' contains a '..' traversal component "
+                        f"and is not allowed. Only edits to '{path}' are permitted."
+                    )
+                    self.tracker.record_call("edit_file", args, None, error)
+                    raise ValueError(error)
+                # Reject edits to any file other than ``path``
+                if p != path:
+                    error = (
+                        f"Security: diff touches '{p}' but path='{path}'. "
+                        f"The diff must only modify '{path}'. Use a separate edit_file "
+                        f"call for each file, or use write_file for a full rewrite."
+                    )
+                    self.tracker.record_call("edit_file", args, None, error)
+                    raise ValueError(error)
+        # legacy: skip normalize + guard — apply raw diff directly
+
+        # ── 4. apply the (now-normalised or raw) patch ────────────────────────
+        patch_file = ".agent_edit.patch"
+        self.backend.write_text(patch_file, diff)
         try:
-            # Read current content
-            with open(file_path, encoding="utf-8") as f:
-                lines = f.readlines()
-
-            # Apply diff
-            new_lines = self._apply_diff(lines, diff)
-
-            # Write modified content
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.writelines(new_lines)
-
-            self.tracker.record_call("edit_file", args, "success")
-
-        except Exception as e:
-            self.tracker.record_call("edit_file", args, None, str(e))
-            raise
-
-    def _apply_diff(self, lines: list[str], diff: str) -> list[str]:
-        """
-        Apply a simplified diff to a list of lines.
-
-        This is a basic implementation that processes the diff line by line.
-        For production use, consider using a proper diff library.
-        """
-        diff_lines = diff.split("\n")
-        result = []
-        line_idx = 0
-
-        for diff_line in diff_lines:
-            if not diff_line:
-                continue
-
-            if diff_line.startswith(" "):
-                # Context line - keep original
-                if line_idx < len(lines):
-                    result.append(lines[line_idx])
-                    line_idx += 1
-            elif diff_line.startswith("-"):
-                # Remove line
-                line_idx += 1
-            elif diff_line.startswith("+"):
-                # Add line
-                result.append(diff_line[1:] + "\n")
-
-        # Append remaining lines
-        result.extend(lines[line_idx:])
-
-        return result
+            last_err = ""
+            for cmd in (
+                f"git apply --whitespace=nowarn {patch_file}",
+                f"git apply --recount --whitespace=nowarn {patch_file}",
+                f"git apply --3way --whitespace=nowarn {patch_file}",
+                f"git apply -p0 --whitespace=nowarn {patch_file}",
+            ):
+                res = self.backend.run(cmd, 60)
+                if res.get("return_code") == 0:
+                    self.tracker.record_call("edit_file", args, "success")
+                    return
+                last_err = (res.get("stderr") or res.get("stdout") or "").strip()
+            error = (
+                f"Could not apply the diff to {path}: {last_err[:300]} "
+                "Emit a valid unified diff (correct '@@' hunk header + exact context "
+                "lines), or use write_file with the full new file contents instead."
+            )
+            self.tracker.record_call("edit_file", args, None, error)
+            raise ValueError(error)
+        finally:
+            self.backend.run(f"rm -f {patch_file}", 10)
 
     def search_code(self, query: str, file_pattern: str = "*") -> list[dict[str, Any]]:
-        """
-        Search for code patterns in the repository using grep.
-
-        Args:
-            query: Search query (regex pattern)
-            file_pattern: Optional file pattern to limit search (e.g., "*.py")
-
-        Returns:
-            List of matches with file path, line number, and content
-        """
+        """Search for code patterns in the repository using grep."""
         args = {"query": query, "file_pattern": file_pattern}
         try:
-            # Use grep for searching
-            cmd = [
-                "grep",
-                "-rn",  # recursive, with line numbers
-                "-E",   # extended regex
-                query,
-                str(self.working_dir),
-            ]
-
-            if file_pattern != "*":
-                cmd.extend(["--include", file_pattern])
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=self.working_dir,
-            )
-
-            # Parse grep output
-            matches = []
-            for line in result.stdout.split("\n"):
-                if not line:
-                    continue
-
-                parts = line.split(":", 2)
-                if len(parts) >= 3:
-                    file_path = parts[0]
-                    line_num = parts[1]
-                    content = parts[2]
-
-                    # Make path relative to working_dir
-                    rel_path = os.path.relpath(file_path, self.working_dir)
-
-                    matches.append({
-                        "file": rel_path,
-                        "line": int(line_num),
-                        "content": content.strip(),
-                    })
-
+            matches = self.backend.search_code(query, file_pattern)
             self.tracker.record_call("search_code", args, len(matches))
             return matches
-
         except Exception as e:
             self.tracker.record_call("search_code", args, None, str(e))
             raise
 
     def list_files(self, path: str = ".", pattern: str = "*") -> list[str]:
-        """
-        List files in a directory.
-
-        Args:
-            path: Relative path to the directory (default: current directory)
-            pattern: Optional glob pattern to filter files (e.g., "*.py")
-
-        Returns:
-            List of relative file paths
-        """
+        """List files in a directory (non-recursive glob)."""
         args = {"path": path, "pattern": pattern}
-        dir_path = self.working_dir / path
 
-        if not dir_path.exists():
+        if not self.backend.exists(path):
             error = f"Directory not found: {path}"
             self.tracker.record_call("list_files", args, None, error)
             raise FileNotFoundError(error)
 
-        if not dir_path.is_dir():
+        if not self.backend.is_dir(path):
             error = f"Path is not a directory: {path}"
             self.tracker.record_call("list_files", args, None, error)
             raise ValueError(error)
 
         try:
-            # Use glob to find matching files
-            files = []
-            for file_path in dir_path.glob(pattern):
-                if file_path.is_file():
-                    rel_path = os.path.relpath(file_path, self.working_dir)
-                    files.append(rel_path)
-
+            files = self.backend.list_files(path, pattern)
             self.tracker.record_call("list_files", args, len(files))
-            return sorted(files)
-
+            return files
         except Exception as e:
             self.tracker.record_call("list_files", args, None, str(e))
             raise
 
     def run_command(self, command: str, timeout: int = 60) -> dict[str, Any]:
-        """
-        Execute a shell command in the working directory.
-
-        Args:
-            command: Shell command to execute
-            timeout: Maximum execution time in seconds (default: 60)
-
-        Returns:
-            Dictionary with stdout, stderr, return_code, and success status
-        """
+        """Execute a shell command at the repo root."""
         args = {"command": command, "timeout": timeout}
         try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=self.working_dir,
-                timeout=timeout,
-            )
+            output = self.backend.run(command, timeout)
+            output["success"] = output["return_code"] == 0
 
-            output = {
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "return_code": result.returncode,
-                "success": result.returncode == 0,
-            }
-
-            # Check for syntax errors in stderr
-            if "SyntaxError" in result.stderr or "syntax error" in result.stderr.lower():
+            if "SyntaxError" in output["stderr"] or "syntax error" in output["stderr"].lower():
                 self.tracker.record_syntax_error()
 
             self.tracker.record_call("run_command", args, output)
@@ -365,51 +802,20 @@ class AgentTools:
         except subprocess.TimeoutExpired:
             error = f"Command timed out after {timeout} seconds"
             self.tracker.record_call("run_command", args, None, error)
-            return {
-                "stdout": "",
-                "stderr": error,
-                "return_code": -1,
-                "success": False,
-            }
+            return {"stdout": "", "stderr": error, "return_code": -1, "success": False}
         except Exception as e:
             self.tracker.record_call("run_command", args, None, str(e))
             raise
 
     def run_tests(self, test_command: str, timeout: int = 300) -> dict[str, Any]:
-        """
-        Run test commands with extended timeout.
-
-        This is a specialized version of run_command for test execution,
-        with a longer default timeout and test-specific result parsing.
-
-        Args:
-            test_command: Test command to execute (e.g., "pytest tests/")
-            timeout: Maximum execution time in seconds (default: 300)
-
-        Returns:
-            Dictionary with test results including pass/fail status
-        """
+        """Run a test command (longer default timeout, tests_passed flag)."""
         args = {"test_command": test_command, "timeout": timeout}
         try:
-            result = subprocess.run(
-                test_command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=self.working_dir,
-                timeout=timeout,
-            )
+            output = self.backend.run(test_command, timeout)
+            output["success"] = output["return_code"] == 0
+            output["tests_passed"] = output["return_code"] == 0
 
-            output = {
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "return_code": result.returncode,
-                "success": result.returncode == 0,
-                "tests_passed": result.returncode == 0,
-            }
-
-            # Check for syntax errors in test output
-            if "SyntaxError" in result.stderr or "syntax error" in result.stderr.lower():
+            if "SyntaxError" in output["stderr"] or "syntax error" in output["stderr"].lower():
                 self.tracker.record_syntax_error()
 
             self.tracker.record_call("run_tests", args, output)
@@ -419,69 +825,24 @@ class AgentTools:
             error = f"Tests timed out after {timeout} seconds"
             self.tracker.record_call("run_tests", args, None, error)
             return {
-                "stdout": "",
-                "stderr": error,
-                "return_code": -1,
-                "success": False,
-                "tests_passed": False,
+                "stdout": "", "stderr": error, "return_code": -1,
+                "success": False, "tests_passed": False,
             }
         except Exception as e:
             self.tracker.record_call("run_tests", args, None, str(e))
             raise
 
     def get_patch(self) -> str:
-        """
-        Generate a git diff patch of all changes in the working directory.
-
-        Returns:
-            Git diff output as a string
-        """
+        """Generate a git diff patch of all changes (incl. untracked files)."""
         args: dict[str, Any] = {}
         try:
-            # Get git diff including untracked files
-            result = subprocess.run(
-                ["git", "diff", "HEAD"],
-                capture_output=True,
-                text=True,
-                cwd=self.working_dir,
-            )
-
-            patch = result.stdout
-
-            # Also include untracked files
-            untracked_result = subprocess.run(
-                ["git", "ls-files", "--others", "--exclude-standard"],
-                capture_output=True,
-                text=True,
-                cwd=self.working_dir,
-            )
-
-            if untracked_result.stdout:
-                # Add untracked files to patch
-                for file_path in untracked_result.stdout.strip().split("\n"):
-                    if file_path:
-                        try:
-                            with open(self.working_dir / file_path, encoding="utf-8") as f:
-                                content = f.read()
-                            patch += f"\n--- /dev/null\n+++ b/{file_path}\n"
-                            for line in content.split("\n"):
-                                patch += f"+{line}\n"
-                        except Exception:
-                            # Skip files that can't be read
-                            pass
-
+            patch = self.backend.git_diff()
             self.tracker.record_call("get_patch", args, len(patch))
             return patch
-
         except Exception as e:
             self.tracker.record_call("get_patch", args, None, str(e))
             raise
 
     def get_tracker_stats(self) -> dict[str, Any]:
-        """
-        Get tool call statistics for behavioral metrics.
-
-        Returns:
-            Dictionary with tool call counts and syntax error counts
-        """
+        """Get tool call statistics for behavioral metrics."""
         return self.tracker.get_stats()

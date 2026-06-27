@@ -4,8 +4,6 @@ Tests for Task 19.2: Implement smoke test
 """
 
 import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -186,9 +184,9 @@ class TestVerifyLoggingSchemas:
             "step": 0,
             "boundary": "before_task",
             "active_records": [],
-            "run_id": "test_run",
-            "policy_name": "no_memory",
             "timestamp": "2024-01-01T00:00:00Z",
+            # run-level identity lives under metadata (v5 §11.4 / MemorySnapshotLogger)
+            "metadata": {"run_id": "test_run", "policy_name": "no_memory"},
         }
         snapshot_path = snapshots_dir / "before_task_0.json"
         with open(snapshot_path, "w", encoding="utf-8") as f:

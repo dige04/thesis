@@ -189,6 +189,11 @@ class RecencyPrunePolicy(MemoryPolicy):
         active_records = memory_store.active_records()
         active_records.sort(key=lambda r: r.sequence_index)
 
+        # Pruning happens at the CURRENT step (latest sequence_index), not at each
+        # victim's creation step — the runner's archive-event delta matches on the
+        # current step, so using victim.sequence_index left prunes unlogged.
+        current_step = active_records[-1].sequence_index if active_records else 0
+
         # Archive the oldest records (first num_to_prune in sorted list)
         victims = active_records[:num_to_prune]
 
@@ -198,7 +203,7 @@ class RecencyPrunePolicy(MemoryPolicy):
             memory_store.archive(
                 memory_id=victim.memory_id,
                 reason="recency_prune",
-                current_step=victim.sequence_index
+                current_step=current_step
             )
 
             pruned_count += 1

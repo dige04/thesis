@@ -12,8 +12,10 @@ import numpy as np
 import pytest
 
 from src.benchmark.cl_metrics import (
+    AnchorProbeCLMetrics,
     CLMetrics,
     build_accuracy_matrix,
+    compute_anchor_probe_cl_metrics,
     compute_backward_transfer,
     compute_cl_f1,
     compute_cl_metrics,
@@ -593,3 +595,197 @@ def test_cl_metrics_to_dict(sample_task_results):
     # Check accuracy matrix is serializable
     assert len(metrics_dict["accuracy_matrix"]) == 3
     assert len(metrics_dict["accuracy_matrix"][0]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Anchor-probe CL metrics (THESIS_FINAL_v5.md §14.2 — PRIMARY estimator)
+# ---------------------------------------------------------------------------
+
+
+def test_anchor_probe_known_forgetting():
+    """Anchor-probe metrics with hand-computed forgetting.
+
+    Per §14.2:
+      CL_Plasticity        = mean(a_{i,i} for all tasks i)
+      end_acc              = mean(a_{i,T} for anchors i in A)
+      forgetting_i         = max(a_{i,p} for probes p>=i) - a_{i,T}
+      CL_Stability_anchor  = 1 - mean(forgetting_i for i in A)
+      CL_F1                = 2*P*S / max(P+S, 1e-8)
+
+    Construct T=10 with online diagonal having 6/10 resolved
+    (Plasticity = 0.6). Anchors at the §14.2 positions for T=10:
+      {ceil(T/10), ceil(3T/10), ceil(5T/10), ceil(7T/10), ceil(9T/10)}
+      = {1, 3, 5, 7, 9}.
+    Probe points for T=10:
+      {ceil(T/4), ceil(T/2), ceil(3T/4), T} = {3, 5, 8, 10} but probe
+    columns are passed explicitly (0-indexed columns the runner snapshots).
+    """
+    n_tasks = 10
+    # Online diagonal a_{i,i}: resolve tasks 1,3,5,7,9 and task 0.
+    online_resolved = [1, 0, 0, 1, 0, 1, 0, 1, 0, 1]
+    # Plasticity = mean = 5/10? recount: indices resolved -> 0,3,5,7,9 = 5 -> 0.5
+    # Actually: [1,0,0,1,0,1,0,1,0,1] -> ones at 0,3,5,7,9 = 5 ones -> 0.5
+
+    anchor_indices = [1, 3, 5, 7, 9]
+    # Use last column index 9 as the final probe T (0-indexed final task).
+    final_probe = 9
+    probe_points = [2, 4, 6, final_probe]
+
+    # probed_accuracy[(i, p)] = a_{i,p} for i in A, p in probe_points, p >= i.
+    # Anchor 1: peak 1.0 at some probe, final a_{1,9}=0.0 -> forgetting 1.0
+    # Anchor 3: peak 1.0, final a_{3,9}=1.0 -> forgetting 0.0
+    # Anchor 5: peak 1.0, final a_{5,9}=0.0 -> forgetting 1.0
+    # Anchor 7: peak 1.0, final a_{7,9}=1.0 -> forgetting 0.0
+    # Anchor 9: only final probe; a_{9,9}=1.0 -> forgetting 0.0
+    probed_accuracy = {
+        (1, 2): 1.0, (1, 4): 1.0, (1, 6): 0.0, (1, 9): 0.0,
+        (3, 4): 1.0, (3, 6): 1.0, (3, 9): 1.0,
+        (5, 6): 1.0, (5, 9): 0.0,
+        (7, 9): 1.0,
+        (9, 9): 1.0,
+    }
+
+    metrics = compute_anchor_probe_cl_metrics(
+        online_resolved=online_resolved,
+        anchor_indices=anchor_indices,
+        probe_points=probe_points,
+        probed_accuracy=probed_accuracy,
+        n_tasks=n_tasks,
+    )
+
+    assert isinstance(metrics, AnchorProbeCLMetrics)
+    # Plasticity = 5/10
+    assert abs(metrics.plasticity - 0.5) < 1e-9
+    # end_acc on anchors: a_{1,9}=0, a_{3,9}=1, a_{5,9}=0, a_{7,9}=1, a_{9,9}=1 -> 3/5
+    assert abs(metrics.end_accuracy - 0.6) < 1e-9
+    # forgetting per anchor: [1.0, 0.0, 1.0, 0.0, 0.0] -> mean 0.4
+    # Stability = 1 - 0.4 = 0.6
+    assert abs(metrics.stability - 0.6) < 1e-9
+    # CL_F1 = 2*0.5*0.6/(0.5+0.6) = 0.6/1.1
+    assert abs(metrics.cl_f1 - (2 * 0.5 * 0.6 / 1.1)) < 1e-9
+    assert metrics.n_tasks == 10
+    assert metrics.n_anchors == 5
+
+
+def test_anchor_probe_no_forgetting_perfect_stability():
+    """No forgetting -> Stability = 1.0, CL_F1 = harmonic mean with plasticity."""
+    n_tasks = 4
+    online_resolved = [1, 1, 1, 1]  # Plasticity = 1.0
+    anchor_indices = [0, 1, 2, 3]
+    probe_points = [1, 3]
+    # Every anchor stays resolved at the final probe -> zero forgetting.
+    probed_accuracy = {
+        (0, 1): 1.0, (0, 3): 1.0,
+        (1, 1): 1.0, (1, 3): 1.0,
+        (2, 3): 1.0,
+        (3, 3): 1.0,
+    }
+
+    metrics = compute_anchor_probe_cl_metrics(
+        online_resolved=online_resolved,
+        anchor_indices=anchor_indices,
+        probe_points=probe_points,
+        probed_accuracy=probed_accuracy,
+        n_tasks=n_tasks,
+    )
+
+    assert metrics.plasticity == 1.0
+    assert metrics.stability == 1.0
+    assert metrics.cl_f1 == 1.0
+
+
+def test_anchor_probe_complete_forgetting_zero_stability():
+    """Total forgetting on every anchor -> Stability = 0.0 -> CL_F1 = 0.0."""
+    n_tasks = 4
+    online_resolved = [1, 1, 1, 1]  # Plasticity = 1.0
+    anchor_indices = [0, 1]
+    probe_points = [1, 3]
+    # Anchor 0: peak 1.0 (at probe 1), final 0.0 -> forgetting 1.0
+    # Anchor 1: peak 1.0 (at probe 1), final 0.0 -> forgetting 1.0
+    probed_accuracy = {
+        (0, 1): 1.0, (0, 3): 0.0,
+        (1, 1): 1.0, (1, 3): 0.0,
+    }
+
+    metrics = compute_anchor_probe_cl_metrics(
+        online_resolved=online_resolved,
+        anchor_indices=anchor_indices,
+        probe_points=probe_points,
+        probed_accuracy=probed_accuracy,
+        n_tasks=n_tasks,
+    )
+
+    assert metrics.plasticity == 1.0
+    assert metrics.stability == 0.0
+    # CL_F1 = 2*1*0 / max(1, 1e-8) = 0.0
+    assert metrics.cl_f1 == 0.0
+
+
+def test_anchor_probe_forgetting_clamped_nonnegative():
+    """If a later probe exceeds the peak-before-final, forgetting is the
+    max-over-probes minus final; a recovered anchor cannot yield negative
+    forgetting because the final IS one of the probes (so max >= final)."""
+    n_tasks = 3
+    online_resolved = [1, 1, 1]
+    anchor_indices = [0]
+    probe_points = [1, 2]
+    # Anchor 0 dropped at probe 1 then recovered at final probe 2.
+    # max(a_{0,1}=0.0, a_{0,2}=1.0) = 1.0; final a_{0,2}=1.0 -> forgetting 0.0
+    probed_accuracy = {(0, 1): 0.0, (0, 2): 1.0}
+
+    metrics = compute_anchor_probe_cl_metrics(
+        online_resolved=online_resolved,
+        anchor_indices=anchor_indices,
+        probe_points=probe_points,
+        probed_accuracy=probed_accuracy,
+        n_tasks=n_tasks,
+    )
+
+    assert metrics.stability == 1.0
+
+
+def test_anchor_probe_to_dict():
+    """AnchorProbeCLMetrics serializes to a JSON-friendly dict."""
+    metrics = compute_anchor_probe_cl_metrics(
+        online_resolved=[1, 0, 1, 1],
+        anchor_indices=[0, 3],
+        probe_points=[1, 3],
+        probed_accuracy={(0, 1): 1.0, (0, 3): 1.0, (3, 3): 1.0},
+        n_tasks=4,
+    )
+    d = metrics.to_dict()
+    for key in (
+        "plasticity",
+        "stability",
+        "cl_f1",
+        "end_accuracy",
+        "n_tasks",
+        "n_anchors",
+    ):
+        assert key in d
+    assert isinstance(d["cl_f1"], float)
+    assert isinstance(d["n_tasks"], int)
+
+
+def test_anchor_probe_empty_anchors_raises():
+    """No anchors -> cannot estimate anchor stability."""
+    with pytest.raises(ValueError, match="at least one anchor"):
+        compute_anchor_probe_cl_metrics(
+            online_resolved=[1, 1],
+            anchor_indices=[],
+            probe_points=[1],
+            probed_accuracy={},
+            n_tasks=2,
+        )
+
+
+def test_anchor_probe_missing_final_cell_raises():
+    """A final-probe cell a_{i,T} is mandatory for each anchor."""
+    with pytest.raises(ValueError, match="final-probe accuracy"):
+        compute_anchor_probe_cl_metrics(
+            online_resolved=[1, 1, 1],
+            anchor_indices=[0],
+            probe_points=[1, 2],
+            probed_accuracy={(0, 1): 1.0},  # missing (0, 2) final cell
+            n_tasks=3,
+        )

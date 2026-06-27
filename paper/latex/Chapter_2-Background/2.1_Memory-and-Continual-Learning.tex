@@ -1,0 +1,36 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+
+% ── 2.1  Memory and Continual Learning in LLM Agents ─────────────────────────
+% PURPOSE: Frame the thesis within continual/sequential learning and demarcate external
+%          non-parametric memory (our subject) from weight-level CL.
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Memory and Continual Learning in LLM Agents}
+
+An LLM coding agent can resolve a real repository issue, but resolving issues one at a time
+is not the same as \emph{learning across} a stream of them. The capability --- plan, edit,
+test, iterate --- is mature; the policy that governs what an agent should carry from one
+task to the next is not. This is the setting of continual, or sequential,
+learning~\cite{joshi2025}: an agent works a stream of tasks and ought to bring useful
+experience forward without re-training, yet in practice the decision of \emph{what} to
+carry is left unprincipled.
+
+The benchmark used here, SWE-Bench-CL, is a \emph{task-incremental} continual-learning
+setting: the tasks within each sequence arrive in a fixed order (the eight official
+sequences, never reordered), and a later task may depend on an earlier one in the same
+repository. The outcome the thesis cares about, CL-F1, is designed to balance the two
+pulls of continual learning --- \emph{plasticity}, the ability to solve the new task, and
+\emph{stability}, the retention of competence on earlier ones; its definition is given
+with the other metrics in Table~\ref{tab:metrics}.
+
+There are two distinct places where ``learning across tasks'' can happen. One is
+\emph{parametric}: continual learning in the model's weights, where the classic risk is
+gradient interference and catastrophic forgetting. The other is \emph{external} and
+non-parametric: a frozen model paired with a retrieval-backed store of past experience.
+This thesis studies the latter exclusively. The model is held frozen and the only thing
+that changes across the six conditions is the storage and forgetting decision applied to
+an external \texttt{MemoryStore}. Weight-level continual learning and catastrophic
+forgetting in the parameters are explicitly out of scope --- we never touch the model
+weights --- which keeps the object of study cleanly the memory policy rather than the
+learning dynamics of the network.

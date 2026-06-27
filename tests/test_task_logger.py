@@ -142,6 +142,7 @@ def test_task_result_to_dict(sample_task_result):
         "memory_tokens_before", "memory_tokens_after",
         "pruned_memory_ids", "consolidated_memory_ids",
         "task_difficulty", "error_message",
+        "termination_reason", "tool_mode",
     }
 
     assert set(result_dict.keys()) == required_fields

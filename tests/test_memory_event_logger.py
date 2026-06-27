@@ -71,7 +71,7 @@ class TestMemoryEventLoggerWriteEvents:
             assert event_id == "evt_00001"
 
             # Read and verify event
-            with open(log_path, "r") as f:
+            with open(log_path) as f:
                 event = json.loads(f.readline())
 
             assert event["event_id"] == "evt_00001"
@@ -104,7 +104,7 @@ class TestMemoryEventLoggerWriteEvents:
             assert event_id == "evt_00001"
 
             # Read and verify event
-            with open(log_path, "r") as f:
+            with open(log_path) as f:
                 event = json.loads(f.readline())
 
             assert event["metadata"] == {}
@@ -139,7 +139,7 @@ class TestMemoryEventLoggerWriteEvents:
             assert event_id_3 == "evt_00003"
 
             # Verify all events written
-            with open(log_path, "r") as f:
+            with open(log_path) as f:
                 lines = f.readlines()
 
             assert len(lines) == 3
@@ -166,7 +166,7 @@ class TestMemoryEventLoggerArchiveEvents:
             assert event_id == "evt_00001"
 
             # Read and verify event
-            with open(log_path, "r") as f:
+            with open(log_path) as f:
                 event = json.loads(f.readline())
 
             assert event["event_id"] == "evt_00001"
@@ -204,7 +204,7 @@ class TestMemoryEventLoggerArchiveEvents:
                 )
 
             # Verify all events
-            with open(log_path, "r") as f:
+            with open(log_path) as f:
                 events = [json.loads(line) for line in f]
 
             assert len(events) == 4
@@ -233,7 +233,7 @@ class TestMemoryEventLoggerConsolidateEvents:
             assert event_id == "evt_00001"
 
             # Read and verify event
-            with open(log_path, "r") as f:
+            with open(log_path) as f:
                 event = json.loads(f.readline())
 
             assert event["event_id"] == "evt_00001"
@@ -387,7 +387,7 @@ class TestMemoryEventLoggerJSONLFormat:
                 )
 
             # Verify format
-            with open(log_path, "r") as f:
+            with open(log_path) as f:
                 lines = f.readlines()
 
             assert len(lines) == 5
@@ -412,7 +412,7 @@ class TestMemoryEventLoggerJSONLFormat:
             )
 
             # Read raw content
-            with open(log_path, "r") as f:
+            with open(log_path) as f:
                 content = f.read()
 
             # Should be exactly one line (plus newline)

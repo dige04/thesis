@@ -1,0 +1,136 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+% INTEGRITY: all numbers from results_seq_cceb325 (trustworthy 144; deepseek-v4-flash;
+% agent frozen cceb325; deep audit 0 flags). No fabricated cells.
+
+% ── Appendix B  Extended Results ─────────────────────────────────────────
+% PURPOSE: Host the full-detail per-cell tables and the GLMM specification that would
+%          clutter Chapter 5. Tables + one-line explanations, not narrative.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Extended Results}
+
+This appendix gives the per-cell breakdowns behind the aggregate contrasts of
+Chapter~\ref{ch:results} and the full specification of the task-level model. All values are
+from the trustworthy 144-run matrix (\texttt{runs\_144\_seq\_cceb325}; deep audit, 0 flags);
+the complete per-seed records, trajectories, and memory-event logs are in the released
+artifact (Appendix~\ref{sec:reproducibility}).
+
+\subsection{Per-sequence resolution by policy}
+
+Table~\ref{tab:per-sequence} reports CL-F1 (the resolved-rate proxy, mean over three seeds)
+for every sequence--policy cell; column $n$ is the number of evaluated tasks in the sequence.
+The per-policy means in the final
+row are the values carried into the H1 contrasts (Table~\ref{tab:main-results}). The cell-level
+view shows how the tight aggregate clustering (means $0.427$--$0.449$) is the average of much
+larger, sign-varying per-sequence swings --- e.g.\ \texttt{full\_memory} ranges from $0.284$
+(matplotlib) to $0.677$ (scikit-learn) --- which is the heterogeneity dissected in
+Section~\ref{sec:h5}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{CL-F1 (resolved-rate proxy), mean over three seeds, per sequence $\times$ policy.
+  Final row is the across-sequence mean (the H1 inputs). \texttt{runs\_144\_seq\_cceb325}.}
+  \label{tab:per-sequence}
+  \small
+  \begin{tabular}{lrrrrrrr}
+    \toprule
+    Sequence & no\_mem & full & random & recency & TAD & cls & $n$ \\
+    \midrule
+    scikit-learn & 0.604 & 0.677 & 0.646 & 0.688 & 0.615 & 0.635 & 32 \\
+    sympy        & 0.393 & 0.447 & 0.447 & 0.393 & 0.427 & 0.413 & 50 \\
+    sphinx       & 0.341 & 0.394 & 0.326 & 0.318 & 0.303 & 0.333 & 44 \\
+    pytest       & 0.491 & 0.526 & 0.632 & 0.544 & 0.544 & 0.579 & 19 \\
+    django       & 0.560 & 0.593 & 0.567 & 0.547 & 0.553 & 0.573 & 50 \\
+    xarray       & 0.318 & 0.318 & 0.333 & 0.379 & 0.333 & 0.439 & 22 \\
+    astropy      & 0.364 & 0.318 & 0.303 & 0.288 & 0.333 & 0.333 & 22 \\
+    matplotlib   & 0.363 & 0.284 & 0.324 & 0.343 & 0.304 & 0.284 & 34 \\
+    \midrule
+    \textbf{Mean} & 0.429 & 0.445 & 0.447 & 0.437 & 0.427 & 0.449 & \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Per-sequence memory footprint by policy}
+
+Table~\ref{tab:per-sequence-footprint} reports the carried memory footprint (tokens per task,
+mean over three seeds) for the same cells. \texttt{no\_memory} is zero by construction; the
+pruning policies sit near their $\sim\!600$-token caps across all sequences, while
+\texttt{full\_memory}'s footprint grows with sequence length and difficulty (up to $1{,}894$
+on sympy). This is the footprint-axis separation of Figure~\ref{fig:pareto-footprint} made
+explicit per sequence.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Memory footprint (tokens/task), mean over three seeds, per sequence $\times$ policy.
+  \texttt{runs\_144\_seq\_cceb325}.}
+  \label{tab:per-sequence-footprint}
+  \small
+  \begin{tabular}{lrrrrrr}
+    \toprule
+    Sequence & no\_mem & full & random & recency & TAD & cls \\
+    \midrule
+    scikit-learn & 0 & 1063 & 584 & 580 & 559 & 660 \\
+    sympy        & 0 & 1894 & 654 & 687 & 644 & 810 \\
+    sphinx       & 0 & 1587 & 642 & 642 & 668 & 765 \\
+    pytest       & 0 & 799  & 595 & 597 & 588 & 669 \\
+    django       & 0 & 1858 & 644 & 679 & 670 & 788 \\
+    xarray       & 0 & 786  & 537 & 515 & 509 & 601 \\
+    astropy      & 0 & 790  & 566 & 555 & 570 & 634 \\
+    matplotlib   & 0 & 1198 & 584 & 578 & 578 & 708 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Task-level GLMM specification and estimates}
+
+Table~\ref{tab:glmm-spec} gives the full fixed- and random-effect estimates for the
+binomial/logit GLMM summarised in Section~\ref{sec:h5} (Invariant~\#14). The model is
+\[
+  \texttt{resolved} \sim \texttt{C(policy)} + \texttt{difficulty} + \texttt{position}
+  + (1 \mid \texttt{seq\_seed}) + (1 \mid \texttt{task\_id}),
+\]
+fit over $4{,}914$ observations in $24$ groups with \texttt{cls\_consolidation} as the
+reference policy. The estimator is an approximate variational routine
+(\texttt{BinomialBayesMixedGLM}); the canonical \texttt{R}/\texttt{lme4} Laplace fit was not
+run, so we report signs and the policy-null rather than exact pairwise inference, and a
+random-intercepts-only sensitivity fit reproduces the difficulty and position signs. The large
+\texttt{task\_id} random-effect variance ($3.22$) relative to the \texttt{seq\_seed} variance
+($0.13$) confirms that most outcome variance is per-task, not per-policy --- the structural
+basis of the policy-null.
+
+\begin{table}[htbp]
+  \centering
+  \caption{GLMM fixed-effect estimates (log-odds) and random-effect variances. No policy
+  coefficient exceeds twice its standard error; difficulty and position are large and
+  significant. Reference policy = \texttt{cls\_consolidation}. \texttt{glmm\_results.json}.}
+  \label{tab:glmm-spec}
+  \begin{tabular}{lrr}
+    \toprule
+    Term & Coef.\ (log-odds) & Std.\ err. \\
+    \midrule
+    Intercept                          & $+1.144$ & $0.048$ \\
+    policy: full\_memory               & $+0.116$ & $0.118$ \\
+    policy: no\_memory                 & $-0.133$ & $0.117$ \\
+    policy: random\_prune              & $+0.033$ & $0.117$ \\
+    policy: recency\_prune             & $-0.092$ & $0.117$ \\
+    policy: type\_aware\_decay         & $-0.188$ & $0.117$ \\
+    difficulty (numeric)               & $-2.180$ & $0.065$ \\
+    position (normalised)              & $-1.491$ & $0.086$ \\
+    \midrule
+    \multicolumn{3}{l}{\emph{Random-effect variance:}\quad
+      \texttt{seq\_seed} $=0.128$,\quad \texttt{task\_id} $=3.223$} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{What the released artifact additionally contains}
+
+Beyond these aggregate tables, the run archive retains, per cell: the three per-seed CL-F1
+values (\texttt{seed\_cl\_f1\_values} in \texttt{aggregated/sequence\_aggregates.json}),
+per-task resolution and patch records (\texttt{task\_results.jsonl}), the full memory-event
+stream (writes, evictions, retrievals; \texttt{memory\_events.jsonl}), per-task trajectories,
+and before/after memory snapshots. The feature-analysis VIF inputs ($18{,}675$
+task--retrieved-memory pairs) and the deferred Tier-2 helpful/harmful labelling slot live under
+\texttt{feature\_importance/}. These support re-derivation of every figure and table in
+Chapter~\ref{ch:results} via \texttt{scripts/run\_analysis} (Appendix~\ref{sec:reproducibility}).

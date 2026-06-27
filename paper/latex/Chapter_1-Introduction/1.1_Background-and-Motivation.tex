@@ -1,0 +1,51 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+
+% ── 1.1  Background and Motivation ──────────────────────────────────────────
+% PURPOSE: Motivate persistent memory for LLM coding agents on long-horizon work.
+% MOVE: Scale+stakes -> traditional approach -> structural limitation.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Background and Motivation}
+
+Large language model (LLM) coding agents have entered the SWE-Bench era: given a
+natural-language issue and a real repository, an agent now plans, edits files, runs the
+test suite, and iterates until the issue is resolved, autonomously and end to
+end~\cite{joshi2025}. The capability is no longer a laboratory curiosity --- agents
+resolve a non-trivial fraction of genuine GitHub issues drawn from mature open-source
+projects --- and the stakes scale with it: the same automation that closes one issue is
+expected to work an entire backlog.
+
+Real software-engineering work, however, is rarely a sequence of isolated one-shot
+prompts. It is long-horizon and \emph{sequential}: many related tasks accrue over the
+lifetime of a single codebase, each leaving behind a diagnosis, a fix, and a lesson that
+might inform the next. An agent that treats every issue as if it were the first throws
+away precisely the experience a human maintainer would carry forward. The natural remedy
+is to externalise that experience as \emph{persistent memory} --- a store of past
+problems and their solutions that the agent can consult on future
+tasks~\cite{packer2024,zhong2024}. This is the premise behind a growing family of agent
+memory systems, and it is intuitively compelling: an agent that remembers more of its
+past should solve more of its future.
+
+The traditional way to operationalise that premise is simply to keep everything. Each
+completed task appends a record; nothing is ever discarded. But naive accumulation has a
+structural cost. Context windows are finite and, more importantly, they are not free to
+fill: longer prompts raise token cost and latency, and a well-documented body of evidence
+shows that model performance degrades as relevant information is buried among
+distractors~\cite{liu2024} and even as raw context length grows with retrieval held
+perfect~\cite{du2025}. Worse, more memory is not merely more expensive --- it can be
+actively harmful. Recent empirical work shows that agents exhibit
+\emph{experience-following}, faithfully reusing retrieved precedents even when those
+precedents mislead, so that a larger or lower-quality memory store degrades
+behaviour rather than improving it~\cite{xiong2025}.
+
+This sets up the structural limitation that motivates the thesis. If keeping everything is
+costly and sometimes harmful, then an agent ought to forget --- but \emph{forgetting} is
+itself a policy decision with no obvious right answer, and it is entangled with how memory
+is retrieved. Does retained experience actually help downstream coding performance, or does
+it mostly inflate the prompt? And if some forgetting is warranted, \emph{when} and
+\emph{how much}? These questions have been asked for conversational and
+general-purpose agents, but they have not been answered cleanly for coding agents under a
+controlled comparison. Figure~\ref{fig:architecture} situates the question: storage and
+forgetting are one component in a pipeline that also includes retrieval, and only by
+holding the rest fixed can the effect of forgetting be read off in isolation.

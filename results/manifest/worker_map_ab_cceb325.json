@@ -1,0 +1,61 @@
+{
+  "n_workers": 9,
+  "experiment_sha": "cceb3253d7b7cfeae16123af30197a8271e1d84a",
+  "manifest_hash": "f04fe21b0345c648",
+  "workers": {
+    "0": [
+      "full_memory_pytest-dev_pytest_sequence_seed1_fixed",
+      "full_memory_pytest-dev_pytest_sequence_seed1_legacy",
+      "full_memory_scikit-learn_scikit-learn_sequence_seed1_fixed",
+      "full_memory_scikit-learn_scikit-learn_sequence_seed1_legacy"
+    ],
+    "1": [
+      "full_memory_pytest-dev_pytest_sequence_seed2_fixed",
+      "full_memory_pytest-dev_pytest_sequence_seed2_legacy",
+      "full_memory_scikit-learn_scikit-learn_sequence_seed2_fixed",
+      "full_memory_scikit-learn_scikit-learn_sequence_seed2_legacy"
+    ],
+    "2": [
+      "full_memory_pytest-dev_pytest_sequence_seed3_fixed",
+      "full_memory_pytest-dev_pytest_sequence_seed3_legacy",
+      "full_memory_scikit-learn_scikit-learn_sequence_seed3_fixed",
+      "full_memory_scikit-learn_scikit-learn_sequence_seed3_legacy"
+    ],
+    "3": [
+      "no_memory_pytest-dev_pytest_sequence_seed1_fixed",
+      "no_memory_pytest-dev_pytest_sequence_seed1_legacy",
+      "no_memory_scikit-learn_scikit-learn_sequence_seed1_fixed",
+      "no_memory_scikit-learn_scikit-learn_sequence_seed1_legacy"
+    ],
+    "4": [
+      "no_memory_pytest-dev_pytest_sequence_seed2_fixed",
+      "no_memory_pytest-dev_pytest_sequence_seed2_legacy",
+      "no_memory_scikit-learn_scikit-learn_sequence_seed2_fixed",
+      "no_memory_scikit-learn_scikit-learn_sequence_seed2_legacy"
+    ],
+    "5": [
+      "no_memory_pytest-dev_pytest_sequence_seed3_fixed",
+      "no_memory_pytest-dev_pytest_sequence_seed3_legacy",
+      "no_memory_scikit-learn_scikit-learn_sequence_seed3_fixed",
+      "no_memory_scikit-learn_scikit-learn_sequence_seed3_legacy"
+    ],
+    "6": [
+      "recency_prune_pytest-dev_pytest_sequence_seed1_fixed",
+      "recency_prune_pytest-dev_pytest_sequence_seed1_legacy",
+      "recency_prune_scikit-learn_scikit-learn_sequence_seed1_fixed",
+      "recency_prune_scikit-learn_scikit-learn_sequence_seed1_legacy"
+    ],
+    "7": [
+      "recency_prune_pytest-dev_pytest_sequence_seed2_fixed",
+      "recency_prune_pytest-dev_pytest_sequence_seed2_legacy",
+      "recency_prune_scikit-learn_scikit-learn_sequence_seed2_fixed",
+      "recency_prune_scikit-learn_scikit-learn_sequence_seed2_legacy"
+    ],
+    "8": [
+      "recency_prune_pytest-dev_pytest_sequence_seed3_fixed",
+      "recency_prune_pytest-dev_pytest_sequence_seed3_legacy",
+      "recency_prune_scikit-learn_scikit-learn_sequence_seed3_fixed",
+      "recency_prune_scikit-learn_scikit-learn_sequence_seed3_legacy"
+    ]
+  }
+}

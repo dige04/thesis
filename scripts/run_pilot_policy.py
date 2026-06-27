@@ -1,0 +1,138 @@
+"""Run ONE memory policy over ONE sequence (matrix runner, real config).
+
+One process per (policy, seed, sequence) unit.  The shard runner
+``scripts/run_matrix_shard.sh`` launches one process per unit in this form:
+
+    .venv/bin/python -m scripts.run_pilot_policy \
+        --policy type_aware_decay --seed 1 \
+        --sequences django_django_sequence \
+        --run-id type_aware_decay_django_django_sequence_seed1
+
+``--run-id`` MUST be supplied by the shell so the run directory matches the
+manifest entry (``results/manifest/runs_144.json``).  When omitted the old
+``pilot_`` prefix is used for backward-compatibility with legacy one-off runs.
+
+Memory is per-sequence: a fresh policy + fresh MemoryStore per sequence (memory
+accumulates WITHIN a sequence, never across repos).
+"""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import json
+import logging
+import os
+import sys
+from pathlib import Path
+
+from src.benchmark.completion import is_run_complete
+from src.benchmark.sequence_runner import SequenceRunner, _runs_root
+from src.benchmark.swebenchcl_loader import SWEBenchCLLoader
+from src.config.loader import load_config
+from src.memory.policies.cls_consolidation import CLSConsolidationPolicy
+from src.memory.policies.full_memory import FullMemoryPolicy
+from src.memory.policies.no_memory import NoMemoryPolicy
+from src.memory.policies.random_prune import RandomPrunePolicy
+from src.memory.policies.recency_prune import RecencyPrunePolicy
+from src.memory.policies.type_aware_decay import TypeAwareDecayPolicy
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logger = logging.getLogger("run_pilot_policy")
+
+DEFAULT_SEQUENCES = "django_django_sequence,pytest-dev_pytest_sequence"
+
+
+def build_policy(name: str, seed: int, max_records: int):
+    if name == "no_memory":
+        return NoMemoryPolicy()
+    if name == "full_memory":
+        return FullMemoryPolicy()
+    if name == "random_prune":
+        return RandomPrunePolicy(seed=seed, max_records=max_records)
+    if name == "recency_prune":
+        return RecencyPrunePolicy(max_records=max_records)
+    if name == "type_aware_decay":
+        return TypeAwareDecayPolicy(max_records=max_records)
+    if name == "cls_consolidation":
+        return CLSConsolidationPolicy(max_records=max_records)
+    raise ValueError(f"Unknown policy: {name}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser()
+    p.add_argument("--policy", required=True)
+    p.add_argument("--seed", type=int, default=1)
+    p.add_argument("--sequences", default=DEFAULT_SEQUENCES)
+    p.add_argument("--curriculum", default="data/SWE-Bench-CL-Curriculum.json")
+    p.add_argument(
+        "--run-id",
+        default=None,
+        help=(
+            "Explicit run_id (must match the manifest entry).  "
+            "Defaults to pilot_{policy}_{seq}_seed{seed} for legacy compatibility."
+        ),
+    )
+    p.add_argument(
+        "--tool-mode",
+        default=None,
+        choices=["legacy", "fixed"],
+        help=(
+            "Explicit AGENT_TOOL_MODE for this unit (legacy|fixed). Set BEFORE the "
+            "runner builds tools, so tool_mode() and the RUN_COMPLETED/RUN_FAILED "
+            "sentinels record it. Overrides the AGENT_TOOL_MODE env; if omitted the "
+            "env (default 'fixed') is used. Required for mixed-mode A/B units."
+        ),
+    )
+    args = p.parse_args(argv)
+
+    # Pin tool_mode up-front (explicit arg wins) so provenance is recorded
+    # consistently: tools.py::tool_mode() and completion.py sentinels both read
+    # AGENT_TOOL_MODE. This is the per-unit seam the A/B runner relies on.
+    if args.tool_mode is not None:
+        os.environ["AGENT_TOOL_MODE"] = args.tool_mode
+
+    config = load_config()
+    max_records = config.get("memory", {}).get("max_records", 100)
+    loader = SWEBenchCLLoader(args.curriculum)
+
+    results_dir = Path("results/raw")
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    for seq_name in [s.strip() for s in args.sequences.split(",") if s.strip()]:
+        sequence = loader.get_sequence_by_name(seq_name)
+        if sequence is None:
+            logger.error("sequence %s not found; skipping", seq_name)
+            continue
+        # Fresh policy + store per sequence (memory does not cross repos).
+        policy = build_policy(args.policy, args.seed, max_records)
+        # run_id: prefer explicit --run-id (manifest-aligned); fall back to
+        # legacy pilot_ prefix for one-off / backward-compatible invocations.
+        if args.run_id is not None:
+            run_id = args.run_id
+        else:
+            run_id = f"pilot_{args.policy}_{seq_name}_seed{args.seed}"
+        logger.info("=== PILOT %s on %s (%d tasks) ===", args.policy, seq_name, sequence.task_count)
+        runner = SequenceRunner(run_id=run_id, policy=policy, config=config)
+        result = runner.run_sequence(sequence=sequence, seed=args.seed)
+        # Gate on sentinel: only write the success result if the run completed.
+        run_dir = _runs_root() / run_id
+        if is_run_complete(run_dir):
+            out = results_dir / f"{run_id}_result.json"
+            out.write_text(json.dumps(dataclasses.asdict(result), indent=2), encoding="utf-8")
+            logger.info(
+                "PILOT DONE %s/%s: resolved=%d/%d -> %s",
+                args.policy, seq_name, result.resolved_tasks, result.total_tasks, out,
+            )
+        else:
+            logger.warning(
+                "PILOT INCOMPLETE %s/%s: run_sequence returned but "
+                "RUN_COMPLETED.json absent in %s — no result file written; "
+                "eligible for reconcile.",
+                args.policy, seq_name, run_dir,
+            )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,15 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% ── 4.2.3  Random Prune ──────────────────────────────────────────────────
+
+\subsection{Random Prune}
+
+Random Prune is the volume-only control. Once the store exceeds the cap of ten (A1), it
+evicts records uniformly at random until it is back within budget; every over-cap record is
+equally likely to be dropped, regardless of its age, type, or how often it has been used.
+This is deliberate: Random Prune reduces footprint to the cap \emph{without} using any
+signal about which record is worth keeping. By matching the volume reduction of the
+content-aware policies while discarding the content signal, it isolates whether \emph{what}
+is forgotten matters beyond merely reducing \emph{how much} is stored. The contrast
+Type-Aware Decay versus Random Prune is the test of content-over-volume (H2): if structured
+forgetting beats random forgetting at equal volume, content matters.

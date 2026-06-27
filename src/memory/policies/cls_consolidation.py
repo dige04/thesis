@@ -21,15 +21,22 @@ Requirements: 13
 Design: §2 Policy Specifications - Policy 5: CLS Consolidation
 """
 
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from pydantic import BaseModel, Field, ValidationError
 from sklearn.cluster import DBSCAN
 
+from src.config.llm_factory import get_aux_client, summary_model
+from src.metrics.cost_tracker import usage_from_chat_response
+from src.model_output import extract_json_object
+
+from ..embedding_utils import _truncate_to_token_budget, count_tokens
 from ..retriever import shared_retrieve
 from .base import MemoryPolicy
-from .type_aware_decay import TYPE_PARAMS, TypeAwareDecayPolicy
+from .type_aware_decay import TypeAwareDecayPolicy
 
 if TYPE_CHECKING:
     from ..record import MemoryRecord
@@ -42,9 +49,55 @@ logger = logging.getLogger(__name__)
 CONSOLIDATION_INTERVAL = 5  # Trigger every 5 tasks
 MIN_CLUSTER_SIZE = 3  # Minimum memories to consolidate
 MAX_SUMMARY_TOKENS = 350  # Maximum tokens for consolidated summary
-OLD_MEMORY_THRESHOLD = 10  # Memories must be >= 10 tasks old
+OLD_MEMORY_THRESHOLD = 5  # AMENDMENT A3 (2026-06-17): was 10. Lowered to cap/2 so CLS can consolidate at cap=10 — at cap=10 no active record ever reaches age 10, leaving CLS inert (gate-3). Derived from the A1 cap amendment; see AMENDMENTS.md / Invariant #23.
 SIMILARITY_THRESHOLD = 0.70  # Minimum cosine similarity for clustering
 EXCLUDE_TYPE = "architectural"  # Sacred tier - never consolidate
+
+# Temperature held constant across conditions. AMENDMENT 2026-06-14: Kimi
+# reasoning models (via CLIProxyAPI) only accept temp=1 (was 0); disclose.
+SUMMARY_TEMPERATURE = 1
+
+
+class ConsolidationSummary(BaseModel):
+    """Validated shape of the consolidation LLM's JSON output (§P5).
+
+    The §P5 example also shows a ``"memory_type": "consolidated_summary"`` field
+    INSIDE this JSON. It is intentionally NOT modelled here: the consolidated
+    MemoryRecord's ``memory_type`` must stay within the frozen 5-type taxonomy
+    (Invariant #7) and is derived from the cluster MAJORITY type, not from the
+    LLM. Pydantic ignores unknown keys by default, so the field is dropped.
+    """
+
+    summary: str = ""
+    common_files: list[str] = Field(default_factory=list)
+    recurring_pattern: str = ""
+    successful_strategy: str = ""
+    failure_traps: str = ""
+    test_commands: list[str] = Field(default_factory=list)
+
+
+# Consolidation prompt (verbatim intent from THESIS_FINAL_v5.md §8 P5).
+CONSOLIDATION_SYSTEM_PROMPT = (
+    "You are compressing coding-agent memories from a single repository.\n\n"
+    "Given several past task memories, produce one compact reusable memory.\n\n"
+    "Keep: repository conventions, recurring files/functions, successful fix "
+    "strategies, test commands, failure traps, assumptions proven wrong.\n\n"
+    "Remove: duplicate details, irrelevant logs, one-off stack traces, exact "
+    "patches unless the pattern is reusable."
+)
+
+# Ollama's OpenAI-compatible endpoint ignores the json_schema response_format
+# (ollama/ollama #10001), so we use plain JSON mode + explicit schema
+# instructions + Pydantic validation (deviation D4, see CLAUDE.md), NOT
+# beta.chat.completions.parse. The "memory_type" field from the §P5 example is
+# deliberately omitted from the schema we ask for (see ConsolidationSummary).
+CONSOLIDATION_JSON_INSTRUCTIONS = (
+    "\n\nRespond with ONLY a JSON object of exactly this shape "
+    "(no markdown fences, no commentary):\n"
+    '{"summary": "...", "common_files": ["..."], "recurring_pattern": "...", '
+    '"successful_strategy": "...", "failure_traps": "...", '
+    '"test_commands": ["..."]}'
+)
 
 
 class CLSConsolidationPolicy(MemoryPolicy):
@@ -116,7 +169,7 @@ class CLSConsolidationPolicy(MemoryPolicy):
     """
 
     name = "cls_consolidation"
-    
+
     # Expose frozen parameters as class attributes for testing
     CONSOLIDATION_INTERVAL = CONSOLIDATION_INTERVAL
     MIN_CLUSTER_SIZE = MIN_CLUSTER_SIZE
@@ -138,6 +191,11 @@ class CLSConsolidationPolicy(MemoryPolicy):
         """
         self.max_records = max_records
         self._tasks_since_last_consolidation = 0
+
+        # Consolidation LLM token usage buffer for cost telemetry (E1). Each
+        # _generate_summary call appends a usage dict; the SequenceRunner drains
+        # it after policy.maintain() via drain_consolidation_usage().
+        self._consolidation_usage: list[dict[str, Any]] = []
 
         logger.info(
             f"Initialized CLSConsolidationPolicy: max_records={max_records}, "
@@ -283,16 +341,6 @@ class CLSConsolidationPolicy(MemoryPolicy):
         Args:
             memory_store: Persistent memory storage backend
         """
-
-    def _consolidate(self, memory_store: "MemoryStore") -> None:
-        """Perform CLS consolidation logic.
-
-        This is a helper method extracted for testing purposes.
-        The actual consolidation is triggered by maintain().
-
-        Args:
-            memory_store: Persistent memory storage backend
-        """
         # Get all active records and compute current step
         active_records = memory_store.active_records()
 
@@ -406,7 +454,7 @@ class CLSConsolidationPolicy(MemoryPolicy):
             - Consolidation respects repository boundaries
             - Each repo is processed independently
         """
-        repo_groups: dict[str, list["MemoryRecord"]] = {}
+        repo_groups: dict[str, list[MemoryRecord]] = {}
 
         for record in candidates:
             if record.repo not in repo_groups:
@@ -511,7 +559,7 @@ class CLSConsolidationPolicy(MemoryPolicy):
         ).fit(distance_matrix)
 
         # Group by cluster ID
-        clusters: dict[int, list["MemoryRecord"]] = {}
+        clusters: dict[int, list[MemoryRecord]] = {}
 
         for idx, cluster_id in enumerate(clustering.labels_):
             if cluster_id == -1:
@@ -536,6 +584,34 @@ class CLSConsolidationPolicy(MemoryPolicy):
 
         return valid_clusters
 
+    @staticmethod
+    def _majority_memory_type(cluster: list["MemoryRecord"]) -> str:
+        """Return the most common memory_type among a cluster's records.
+
+        Consolidated records must stay within the frozen 5-type taxonomy
+        (Invariant #7). Instead of inventing a 6th type, a consolidated
+        record inherits the MAJORITY memory_type of its constituent records.
+
+        Tie-breaking is deterministic and alphabetical: among the types that
+        share the maximum count, the lexicographically smallest type name is
+        chosen (e.g. {"config": 2, "test_update": 2} -> "config"). This makes
+        consolidation reproducible across runs and seeds.
+
+        Args:
+            cluster: Non-empty list of MemoryRecord instances to consolidate.
+
+        Returns:
+            The majority memory_type (one of the 5 valid content types).
+        """
+        counts: dict[str, int] = {}
+        for record in cluster:
+            counts[record.memory_type] = counts.get(record.memory_type, 0) + 1
+
+        max_count = max(counts.values())
+        tied_types = [mt for mt, c in counts.items() if c == max_count]
+        # Deterministic tie-break: alphabetical (smallest type name wins)
+        return min(tied_types)
+
     def _consolidate_cluster(
         self,
         cluster: list["MemoryRecord"],
@@ -558,41 +634,73 @@ class CLSConsolidationPolicy(MemoryPolicy):
             current_step: Current sequence step
 
         Notes:
-            - Summary is generated by LLM (not implemented yet - placeholder)
-            - Consolidated record has is_consolidated=True
+            - Summary is generated by the summary LLM (§8 P5); falls back to a
+              placeholder on any LLM failure
+            - Composed summary text is capped at MAX_SUMMARY_TOKENS via tiktoken
+            - token_length is a real tiktoken count of the stored embedding_text
+            - Consolidated record has is_consolidated=True and source_memory_ids
+            - memory_type stays the cluster MAJORITY valid type (Invariant #7)
             - Source memories are archived, not deleted
             - Consolidated record inherits repo from cluster
-            - TODO: Implement LLM summarization
         """
         logger.info(
             f"Consolidating cluster of {len(cluster)} memories: "
             f"{[r.memory_id for r in cluster]}"
         )
 
-        # TODO: Generate LLM summary
-        # For now, create a placeholder summary
-        summary = self._generate_summary_placeholder(cluster)
+        # Generate the consolidated summary via the summary LLM (§8 P5). On ANY
+        # LLM failure (API/JSON/empty) this falls back to the placeholder so a
+        # run is never crashed by consolidation.
+        summary = self._generate_summary(cluster)
+
+        # Compose the consolidated content from the structured summary fields and
+        # cap it at MAX_SUMMARY_TOKENS using a real tiktoken count (HARD
+        # CONSTRAINT). issue_summary holds the prose synthesis; test_summary
+        # carries the recurring test commands.
+        issue_summary_text = self._compose_summary_text(summary)
+        issue_summary_text = _truncate_to_token_budget(
+            issue_summary_text, MAX_SUMMARY_TOKENS
+        )
+        test_commands = summary.get("test_commands") or []
+        test_summary_text = (
+            "; ".join(test_commands) if test_commands else None
+        )
+
+        # Embedding text mirrors the stored content so token_length is a real
+        # token count of what the record actually carries.
+        embedding_text = issue_summary_text
+        if test_summary_text:
+            embedding_text = f"{issue_summary_text}\nTest commands: {test_summary_text}"
+        embedding_text = _truncate_to_token_budget(embedding_text, MAX_SUMMARY_TOKENS)
+        token_length = count_tokens(embedding_text)
 
         # Create consolidated MemoryRecord
         from ..record import MemoryRecord
+
+        # Consolidated records MUST use one of the 5 valid memory_types
+        # (Invariant #7, 5-type taxonomy). We assign the cluster's MAJORITY
+        # memory_type; is_consolidated=True keeps the record identifiable.
+        # NOTE: the LLM JSON may include "memory_type": "consolidated_summary"
+        # (per the §P5 example) — that is IGNORED here on purpose.
+        consolidated_type = self._majority_memory_type(cluster)
 
         consolidated_record = MemoryRecord(
             memory_id=MemoryRecord.generate_id(),
             task_id=f"consolidated_{current_step}",
             repo=cluster[0].repo,  # All cluster members have same repo
             sequence_index=current_step,
-            memory_type="consolidated_summary",  # Special type for consolidated
+            memory_type=consolidated_type,  # Majority type of cluster (5-type taxonomy)
             outcome="unknown",  # Consolidated summaries don't have outcomes
-            issue_summary=summary["summary"],
+            issue_summary=issue_summary_text,
             patch_summary="",  # No patch for consolidated
             failure_summary=None,
-            test_summary=None,
-            files_touched=summary["common_files"],
+            test_summary=test_summary_text,
+            files_touched=summary.get("common_files") or [],
             functions_touched=[],
-            commands_run=summary["test_commands"],
+            commands_run=test_commands,
             retrieved_memory_ids_used=[],
-            embedding_text=summary["summary"],  # Use summary as embedding text
-            token_length=len(summary["summary"].split()),  # Rough token count
+            embedding_text=embedding_text,  # Use composed summary as embedding text
+            token_length=token_length,  # Real tiktoken count, capped at MAX_SUMMARY_TOKENS
             is_consolidated=True,
             source_memory_ids=[r.memory_id for r in cluster]
         )
@@ -618,6 +726,154 @@ class CLSConsolidationPolicy(MemoryPolicy):
                 f"Archived source memory {record.memory_id} "
                 f"(replaced by {consolidated_record.memory_id})"
             )
+
+    def _generate_summary(
+        self,
+        cluster: list["MemoryRecord"]
+    ) -> dict[str, Any]:
+        """Generate a consolidated summary for a cluster via the summary LLM.
+
+        **Validates: Requirements 13.6**
+
+        Calls ``get_chat_client().chat.completions.create`` with the §8 P5
+        consolidation prompt at ``temperature=0`` (FROZEN) using JSON mode
+        (``response_format={"type": "json_object"}``, deviation D4 — Ollama
+        ignores json_schema), then validates the result against
+        :class:`ConsolidationSummary`.
+
+        On ANY failure (transport/API error, empty content, malformed/invalid
+        JSON) this logs a warning and FALLS BACK to
+        :meth:`_generate_summary_placeholder` so a run is never crashed by
+        consolidation.
+
+        Args:
+            cluster: List of MemoryRecord instances to summarize (>= MIN_CLUSTER_SIZE).
+
+        Returns:
+            Dict with keys: summary, common_files, recurring_pattern,
+            successful_strategy, failure_traps, test_commands.
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": CONSOLIDATION_SYSTEM_PROMPT + CONSOLIDATION_JSON_INSTRUCTIONS,
+            },
+            {"role": "user", "content": self._render_cluster(cluster)},
+        ]
+
+        try:
+            client = get_aux_client()
+            # Prompt-instructed JSON + tolerant extraction + Pydantic validation.
+            # No response_format: MiniMax M3 returns 400 model_not_capable for
+            # json_object mode (D4 extended 2026-06-17).
+            response = client.chat.completions.create(
+                model=summary_model(),
+                messages=messages,
+                temperature=SUMMARY_TEMPERATURE,
+            )
+
+            # Surface token usage for cost telemetry (E1). Recorded BEFORE
+            # validation so a malformed-then-fallback response still counts its
+            # real token spend toward the Pareto axis.
+            prompt_tokens, completion_tokens = usage_from_chat_response(response)
+            self._consolidation_usage.append(
+                {
+                    "call_type": "consolidation",
+                    "model": summary_model(),
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                }
+            )
+
+            content = response.choices[0].message.content
+            if not content or not isinstance(content, str):
+                raise ValueError("consolidation LLM returned empty/non-string content")
+
+            validated = ConsolidationSummary.model_validate(extract_json_object(content))
+            return validated.model_dump()
+
+        except (ValidationError, ValueError, json.JSONDecodeError) as e:
+            logger.warning(
+                f"Consolidation LLM produced invalid output, falling back to "
+                f"placeholder summary: {e}"
+            )
+            return self._generate_summary_placeholder(cluster)
+        except Exception as e:
+            # Transport / API errors — never crash a run, fall back instead.
+            logger.warning(
+                f"Consolidation LLM call failed, falling back to placeholder "
+                f"summary: {e}"
+            )
+            return self._generate_summary_placeholder(cluster)
+
+    def drain_consolidation_usage(self) -> list[dict[str, Any]]:
+        """Return and clear accumulated consolidation LLM usage records (E1).
+
+        The SequenceRunner calls this after policy.maintain() to attribute CLS
+        consolidation token cost to the CostTracker. Only this policy emits
+        consolidation calls, so the runner checks for the method via duck-typing.
+        """
+        drained = self._consolidation_usage
+        self._consolidation_usage = []
+        return drained
+
+    @staticmethod
+    def _compose_summary_text(summary: dict[str, Any]) -> str:
+        """Compose the consolidated record's prose content from summary fields.
+
+        Combines summary + recurring_pattern + successful_strategy +
+        failure_traps into a single human-readable block (test_commands are
+        stored separately on the record's ``test_summary``/``commands_run``).
+        Empty fields are omitted so the placeholder fallback (which only fills
+        ``summary``) stays clean.
+
+        Args:
+            summary: Validated/placeholder summary dict.
+
+        Returns:
+            Composed prose string (may be empty if every field is blank).
+        """
+        parts: list[str] = []
+        if summary.get("summary"):
+            parts.append(str(summary["summary"]).strip())
+        if summary.get("recurring_pattern"):
+            parts.append(f"Recurring pattern: {str(summary['recurring_pattern']).strip()}")
+        if summary.get("successful_strategy"):
+            parts.append(
+                f"Successful strategy: {str(summary['successful_strategy']).strip()}"
+            )
+        if summary.get("failure_traps"):
+            parts.append(f"Failure traps: {str(summary['failure_traps']).strip()}")
+        return "\n".join(parts)
+
+    @staticmethod
+    def _render_cluster(cluster: list["MemoryRecord"]) -> str:
+        """Render a cluster's records into the LLM user prompt.
+
+        Args:
+            cluster: List of MemoryRecord instances to summarize.
+
+        Returns:
+            A plain-text rendering of each record's salient fields.
+        """
+        repo = cluster[0].repo if cluster else "(unknown)"
+        blocks: list[str] = [
+            f"Repository: {repo}",
+            f"Number of past task memories to compress: {len(cluster)}",
+            "",
+        ]
+        for i, record in enumerate(cluster, start=1):
+            files = ", ".join(record.files_touched) if record.files_touched else "(none)"
+            commands = ", ".join(record.commands_run) if record.commands_run else "(none)"
+            blocks.append(
+                f"--- Memory {i} (type={record.memory_type}, outcome={record.outcome}) ---\n"
+                f"Issue: {record.issue_summary}\n"
+                f"Patch: {record.patch_summary}\n"
+                f"Failure: {record.failure_summary or '(none)'}\n"
+                f"Files: {files}\n"
+                f"Commands: {commands}"
+            )
+        return "\n".join(blocks)
 
     def _generate_summary_placeholder(
         self,

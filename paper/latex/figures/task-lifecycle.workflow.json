@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Per-Task Memory Loop",
+    "subtitle": "every policy is identical except the maintain step",
+    "output": "task-lifecycle.html"
+  },
+  "lanes": [
+    { "id": "solve", "label": "Solve (uses memory)" },
+    { "id": "record", "label": "Record (identical across policies)" },
+    { "id": "forget", "label": "Forget (policy-specific)" }
+  ],
+  "nodes": [
+    { "id": "retrieve", "lane": "solve", "col": 0, "type": "database", "label": "Retrieve", "sublabel": "cosine top-k", "tag": "identical across policies" },
+    { "id": "solve", "lane": "solve", "col": 1, "type": "backend", "label": "Solve", "sublabel": "ReAct attempt" },
+    { "id": "reflect", "lane": "record", "col": 2, "type": "backend", "label": "Reflect", "sublabel": "summarize task" },
+    { "id": "classify", "lane": "record", "col": 3, "type": "backend", "label": "Classify", "sublabel": "5-type taxonomy" },
+    { "id": "maintain", "lane": "forget", "col": 4, "type": "security", "label": "Maintain", "sublabel": "the policy forgets here", "tag": "the ONLY step that differs" },
+    { "id": "snapshot", "lane": "record", "col": 5, "type": "database", "label": "Snapshot", "sublabel": "persist state" }
+  ],
+  "edges": [
+    { "from": "retrieve", "to": "solve", "variant": "emphasis" },
+    { "from": "solve", "to": "reflect", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "reflect", "to": "classify", "variant": "emphasis" },
+    { "from": "classify", "to": "maintain", "label": "the policy forgets here", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "maintain", "to": "snapshot", "variant": "emphasis", "fromSide": "top", "toSide": "bottom", "route": "drop" },
+    { "from": "snapshot", "to": "retrieve", "label": "next task", "variant": "dashed", "fromSide": "bottom", "toSide": "bottom", "route": "bottom-channel", "labelSegment": 1 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Held constant", "items": ["Retrieve uses pure cosine top-k", "Solve, Reflect, Classify are identical across all six policies", "Snapshot persists the resulting memory state"] },
+    { "dot": "rose", "title": "The only variable", "items": ["Maintain is the sole policy-specific step", "Each of the six policies forgets differently here", "All other steps are shared"] },
+    { "dot": "emerald", "title": "It is a loop", "items": ["The snapshot feeds the next task's retrieval", "Memory accumulates and is pruned per policy across the sequence"] }
+  ]
+}

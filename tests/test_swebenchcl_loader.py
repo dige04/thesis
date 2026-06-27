@@ -144,26 +144,23 @@ class TestSWEBenchCLLoader:
             curriculum_path.unlink()
 
     def test_preserve_chronological_ordering(self):
-        """Test that chronological ordering is preserved within sequences.
+        """Test that already-chronological ordering is preserved within sequences.
 
-        This enforces Requirement 1: "THE System SHALL preserve the original
-        chronological ordering of tasks within each sequence"
+        This enforces Frozen Decision #1 (no re-ordering): the loader preserves
+        the original chronological ordering of in-order tasks. Out-of-order input
+        is rejected by test_loader_rejects_non_chronological_sequence_index_order
+        rather than silently sorted.
         """
-        # Create sequence with tasks in shuffled order
+        # Create sequence with tasks already in chronological order.
         tasks_data = [
             self._create_valid_task_data(f"task-{i}", "django/django", i)
             for i in range(15)
         ]
-        # Shuffle the tasks
-        import random
-
-        shuffled_tasks = tasks_data.copy()
-        random.shuffle(shuffled_tasks)
 
         sequence_data = {
             "sequence_name": "django",
             "repo": "django/django",
-            "tasks": shuffled_tasks,
+            "tasks": tasks_data,
         }
         sequences_data = [sequence_data] + [
             self._create_valid_sequence_data(f"seq-{i}", f"repo{i}/repo{i}")
@@ -175,7 +172,7 @@ class TestSWEBenchCLLoader:
             loader = SWEBenchCLLoader(curriculum_path)
             sequences = loader.load_all_sequences()
 
-            # Verify tasks are sorted by sequence_index
+            # Verify tasks remain ordered by sequence_index.
             django_sequence = sequences[0]
             for i, task in enumerate(django_sequence.tasks):
                 assert task.sequence_index == i
@@ -434,3 +431,46 @@ class TestSWEBenchCLLoader:
             assert names == [f"seq-{i}" for i in range(8)]
         finally:
             curriculum_path.unlink()
+
+
+def test_loader_rejects_non_chronological_sequence_index_order(tmp_path):
+    curriculum = {
+        "sequences": [
+            {
+                "sequence_name": f"seq-{i}",
+                "repo": f"owner/repo-{i}",
+                "tasks": [
+                    {
+                        "task_id": f"task-{i}-0",
+                        "repo": f"owner/repo-{i}",
+                        "base_commit": "abc",
+                        "issue_text": "Issue",
+                        "test_patch": "",
+                        "gold_patch": "",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "sequence_index": 1 if i == 0 else 0,
+                        "difficulty_label": "medium",
+                    },
+                    {
+                        "task_id": f"task-{i}-1",
+                        "repo": f"owner/repo-{i}",
+                        "base_commit": "def",
+                        "issue_text": "Issue",
+                        "test_patch": "",
+                        "gold_patch": "",
+                        "created_at": "2024-01-02T00:00:00Z",
+                        "sequence_index": 0 if i == 0 else 1,
+                        "difficulty_label": "medium",
+                    },
+                ],
+            }
+            for i in range(8)
+        ]
+    }
+    path = tmp_path / "curriculum.json"
+    path.write_text(json.dumps(curriculum))
+
+    loader = SWEBenchCLLoader(path)
+
+    with pytest.raises(ValueError, match="must already be ordered"):
+        loader.load_all_sequences()

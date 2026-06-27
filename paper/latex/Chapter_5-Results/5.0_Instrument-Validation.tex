@@ -1,0 +1,67 @@
+% Drafted 2026-06-25. Durable (NOT pending-144): the instrument-validation outcome is
+% verified now. Sources: results/ab_gate/amended_cceb325_result.json,
+% docs/ab-gate-findings-2026-06-24.md, docs/amended-gate-2026-06-24.md.
+% INTEGRITY: the +15.3pp A/B resolve delta is "the fixed instrument is net-positive",
+% NOT a thesis result. Never state the original gate passed.
+
+% ── 5.0  Instrument-Validation Result ────────────────────────────────────
+% PURPOSE: Report the verified outcome of the pre-registered A/B instrument health gate.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Instrument-Validation Result}
+\label{sec:instrument-results}
+
+The instrument-health procedure of Section~\ref{sec:instrument} produced a verified outcome
+that gates the fixed-code rerun \emph{before} the matrix is trusted, and unlike the H1--H5
+contrasts these numbers do not depend on that rerun --- they are reported here as a durable
+methodological result.
+
+\paragraph{From STOP to GO.}
+On the original pre-registered gate the instrument \textbf{STOPped}: the fixed-mode arm
+showed 82 edit path/index failures and an edit-failure ratio of $0.303$, of which the
+dominant component was the path-normalisation bug --- 77 of 78 ``security'' rejections were
+false (the same file under two normalisation states). After the hotfix (\texttt{cceb325}),
+the instrument-attributable failures fall from 79 to \textbf{0}. The amended gate, evaluated
+on fresh post-hotfix data, returns \textbf{GO}: all of its criteria pass
+(Table~\ref{tab:instrument}). Instrument-attributable failures are zero in both arms; the
+model-quality failure rate in the fixed arm ($0.152$) is below the legacy arm ($0.183$), so
+the fix does not regress diff quality; and token inflation is below $1.0\times$ on both the
+prompt ($0.986\times$) and total ($0.992\times$) medians, comfortably under the $1.5\times$
+ceiling. Completeness, pairing, and provenance (commit, configuration hash, and row-level
+tool mode) all hold.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Amended instrument-health gate on fresh post-hotfix data. Instrument-attributable
+  failures are zero in both arms; the fixed arm's model-quality rate does not exceed the
+  legacy arm's; token inflation is below $1.0\times$. Verdict: GO.}
+  \label{tab:instrument}
+  \begin{tabular}{lrr}
+    \toprule
+    & Legacy (pre-fix tooling) & Fixed (post-fix tooling) \\
+    \midrule
+    Edit calls                       & 339      & 532      \\
+    Instrument-attributable failures & 0        & 0        \\
+    Model-quality failures           & 62       & 81       \\
+    Model-quality rate               & 0.183    & 0.152    \\
+    Prompt-token median              & 177{,}322 & 174{,}900 \\
+    Total-token median               & 180{,}352 & 178{,}825 \\
+    \midrule
+    Prompt inflation (fixed/legacy)  & \multicolumn{2}{c}{$0.986\times$} \\
+    Total inflation (fixed/legacy)   & \multicolumn{2}{c}{$0.992\times$} \\
+    Verdict                          & \multicolumn{2}{c}{\textbf{GO}} \\
+    \bottomrule
+  \end{tabular}
+  \par\smallskip
+  {\footnotesize Source: \texttt{results/ab\_gate/amended\_cceb325\_result.json}.}
+\end{table}
+
+\paragraph{The fixed instrument is net-positive (informational).}
+Beyond passing the health criteria, the corrected tooling resolved \emph{more} tasks than
+the legacy tooling on the A/B's two sequences: a resolution rate of $0.582$ fixed versus
+$0.429$ legacy ($+15.3$ percentage points). This is reported as informational evidence that
+the instrument fix is net-positive --- it confirms that the read/edit corrections help the
+agent rather than merely changing failure bookkeeping. It is \emph{not} a thesis result: it
+is measured on two sequences and three policies under the instrument check, not on the
+144-run matrix, and the headline between-policy contrasts are reported from the trustworthy
+rerun in the sections that follow.

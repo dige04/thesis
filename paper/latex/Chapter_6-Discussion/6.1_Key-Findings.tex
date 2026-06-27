@@ -1,0 +1,116 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py.
+
+% ── 6.1  Key Findings ────────────────────────────────────────────────────
+% PURPOSE: Restate the thesis-defining result up front before any interpretation.
+% MOVE: Counter-intuitive lead ("Contrary to the assumption that more memory helps…").
+% BEATS: see ordered bullets below — the honest story, ending on the footprint win.
+% FIGURES/TABLES: forward-refs fig:pareto-footprint, fig:pareto-compute, tab:main-results (defined in Ch.5).
+% CITATIONS: liu2024 (context dilution / Lost-in-the-Middle), xiong2025 (experience-following risk).
+% SOURCE-DOC: README grounded-facts cheat sheet; docs/defense-qa.md (Q5).
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Key Findings}
+
+The intuition this thesis set out to test is that more memory should help: an agent
+that carries the full record of every task it has solved ought to resolve subsequent
+tasks more reliably than one that forgets, and a policy that forgets aggressively ought
+to pay for that thrift in lost performance. The trustworthy $144$-run matrix
+(\texttt{runs\_144\_seq\_cceb325}, \texttt{deepseek-v4-flash}: $4{,}914$ task rows,
+$2{,}175$ resolved, $44.3\%$ overall) does not bear this out. With retrieval held
+identical across all six conditions (Invariant~\#5), the value-axis differences between
+remembering everything, remembering nothing, and the four forgetting policies are small
+enough to be statistically indistinguishable, while the cost of remembering everything is
+real and one-sided. The headline is therefore not that forgetting \emph{recovers} lost
+performance --- it does not --- but that forgetting is \emph{non-inferior} to full
+accumulation on task resolution at roughly half the carried footprint, and that the slow
+decline of agent effectiveness across a sequence is driven by something memory
+accumulation cannot fix. We restate the five findings here before interpreting them; the
+underlying tests are reported in Chapter~\ref{ch:results} (the H1 contrasts in
+Table~\ref{tab:main-results}, the frontiers in Figures~\ref{fig:pareto-footprint}
+and~\ref{fig:pareto-compute}).
+
+\paragraph{A powered null: no policy beats full memory.}
+The pre-registered primary test (Wilcoxon signed-rank on $N=8$ sequence means, each
+policy against \texttt{full\_memory}, Holm-corrected over the five contrasts; Invariant
+\#11) returns no significant difference: every Holm-corrected $p$ equals $1.000$ and every
+$95\%$ BCa interval on the paired difference in resolution crosses zero
+(Table~\ref{tab:main-results}). The six policy means are tightly clustered, spanning only
+$0.427$ (\texttt{type\_aware\_decay}) to $0.449$ (\texttt{cls\_consolidation}), with
+\texttt{full\_memory} at $0.445$ sitting mid-pack rather than at the top. This is the
+thesis-defining result: across a clean matrix with no audit flags, accumulating the full
+memory record neither beats nor is beaten by proactive forgetting on the resolution proxy.
+
+\paragraph{A small, bounded memory benefit that the design cannot resolve.}
+The one comparison that speaks to whether memory helps \emph{at all} ---
+\texttt{full\_memory} ($0.445$) against \texttt{no\_memory} ($0.429$) --- shows a benefit
+of $+1.6$ percentage points on the policy means (a paired median improvement of $+3.4$
+points in full memory's favour). The benefit points the expected direction but is small
+and statistically indistinguishable from zero (Holm $p = 1.000$, $r_{rb} = -0.286$, BCa
+CI on the paired difference crossing zero). We report it as a \emph{bound}, not a power
+verdict: the $N=8$ sequence-level design is underpowered for effects of this magnitude, so
+the honest reading is that any benefit from carrying memory is, at the resolution proxy's
+granularity, no larger than a few percentage points. Non-inferiority is read from these
+bounded intervals rather than from a TOST verdict --- TOST was pre-registered but not
+computed (Section~\ref{sec:threats}).
+
+\paragraph{Forgetting is footprint-free.}
+The efficiency contribution (H1b) splits cleanly across two axes. On the
+\emph{footprint} axis --- the memory tokens carried per task, which governs storage and
+retrieval-index growth over an agent's lifetime --- the forgetting policies carry $598$ to
+$704$ tokens against \texttt{full\_memory}'s $1{,}247$, roughly half the load, while
+\texttt{no\_memory} holds the zero-footprint corner (Figure~\ref{fig:pareto-footprint}).
+On the \emph{compute} axis the policies barely separate: total tokens per run rise only
+from $5.74$M (\texttt{no\_memory}) to $6.09$M (\texttt{full\_memory}), with the five
+memory-carrying policies within about $2\%$ of one another and the whole field spanning
+roughly $6\%$ (Figure~\ref{fig:pareto-compute}); tool-call counts are essentially flat at
+$\sim\!21$ for every policy. The reason is structural: cost is dominated by the agent loop,
+whose growing conversation is resent at each of up to $20$ ReAct steps, so the memory
+payload is a small fraction of the per-task token bill. Pruning therefore buys a bounded
+footprint --- the quantity that matters for a long-lived agent --- essentially for free,
+without sacrificing resolution and without reducing compute. This is the most robust
+positive result in the thesis.
+
+\paragraph{Performance declines along the sequence regardless of policy.}
+The task-level GLMM (binomial/logit with crossed random effects on task identity;
+Invariant~\#14; $4{,}914$ observations) locates the dominant source of variance not in the
+memory policy but in the task: the coefficients for difficulty ($-2.18 \pm 0.065$) and for
+position within the sequence ($-1.49 \pm 0.086$) are large and significant, whereas every
+policy coefficient is smaller than twice its standard error (e.g.\ \texttt{full\_memory}
+$+0.116 \pm 0.118$, \texttt{no\_memory} $-0.133 \pm 0.117$). Agent effectiveness thus
+\emph{declines as the agent moves deeper into a sequence}, and accumulating memory does not
+arrest that decline --- consistent with the context-dilution mechanism behind the
+Lost-in-the-Middle effect \cite{liu2024} rather than with a memory deficit that more
+storage could repair. (The GLMM is fit by an approximate variational routine rather than
+the canonical \texttt{lme4} estimator; we report signs and the policy-null, and a
+sensitivity check confirms the direction.)
+
+\paragraph{When forgetting is mis-specified, it can underperform carrying no memory.}
+The finding that most sharpens the story is descriptive but mechanistically clear.
+\texttt{type\_aware\_decay} posts the \emph{lowest} mean of all six policies ($0.427$),
+fractionally below even \texttt{no\_memory} ($0.429$), and it carries the
+largest-magnitude effect of the five contrasts ($r_{rb} = -0.444$) --- yet that contrast
+remains non-significant after Holm correction ($p = 1.000$), so this is an ordering and a
+mechanism, not a statistically established loss. The mechanism is concrete: in the frozen
+decay formula the retrieval-frequency term $(1 + \texttt{use\_count})^{0.5}$ dominates the
+age-decay term, so a handful of early, high-use memories become effectively permanent
+while newer items are evicted almost immediately. A content audit confirms the store
+freezes at roughly its first ten items. A forgetting policy that keeps the wrong things can
+thus do marginally worse than keeping nothing --- a cautionary result about
+\emph{specification}, not about forgetting in general, and a concrete instance of the
+experience-following risk \cite{xiong2025}.
+
+\paragraph{The frame.}
+Taken together, these findings replace the expected ``more memory helps'' narrative with a
+more precise one. On the resolution proxy, forgetting is non-inferior to full accumulation
+at materially lower footprint and no compute penalty; the reason the average memory benefit
+is so small is structural --- only a minority of tasks (a mean dependency fraction of
+$\sim\!0.3$) actually depend on a predecessor, so most of the matrix has no continual-
+learning signal for memory to exploit, and even where dependency exists the benefit is
+heterogeneous (Section~\ref{sec:h5}). The contribution is therefore not that forgetting
+recovers performance, but that it costs nothing to forget here, and that quantifying
+\emph{when} memory could matter --- interdependence as the binding filter --- is where the
+continual-learning question actually lives. Throughout, we read these results against the
+proxy's known limit: CL-F1 is an end-of-sequence \emph{resolved-rate} proxy, not a
+fine-grained forgetting curve, a gap we probe directly in the A5 anchor sub-study and
+revisit under construct validity (Section~\ref{sec:threats}).

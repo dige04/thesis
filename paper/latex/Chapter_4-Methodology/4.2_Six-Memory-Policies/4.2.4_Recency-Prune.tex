@@ -1,0 +1,14 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% ── 4.2.4  Recency Prune ─────────────────────────────────────────────────
+
+\subsection{Recency Prune}
+
+Recency Prune is the simplest content-blind ordering heuristic, one rung above random. When
+the store exceeds the cap of ten (A1), it evicts the oldest records first --- lowest
+recency --- until the store is back within budget. This is the familiar ``keep what is
+fresh'' default, and it uses a single signal, age, to order eviction. Placing it on the
+ladder separates a temporal heuristic from both the signal-free random control below it and
+the type- and use-aware scoring above it, so the comparison can tell apart recency from
+relevance: whether keeping the \emph{newest} records is as good as keeping the records a
+content-aware score deems most worth keeping.

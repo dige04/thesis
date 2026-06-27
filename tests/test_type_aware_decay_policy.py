@@ -10,7 +10,9 @@ Tests verify:
 **Validates: Requirements 12**
 """
 
-from src.memory.policies.type_aware_decay import TypeAwareDecayPolicy, TYPE_PARAMS
+from unittest.mock import Mock
+
+from src.memory.policies.type_aware_decay import TYPE_PARAMS, TypeAwareDecayPolicy
 from src.memory.record import MemoryRecord
 
 
@@ -55,6 +57,13 @@ class MockMemoryStore:
     def count_active(self):
         """Count non-archived records."""
         return len(self.active_records())
+
+    def update_importance_score(self, memory_id, score):
+        """Mock importance-score persistence (mirrors real MemoryStore)."""
+        for record in self.records:
+            if record.memory_id == memory_id:
+                record.importance_score = score
+                break
 
 
 def create_mock_record(memory_id, sequence_index, memory_type="bug_fix", use_count=0):
@@ -127,16 +136,16 @@ class TestTypeAwareDecayPolicyTypeParams:
         """Verify TYPE_PARAMS has locked values from THESIS_FINAL_v5.md §8 P4 (Req 12.4)."""
         # architectural: base=1.0, decay=0.05 (Sacred)
         assert TYPE_PARAMS["architectural"] == (1.0, 0.05, "Sacred")
-        
+
         # api_change: base=0.8, decay=0.15 (Critical)
         assert TYPE_PARAMS["api_change"] == (0.8, 0.15, "Critical")
-        
+
         # bug_fix: base=0.6, decay=0.25 (Important)
         assert TYPE_PARAMS["bug_fix"] == (0.6, 0.25, "Important")
-        
+
         # test_update: base=0.4, decay=0.35 (Expendable)
         assert TYPE_PARAMS["test_update"] == (0.4, 0.35, "Expendable")
-        
+
         # config: base=0.3, decay=0.40 (Expendable)
         assert TYPE_PARAMS["config"] == (0.3, 0.40, "Expendable")
 
@@ -150,6 +159,7 @@ class TestTypeAwareDecayPolicyRetrieve:
     def test_retrieve_uses_shared_retrieve(self):
         """Verify retrieve() uses shared_retrieve (Req 12.1, Frozen Invariant #5)."""
         import inspect
+
         from src.memory.policies.type_aware_decay import TypeAwareDecayPolicy
 
         # Get source code of retrieve method
@@ -340,6 +350,27 @@ class TestTypeAwareDecayPolicyMaintain:
         for record in store.active_records():
             assert record.importance_score > 0.0
 
+    def test_maintain_persists_importance_scores_to_store(self):
+        """Verify maintain() persists each computed score via update_importance_score."""
+        records = [
+            create_mock_record("MEM-001", sequence_index=0, memory_type="architectural"),
+            create_mock_record("MEM-002", sequence_index=2, memory_type="config"),
+        ]
+        store = MockMemoryStore()
+        store.records.extend(records)
+        store.update_importance_score = Mock()
+
+        policy = TypeAwareDecayPolicy(max_records=10)
+        policy.maintain(store)
+
+        assert store.update_importance_score.call_count == 2
+        updated_ids = {
+            call.args[0] for call in store.update_importance_score.call_args_list
+        }
+        assert updated_ids == {"MEM-001", "MEM-002"}
+        for call in store.update_importance_score.call_args_list:
+            assert call.args[1] > 0
+
 
 class TestTypeAwareDecayFormula:
     """Test Anderson-Schooler power-law formula implementation.
@@ -503,10 +534,10 @@ class TestTypeAwareDecayLowestScoring:
 
         # Old architectural memory (high base, but very old)
         old_arch = create_mock_record("mem-old-arch", 5, "architectural", use_count=0)
-        
+
         # Recent config memory (low base, but very recent and frequently used)
         recent_config = create_mock_record("mem-recent-config", 48, "config", use_count=10)
-        
+
         # Medium bug_fix memory
         medium_bug = create_mock_record("mem-medium-bug", 30, "bug_fix", use_count=3)
 
@@ -592,7 +623,7 @@ class TestTypeAwareDecayEdgeCases:
         unknown_record = create_mock_record("mem-unknown", 10, "config", use_count=1)
         # Manually set to unknown type after creation
         unknown_record.memory_type = "unknown_type"
-        
+
         known_record = create_mock_record("mem-known", 10, "architectural", use_count=1)
         store.records.extend([unknown_record, known_record])
 

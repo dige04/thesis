@@ -33,9 +33,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from src.benchmark.completion import is_run_complete
 from src.benchmark.models import Sequence
-from src.benchmark.sequence_runner import SequenceResult, SequenceRunner
+from src.benchmark.sequence_runner import SequenceResult, SequenceRunner, _runs_root
 from src.benchmark.swebenchcl_loader import SWEBenchCLLoader
+from src.config.loader import load_config
+from src.errors import UsageLimitError
 from src.memory.policies.base import MemoryPolicy
 from src.memory.policies.cls_consolidation import CLSConsolidationPolicy
 from src.memory.policies.full_memory import FullMemoryPolicy
@@ -363,13 +366,17 @@ class ExperimentRunner:
     def _save_experiment_summary(
         self,
         summary: ExperimentSummary,
+        filename: str = "experiment_summary.json",
     ) -> None:
         """Save experiment summary to results directory.
 
         Args:
             summary: ExperimentSummary to save
+            filename: summary filename — namespaced per invocation so
+                run-condition / pilot / full do not clobber each other across
+                the 6×3 sweep (per-run *_result.json files are already unique).
         """
-        summary_file = self.results_dir / "experiment_summary.json"
+        summary_file = self.results_dir / filename
 
         with open(summary_file, "w", encoding="utf-8") as f:
             json.dump(asdict(summary), f, indent=2)
@@ -420,12 +427,24 @@ class ExperimentRunner:
                 # Execute run
                 result = self._execute_run(run_config, sequence)
 
-                # Save result
-                self._save_run_result(run_config, result)
-
-                # Update counters
-                completed_runs += 1
-                total_cost_usd += result.total_cost_usd
+                # Gate completion on the sentinel written by Task 5b's
+                # validate_run_complete path.  A returned run_sequence() with
+                # no RUN_COMPLETED.json is a partial/aborted unit; counting it
+                # as complete produced the "144 complete / 28 partial" phantom.
+                run_dir = _runs_root() / run_config.run_id
+                if is_run_complete(run_dir):
+                    # Save result and count only truly complete runs.
+                    self._save_run_result(run_config, result)
+                    completed_runs += 1
+                    total_cost_usd += result.total_cost_usd
+                else:
+                    failed_runs += 1
+                    failed_run_ids.append(run_config.run_id)
+                    logger.warning(
+                        f"Run {run_config.run_id} returned but RUN_COMPLETED.json "
+                        f"is absent in {run_dir} — marking as incomplete/failed, "
+                        f"eligible for reconcile."
+                    )
 
                 # Log progress
                 logger.info(
@@ -433,6 +452,17 @@ class ExperimentRunner:
                     f"{failed_runs} failed, "
                     f"total cost=${total_cost_usd:.2f}"
                 )
+
+            except UsageLimitError:
+                # Provider quota is FATAL — abort the WHOLE experiment. Otherwise
+                # the sequence runner's correct re-raise is undone here and the
+                # matrix marches on producing invalid 0-resolved runs. Resume after
+                # quota/billing resets. (THESIS_REVIEW C5 — fail closed.)
+                logger.error(
+                    f"ABORTING experiment — provider usage limit during run "
+                    f"{run_config.run_id}. Matrix is resumable after quota resets."
+                )
+                raise
 
             except Exception as e:
                 # Log failure but continue
@@ -471,7 +501,7 @@ class ExperimentRunner:
         )
 
         # Save summary
-        self._save_experiment_summary(summary)
+        self._save_experiment_summary(summary, "experiment_summary_full.json")
 
         logger.info(
             f"Experiment complete: "
@@ -486,32 +516,53 @@ class ExperimentRunner:
     def run_pilot_experiment(
         self,
         num_sequences: int = 2,
+        sequence_names: list[str] | None = None,
     ) -> ExperimentSummary:
-        """Execute pilot experiment (2 sequences × 6 policies × 1 seed = 12 runs).
+        """Execute pilot experiment (N sequences × 6 policies × 1 seed).
 
-        This is used for calibration during Spike Week and Week 4.
+        This is used for calibration during Spike Week and Week 4. Decision I
+        (plan 2026-06-02) pins the pilot pair to django + pytest; pass
+        ``sequence_names=["django", "pytest"]`` to select them explicitly
+        rather than relying on loader order.
 
         Args:
-            num_sequences: Number of sequences to include (default 2)
+            num_sequences: Number of sequences to include when sequence_names
+                is not given (default 2).
+            sequence_names: Explicit sequence names to run (overrides
+                num_sequences). Each must exist in the curriculum.
 
         Returns:
             ExperimentSummary with aggregate statistics
 
         Notes:
-            - Uses only the first seed (seed=1)
-            - Uses first num_sequences sequences
+            - Uses only the first seed (self.seeds[0])
+            - All 6 policies, forward-only (no anchor-probe; decision H)
             - Otherwise identical to full experiment
         """
+        # Select pilot sequences: explicit names (decision I) or first N.
+        if sequence_names:
+            pilot_sequences = []
+            for name in sequence_names:
+                seq = self.loader.get_sequence_by_name(name)
+                if seq is None:
+                    raise ValueError(
+                        f"Unknown pilot sequence: {name!r}. "
+                        f"Available: {[s.sequence_name for s in self.sequences]}"
+                    )
+                pilot_sequences.append(seq)
+        else:
+            pilot_sequences = self.sequences[:num_sequences]
+
         logger.info(
             f"Starting pilot experiment: "
-            f"{num_sequences} sequences × 6 policies × 1 seed = {num_sequences * 6} runs"
+            f"{len(pilot_sequences)} sequences × 6 policies × 1 seed = "
+            f"{len(pilot_sequences) * 6} runs "
+            f"({[s.sequence_name for s in pilot_sequences]})"
         )
 
         start_time = time.time()
         start_timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Generate pilot run matrix (first num_sequences, all policies, first seed only)
-        pilot_sequences = self.sequences[:num_sequences]
         pilot_seed = self.seeds[0]
 
         policy_names = [
@@ -562,12 +613,20 @@ class ExperimentRunner:
                 # Execute run
                 result = self._execute_run(run_config, sequence)
 
-                # Save result
-                self._save_run_result(run_config, result)
-
-                # Update counters
-                completed_runs += 1
-                total_cost_usd += result.total_cost_usd
+                # Gate on sentinel — same logic as run_full_experiment.
+                run_dir = _runs_root() / run_config.run_id
+                if is_run_complete(run_dir):
+                    self._save_run_result(run_config, result)
+                    completed_runs += 1
+                    total_cost_usd += result.total_cost_usd
+                else:
+                    failed_runs += 1
+                    failed_run_ids.append(run_config.run_id)
+                    logger.warning(
+                        f"Pilot run {run_config.run_id} returned but "
+                        f"RUN_COMPLETED.json is absent in {run_dir} — "
+                        f"marking as incomplete/failed, eligible for reconcile."
+                    )
 
                 # Log progress
                 logger.info(
@@ -575,6 +634,15 @@ class ExperimentRunner:
                     f"{failed_runs} failed, "
                     f"total cost=${total_cost_usd:.2f}"
                 )
+
+            except UsageLimitError:
+                # Provider quota is FATAL — abort the whole pilot (see full-run
+                # rationale above). THESIS_REVIEW C5 — fail closed.
+                logger.error(
+                    f"ABORTING pilot — provider usage limit during run "
+                    f"{run_config.run_id}. Resumable after quota resets."
+                )
+                raise
 
             except Exception as e:
                 # Log failure but continue
@@ -602,7 +670,7 @@ class ExperimentRunner:
             total_runs=len(run_configs),
             completed_runs=completed_runs,
             failed_runs=failed_runs,
-            total_sequences=num_sequences,
+            total_sequences=len(pilot_sequences),
             total_policies=6,
             total_seeds=1,
             total_wall_time=total_wall_time,
@@ -613,7 +681,7 @@ class ExperimentRunner:
         )
 
         # Save summary
-        self._save_experiment_summary(summary)
+        self._save_experiment_summary(summary, "experiment_summary_pilot.json")
 
         logger.info(
             f"Pilot experiment complete: "
@@ -623,6 +691,100 @@ class ExperimentRunner:
             f"cost=${total_cost_usd:.2f}"
         )
 
+        return summary
+
+    def run_condition(
+        self,
+        policy_name: str,
+        seed: int,
+    ) -> ExperimentSummary:
+        """Execute one condition: all 8 sequences for a single policy + seed.
+
+        Backs ``make run-condition POLICY=... SEED=...``. Sequential, failures
+        logged but non-fatal, results saved per run.
+
+        Args:
+            policy_name: Memory policy to run (one of the 6).
+            seed: Random seed for this condition.
+
+        Returns:
+            ExperimentSummary over the (up to) 8 runs.
+        """
+        logger.info(
+            f"Starting condition: policy={policy_name}, seed={seed}, "
+            f"{len(self.sequences)} sequences"
+        )
+
+        start_time = time.time()
+        start_timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
+        # All sequences for this single policy + seed.
+        run_configs = [
+            rc
+            for rc in self._generate_run_matrix(policy_filter=policy_name)
+            if rc.seed == seed
+        ]
+        if not run_configs:
+            raise ValueError(
+                f"No runs generated for policy={policy_name!r}, seed={seed}. "
+                f"Valid seeds: {self.seeds}"
+            )
+
+        completed_runs = 0
+        failed_runs = 0
+        failed_run_ids: list[str] = []
+        total_cost_usd = 0.0
+
+        for idx, run_config in enumerate(run_configs, start=1):
+            logger.info(f"Condition run {idx}/{len(run_configs)}: {run_config.run_id}")
+            try:
+                sequence = next(
+                    s for s in self.sequences
+                    if s.sequence_name == run_config.sequence_name
+                )
+                result = self._execute_run(run_config, sequence)
+                # Gate on sentinel — same logic as run_full_experiment.
+                run_dir = _runs_root() / run_config.run_id
+                if is_run_complete(run_dir):
+                    self._save_run_result(run_config, result)
+                    completed_runs += 1
+                    total_cost_usd += result.total_cost_usd
+                else:
+                    failed_runs += 1
+                    failed_run_ids.append(run_config.run_id)
+                    logger.warning(
+                        f"Condition run {run_config.run_id} returned but "
+                        f"RUN_COMPLETED.json is absent in {run_dir} — "
+                        f"marking as incomplete/failed, eligible for reconcile."
+                    )
+            except Exception as e:
+                failed_runs += 1
+                failed_run_ids.append(run_config.run_id)
+                logger.error(f"Condition run {run_config.run_id} failed: {e}", exc_info=True)
+
+        end_time = time.time()
+        end_timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
+        summary = ExperimentSummary(
+            total_runs=len(run_configs),
+            completed_runs=completed_runs,
+            failed_runs=failed_runs,
+            total_sequences=len(self.sequences),
+            total_policies=1,
+            total_seeds=1,
+            total_wall_time=end_time - start_time,
+            total_cost_usd=total_cost_usd,
+            start_time=start_timestamp,
+            end_time=end_timestamp,
+            failed_run_ids=failed_run_ids,
+        )
+        self._save_experiment_summary(
+            summary, f"experiment_summary_condition_{policy_name}_seed{seed}.json"
+        )
+        logger.info(
+            f"Condition complete: {completed_runs}/{len(run_configs)} completed, "
+            f"{failed_runs} failed, time={summary.total_wall_time:.1f}s"
+        )
         return summary
 
     def run_specific_combination(
@@ -676,3 +838,81 @@ class ExperimentRunner:
         self._save_run_result(run_config, result)
 
         return result
+
+
+def main(argv: list[str] | None = None) -> ExperimentSummary:
+    """CLI entry point for the experiment runner.
+
+    Backs the Makefile targets:
+      - ``make pilot``         -> --mode pilot  [--sequences django,pytest]
+      - ``make run-condition`` -> --mode condition --policy P --seed S
+      - ``make run-all``       -> --mode full
+
+    Config is loaded from configs/base.yaml (with .env overrides) via
+    src.config.loader.load_config. The curriculum path defaults to the
+    repository's data/ artifact.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="experiment_runner",
+        description="Run the memory-pruning experiment matrix (pilot/condition/full).",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["pilot", "condition", "full"],
+        required=True,
+        help="pilot: N sequences x 6 policies x 1 seed; condition: 8 seq x 1 policy x 1 seed; full: 144 runs",
+    )
+    parser.add_argument("--policy", default=None, help="policy name (required for --mode condition)")
+    parser.add_argument("--seed", type=int, default=None, help="seed (required for --mode condition)")
+    parser.add_argument(
+        "--sequences",
+        default=None,
+        help="comma-separated sequence names for pilot (e.g. django,pytest; decision I)",
+    )
+    parser.add_argument("--num-sequences", type=int, default=2, help="pilot sequence count if --sequences absent")
+    parser.add_argument(
+        "--curriculum",
+        default="data/SWE-Bench-CL-Curriculum.json",
+        help="path to the SWE-Bench-CL curriculum JSON",
+    )
+    parser.add_argument("--log-level", default="INFO")
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    # For a single condition, merge that policy's YAML overrides; otherwise base.
+    config = load_config(policy_name=args.policy if args.mode == "condition" else None)
+    runner = ExperimentRunner(config=config, curriculum_path=args.curriculum)
+
+    if args.mode == "pilot":
+        seq_names = (
+            [s.strip() for s in args.sequences.split(",") if s.strip()]
+            if args.sequences
+            else None
+        )
+        summary = runner.run_pilot_experiment(
+            num_sequences=args.num_sequences, sequence_names=seq_names
+        )
+    elif args.mode == "full":
+        summary = runner.run_full_experiment()
+    else:  # condition
+        if args.policy is None or args.seed is None:
+            parser.error("--mode condition requires --policy and --seed")
+        summary = runner.run_condition(policy_name=args.policy, seed=args.seed)
+
+    print(
+        f"[{args.mode}] {summary.completed_runs}/{summary.total_runs} runs completed, "
+        f"{summary.failed_runs} failed (wall {summary.total_wall_time:.1f}s)"
+    )
+    if summary.failed_run_ids:
+        print(f"  failed: {summary.failed_run_ids}")
+    return summary
+
+
+if __name__ == "__main__":
+    main()

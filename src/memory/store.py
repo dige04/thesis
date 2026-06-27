@@ -19,17 +19,20 @@ import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import faiss
 import numpy as np
 from openai import OpenAI
 
+from src.config.llm_factory import embedding_api_key, embedding_base_url
+
 from .embedding_utils import (
     construct_embedding_text,
+    count_tokens,
     verify_embedding_size,
 )
 from .record import MemoryRecord
-from src.errors import EmbeddingSizeError, MemoryBudgetError, handle_memory_budget_violation
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +69,8 @@ class MemoryStore:
         run_id: str,
         policy_name: str,
         embedding_dim: int = 1536,  # text-embedding-3-small dimension
-        embedding_model: str = "text-embedding-3-small"
+        embedding_model: str = "text-embedding-3-small",
+        run_dir: "Path | str | None" = None,
     ):
         """Initialize SQLite + FAISS storage for a run.
 
@@ -75,19 +79,32 @@ class MemoryStore:
             policy_name: Name of the memory policy being used
             embedding_dim: Dimension of embedding vectors (default: 1536 for text-embedding-3-small)
             embedding_model: Name of the OpenAI embedding model to use
+            run_dir: Full path to the per-run directory.  When provided, all
+                artifacts (memory.db, memory.faiss, snapshots/) are written
+                there.  When omitted the legacy default ``Path("runs")/run_id``
+                is used so existing callers remain unaffected.
 
         Notes:
-            - Creates SQLite database at runs/{run_id}/memory.db
-            - Creates FAISS index at runs/{run_id}/memory.faiss
-            - Initializes snapshot directory at runs/{run_id}/memory/snapshots/
+            - Creates SQLite database at <run_dir>/memory/memory.db
+            - Creates FAISS index at <run_dir>/memory/memory.faiss
+            - Initializes snapshot directory at <run_dir>/memory/snapshots/
         """
         self.run_id = run_id
         self.policy_name = policy_name
         self.embedding_dim = embedding_dim
         self.embedding_model = embedding_model
 
-        # Setup directory structure
-        self.run_dir = Path("runs") / run_id
+        # Per-embedding token usage buffer for cost telemetry (E1). Every
+        # _generate_embedding call (write, consolidation, retrieval query — all
+        # route through it) appends {"model", "tokens"}. The SequenceRunner
+        # drains it per task into the CostTracker; see drain_embedding_usage().
+        self._embedding_usage: list[dict[str, Any]] = []
+
+        # Setup directory structure.
+        # When a run_dir is explicitly supplied (e.g. from SequenceRunner which
+        # respects RUNS_ROOT), use it verbatim so all artifacts land in one
+        # place.  Fall back to the legacy relative default for back-compat.
+        self.run_dir = Path(run_dir) if run_dir is not None else Path("runs") / run_id
         self.memory_dir = self.run_dir / "memory"
         self.snapshot_dir = self.memory_dir / "snapshots"
 
@@ -104,8 +121,14 @@ class MemoryStore:
         self.faiss_path = self.memory_dir / "memory.faiss"
         self._init_faiss_index()
 
-        # Initialize OpenAI client for embeddings
-        self.openai_client = OpenAI()
+        # Initialize OpenAI-compatible client for embeddings. Endpoint + key
+        # come from llm_factory (.env-driven): local Ollama by default, so the
+        # client constructs without an OPENAI_API_KEY. The `OpenAI` symbol is
+        # kept importable so existing tests can patch `src.memory.store.OpenAI`.
+        self.openai_client = OpenAI(
+            base_url=embedding_base_url(),
+            api_key=embedding_api_key(),
+        )
 
         # Create schema
         self._create_schema()
@@ -253,6 +276,12 @@ class MemoryStore:
             input=text
         )
 
+        # Record token usage for cost telemetry (E1). Prefer the provider's
+        # usage (OpenAI reports total/prompt_tokens for embeddings); the local
+        # Ollama embedder may omit it, so fall back to a real tiktoken count of
+        # the embedded text — always a positive int, never a Mock leak.
+        self._record_embedding_usage(response, text)
+
         # Extract embedding vector
         embedding = np.array(response.data[0].embedding, dtype=np.float32)
 
@@ -262,6 +291,31 @@ class MemoryStore:
             embedding = embedding / norm
 
         return embedding
+
+    def _record_embedding_usage(self, response: Any, text: str) -> None:
+        """Append this embedding call's token count to the usage buffer (E1)."""
+        tokens = 0
+        usage = getattr(response, "usage", None)
+        for attr in ("total_tokens", "prompt_tokens"):
+            value = getattr(usage, attr, None)
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                tokens = value
+                break
+        if tokens <= 0:
+            tokens = count_tokens(text)
+        self._embedding_usage.append(
+            {"model": self.embedding_model, "tokens": tokens}
+        )
+
+    def drain_embedding_usage(self) -> list[dict[str, Any]]:
+        """Return and clear the accumulated per-embedding usage records (E1).
+
+        The SequenceRunner calls this once per task to attribute every embedding
+        call (write + consolidation + retrieval query) to the CostTracker.
+        """
+        drained = self._embedding_usage
+        self._embedding_usage = []
+        return drained
 
     def add(self, record: MemoryRecord) -> None:
         """Add a new memory record to the store.
@@ -478,33 +532,24 @@ class MemoryStore:
         if query_norm > 0:
             query_vector = query_vector / query_norm
 
-        # Perform FAISS search on all vectors (we'll filter results)
-        # Search for more than top_k to account for filtering
-        search_k = min(self.faiss_index.ntotal, max(top_k * 2, 100))
-        similarities, indices = self.faiss_index.search(
-            query_vector.reshape(1, -1).astype(np.float32),
-            search_k
-        )
-
-        # Filter results to only include candidate vector IDs
-        candidate_set = set(candidate_vector_ids)
-        results = []
-
-        for sim, idx in zip(similarities[0], indices[0], strict=False):
-            if idx in candidate_set:
-                # Find the corresponding record
-                for record in candidate_records:
-                    if int(record.embedding_vector_id) == idx:
-                        results.append((float(sim), record))
-                        break
-
-                if len(results) >= top_k:
-                    break
+        # Score EVERY same-repo candidate exactly by reconstructing its stored
+        # vector and computing pure cosine against the query. A global FAISS
+        # top-k could be entirely cross-repo and hide valid same-repo memories
+        # (Frozen Invariant #16); pure cosine, no bonuses/penalties (#5).
+        scored_candidates: list[tuple[float, MemoryRecord]] = []
+        for record in candidate_records:
+            vector_id = int(record.embedding_vector_id)
+            vector = self.faiss_index.reconstruct(vector_id).astype(np.float32)
+            vector_norm = np.linalg.norm(vector)
+            if vector_norm > 0:
+                vector = vector / vector_norm
+            similarity = float(np.dot(query_vector.astype(np.float32), vector))
+            scored_candidates.append((similarity, record))
 
         # Sort by similarity descending (highest first)
-        results.sort(key=lambda x: x[0], reverse=True)
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
-        return results[:top_k]
+        return scored_candidates[:top_k]
 
     def archive(
         self,
@@ -544,8 +589,32 @@ class MemoryStore:
 
         self.conn.commit()
 
-        # TODO: Log memory event to memory_events.jsonl
-        # This will be implemented when the logging system is in place
+        # NOTE: memory_events.jsonl logging for archive/consolidate is performed
+        # by SequenceRunner (which holds the current task context), not here —
+        # see SequenceRunner._execute_task archive-delta capture.
+
+    def archived_memory_ids_at_step(self, step: int) -> list[str]:
+        """Return memory IDs archived at a specific sequence step.
+
+        Used by SequenceRunner to compute the prune/consolidation delta around
+        policy.maintain() for snapshot logging and task-result fields.
+
+        Args:
+            step: Sequence step (archived_at_step) to match.
+
+        Returns:
+            Sorted list of memory_ids archived at that step.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT memory_id FROM memory_records
+            WHERE is_archived = 1 AND archived_at_step = ?
+            ORDER BY memory_id
+            """,
+            (step,),
+        )
+        return [row[0] for row in cursor.fetchall()]
 
     def active_records(self) -> list[MemoryRecord]:
         """Return all non-archived records.

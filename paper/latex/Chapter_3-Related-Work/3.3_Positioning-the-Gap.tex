@@ -1,0 +1,36 @@
+% Generated from the matching Typst scaffold by
+% scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
+% NOTE: Shen (2602.21611), Adaptive-RAG (2403.14403), and When-Retrieval-Succeeds-Fails
+% (2510.09106) were [VERIFY+ADD] in the scaffold but are NOT in references.bib. The
+% adaptive-retrieval point is stated generically; xiong2025 anchors the "memory can hurt"
+% claim. Add the others to bib + cite if they are to be named.
+
+% ── 3.3  Positioning: The Retrieval-Fixed, Controlled-Comparison Gap ─────
+% PURPOSE: Name the unoccupied wedge; close the chapter with the "In contrast" move.
+% ─────────────────────────────────────────────────────────────────────────
+
+\section{Positioning: The Retrieval-Fixed, Controlled-Comparison Gap}
+
+The two preceding sections converge on a single unoccupied position. Multi-policy forgetting
+work, exemplified by Alqithami's six-policy sweep~\cite{alqithami2025}, lives in the
+conversational domain and does not hold retrieval constant, so its policy effects are
+entangled with search and not cleanly attributable. Coding-agent memory systems do operate
+in the right domain but vary retrieval granularity alongside storage and report superiority
+rather than non-inferiority, so their gains likewise cannot be ascribed to the storage
+decision alone. And a third line --- adaptive, ``when to retrieve'' work --- shows that
+retrieval is not always worth doing: routing or skipping retrieval by query difficulty can
+help, and indiscriminate retrieval can actively hurt, which is the agent-level echo of the
+experience-following risk~\cite{xiong2025}. That line motivates the thesis's interdependence
+analysis: if only a minority of tasks structurally depend on a predecessor, then for most
+tasks there is nothing to retrieve and ``not every task needs memory'' is not a slogan but a
+measurable property of the benchmark (Figure~\ref{fig:interdependence}).
+
+In contrast, the wedge this thesis occupies is coding agents on SWE-Bench-CL with
+\emph{retrieval held as a fixed control} --- pure cosine similarity, identical across all
+six policies --- so that the storage and forgetting policy is the only independent variable.
+The question is posed as non-inferiority rather than superiority: not ``does memory help?''
+but ``can an agent forget aggressively and match full accumulation on resolution while
+carrying a smaller footprint?'' To our knowledge this combination --- coding domain,
+retrieval fixed, storage isolated, non-inferiority framing, two cost axes --- is not
+occupied by any prior work, and supplying it is the contribution of the chapters that
+follow.
