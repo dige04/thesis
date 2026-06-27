@@ -111,13 +111,22 @@ carried footprint. Forgetting, on this benchmark, is \emph{footprint-free}.
 
 \begin{figure}[htbp]\centering
 \begin{tikzpicture}\begin{axis}[width=0.78\textwidth,height=6cm,xlabel={Total tokens per run (M)},
-  ylabel={CL-F1 (resolve rate)},only marks,xmin=5.6,xmax=6.2,ymin=0.42,ymax=0.455,
-  nodes near coords,point meta=explicit symbolic,every node near coord/.append style={font=\scriptsize,anchor=south}]
-\addplot+[mark=*] coordinates {(5.74,0.429)[no\_mem] (5.96,0.427)[type] (6.05,0.437)[recency] (6.06,0.447)[random] (6.08,0.449)[cls] (6.09,0.445)[full]};
+  ylabel={CL-F1 (resolve rate)},only marks,xmin=5.6,xmax=6.25,ymin=0.42,ymax=0.455,
+  mark size=2.2pt]
+% all six policy means; only the two extremes are labelled -- the four memory-carrying
+% policies form one tight cluster (the figure's point: a near-null on compute).
+\addplot[only marks,mark=*,color=cPolicy] coordinates {(5.74,0.429)};
+\node[font=\scriptsize,anchor=east] at (axis cs:5.74,0.429) {no\_memory};
+\addplot[only marks,mark=*,color=cFixed] coordinates {(5.96,0.427) (6.05,0.437) (6.06,0.447) (6.08,0.449)};
+\addplot[only marks,mark=*,color=cAgent] coordinates {(6.09,0.445)};
+\node[font=\scriptsize,anchor=west] at (axis cs:6.09,0.445) {full\_memory};
 \end{axis}\end{tikzpicture}
-\caption{Performance versus compute (total tokens per run). The six policies overlap within
-roughly $6\%$ on the compute axis --- a near-null: pruning does not reduce total compute,
-because the cost is dominated by the agent loop rather than the memory payload.}
+\caption{Performance versus compute (total tokens per run). The six policy means overlap
+within roughly $6\%$ on the compute axis (the five memory-carrying policies within $\approx
+2\%$) --- a near-null: pruning does not reduce total compute, because cost is dominated by the
+agent loop rather than the memory payload. Only the two extremes are labelled; the clustered
+points are, left to right, \texttt{type\_aware\_decay}, \texttt{recency\_prune},
+\texttt{random\_prune}, \texttt{cls\_consolidation}.}
 \label{fig:pareto-compute}\end{figure}
 
 \begin{figure}[htbp]\centering

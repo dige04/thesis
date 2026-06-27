@@ -20,10 +20,11 @@ issue --- so a cluster of three or more within the $0.70$ cosine threshold rarel
 consolidation seldom fires. This is a gate-3 \emph{indication}, not yet a matrix-wide finding:
 in the gate-3 validation the policy produced zero consolidation events on both probed
 sequences (amendment A3), reducing empirically to its Type-Aware Decay fallback. Whether this
-holds across the full matrix --- the matrix-wide consolidation count --- is reported with the
-H3 results (Section~\ref{sec:h3}) \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}. We
-deliberately did \emph{not} relax the $0.70$ threshold to force clustering: that parameter is
-frozen (Invariant~\#23), and lowering it to manufacture a positive result would merge
-dissimilar memories into incoherent summaries. If the matrix-wide count confirms the gate-3
-indication, H3 is reported as a negative, not-applicable result --- itself a finding about how
-compressive forgetting behaves on genuinely heterogeneous coding experience.
+gate-3 indication holds at matrix scale is taken up with the H3 results
+(Section~\ref{sec:h3}): across the full matrix \texttt{cls\_consolidation} resolves
+statistically indistinguishably from full memory, consistent with consolidation rarely firing
+on heterogeneous same-repository experience. We deliberately did \emph{not} relax the $0.70$
+threshold to force clustering: that parameter is frozen (Invariant~\#23), and lowering it to
+manufacture a positive result would merge dissimilar memories into incoherent summaries. H3 is
+thus reported as a negative result --- itself a finding about how compressive forgetting
+behaves on genuinely heterogeneous coding experience.

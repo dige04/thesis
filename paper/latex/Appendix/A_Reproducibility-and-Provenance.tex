@@ -11,24 +11,52 @@
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Reproducibility and Provenance}
+\label{sec:reproducibility}
 
-\begin{todobox}
-Expand the beats below into a structured disclosure list (not a story). Pair each item with the concrete artifact a replicator would consult. Numbers/hashes stay placeholders until the 144-run matrix completes.
-\end{todobox}
+This appendix lists what a replicator needs to re-derive the matrix and audit its provenance.
+Each item names the concrete artifact to consult. The reported matrix is
+\texttt{runs\_144\_seq\_cceb325} (data) analysed into \texttt{results\_seq\_cceb325}
+(tables, GLMM, plots); the full deep audit returned $0$ flags.
 
-% - PRE-REGISTRATION: the frozen design is THESIS_FINAL_v5 (26 frozen decisions + 16
-%   invariants); all changes are logged as dated D1–D6 / A1–A7 amendments (§6.3, tab:deviations).
-% - CODE + DATA ARCHIVE: full source tree (src/, configs/, analysis pipeline) and the
-%   144-run results matrix archived [RESULT: DOI / release tag on completion].
-% - SEED VALUES: 3 seeds (A7-restored), identical across all 6 policies × 8 sequences = 144 runs
-%   [RESULT: list exact seed integers].
-% - COMPUTATIONAL ENVIRONMENT: x86_64 DigitalOcean droplet + 5-VPS snapshot-cloned fleet (D5),
-%   matrix sharded via run_matrix_shard.sh; embeddings local Ollama nomic-embed-text-v2-moe
-%   (768-d, deterministic) (D2); prebuilt swebench instance images.
-% - MODEL PROVENANCE: MiniMax M3 via the 0G router (router-api.0g.ai, OpenAI-compatible) (D6);
-%   model alias, 16-key rotation (rate-limit only, not behavior) logged per run to detect drift;
-%   CoT stripped deterministically before parsing/embedding (D6a); tolerant JSON extraction (D6b).
-% - PER-RUN LOGGING: config hash + dataset revision + model id recorded per run (v5 §11);
-%   task_results.jsonl, memory_events.jsonl, trajectory + before/after snapshots [RESULT: paths].
-% - REVERSIBILITY: provider is .env-only — dropping FREE_LLM_* reverts to Kimi/OpenAI; chat and
-%   embedding clients are separate (no global OPENAI_BASE_URL), so the deviation is reversible.
+\begin{description}
+  \item[Pre-registration.] The frozen design is \texttt{THESIS\_FINAL\_v5} ($26$ frozen
+    decisions, $16$ invariants). Every change from it is logged as a dated deviation or
+    amendment (D1--D8, A1--A7) in \texttt{AMENDMENTS.md} and summarised in
+    Table~\ref{tab:deviations} (Section~\ref{sec:deviations}).
+  \item[Frozen experiment commit.] All $144$ cells were produced by the agent code frozen at
+    commit \texttt{cceb325} (\texttt{git diff cceb325..HEAD -- src/agents/} is empty), so the
+    science is identical across the matrix. The instrument hotfix that defines \texttt{cceb325}
+    is described in Section~\ref{sec:instrument}; orchestration changes made during execution
+    (per-task Docker image cleanup, sequence-phased scheduling) are disk-management only and do
+    not alter what is computed.
+  \item[Design and seeds.] Six policies $\times$ eight official SWE-Bench-CL sequences $\times$
+    three seeds $=144$ runs (A7-restored). Seeds are indexed $1$--$3$ and applied identically
+    across all policies and sequences; the cell directory names encode policy, sequence, and
+    seed (e.g.\ \texttt{cls\_consolidation\_django\_seed2}). The three per-seed CL-F1 values per
+    cell are retained in \texttt{aggregated/sequence\_aggregates.json}.
+  \item[Model provenance.] The executed model is a single frozen
+    \texttt{deepseek-v4-flash} on OpenCode serving \emph{all} roles --- agent, $5$-type
+    classifier, reflection, and CLS summariser (D8). It is the endpoint of a disclosed chain of
+    OpenAI-compatible substitutions away from the pre-registered GPT-5.4 (Section~\ref{sec:deviations});
+    the intermediate MiniMax~M3 run (D6) was discarded with no usable data. Because the model is
+    held constant across all conditions, it is a fixed factor; absolute resolution rates are not
+    comparable to GPT-5.4 or public leaderboards. A rotating key pool fails closed on quota
+    exhaustion so balance depletion is never recorded as a false \texttt{resolved=0}.
+  \item[Computational environment.] An x86\_64 cloud fleet with prebuilt SWE-bench instance
+    images (D5); embeddings from a local Ollama \texttt{nomic-embed-text-v2-moe} ($768$-d,
+    deterministic) (D2); cost recorded as a token-count proxy because the provider is flat-rate
+    (D3). Reasoning tokens are stripped deterministically before parsing, embedding, and
+    re-injection, so the memory payload is reasoning-free (D6a/D8a).
+  \item[Per-run logging.] Each run records its configuration and model identity alongside
+    \texttt{task\_results.jsonl}, \texttt{memory\_events.jsonl}, per-task trajectories, and
+    before/after memory snapshots (v5~\S11 schemas). These are the inputs the audit and the
+    analysis pipeline consume.
+  \item[Re-derivation.] The full analysis is reproduced with
+    \texttt{python -m scripts.run\_analysis --stage all --runs-dir runs\_144\_seq\_cceb325
+    --out results\_seq\_cceb325}; the task-level GLMM is a separate stage
+    (\texttt{src.analysis.glmm.run\_task\_level\_analysis}).
+  \item[Reversibility.] The provider is selected entirely through \texttt{.env}; chat and
+    embedding clients are separate (no global \texttt{OPENAI\_BASE\_URL}), so the model and
+    embedder deviations are configuration-only and reversible to GPT-5.4/OpenAI without code
+    changes.
+\end{description}
