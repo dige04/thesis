@@ -1,18 +1,24 @@
-# Codex Review Request — LaTeX Thesis Report (progressive draft)
+# Codex Review Request — LaTeX Thesis Report (FULL DRAFT, real 144 data)
 
-**Date:** 2026-06-25 · **Branch:** `report/latex-progressive` (git worktree) · **Tip:** `750c7dc`
-**Ask:** Review the report for structure, academic rigor, **integrity/honesty of framing**, and
-**presentation quality benchmarked against the reference thesis** `example_contents/`.
+**Date:** 2026-06-27 · **Branch:** `report/latex-progressive` (git worktree) · **Tip:** `8c183469`
+**Ask:** Review the **now-complete** report for structure, academic rigor, **integrity/honesty of
+framing**, **internal numerical consistency**, and **presentation quality benchmarked against the
+reference thesis** `example_contents/`.
 
 ---
 
 ## 0. TL;DR for the reviewer
 A Bachelor thesis (USTH) written to **master-level scope**: a controlled measurement of memory
-forgetting policies for AI coding agents. This is a **progressive draft**: Chapters 1–4 +
-instrument-validation + Deviations + Threats are **finished prose**; Chapter 5 (Results), parts of
-Discussion, Conclusion, and the appendices are **honest placeholders** because the trustworthy
-144-run rerun is **not done yet** (blocked at 15/144, see §6). **No result numbers are fabricated
-in the real report.** A separate, **watermarked SIMULATED** build exists only to preview layout.
+forgetting policies for AI coding agents. **This is no longer a placeholder draft** — the
+trustworthy **144-run rerun is COMPLETE** (`runs_144_seq_cceb325`, deep audit **0 flags**) and
+**every Results/Discussion/Conclusion section + Abstract + appendices is now filled with the real,
+verified numbers.** No placeholders remain in the PDF. The headline (a **powered null that
+survives** on trustworthy data) is the scientific payload. A separate **watermarked SIMULATED**
+build still exists only as a layout artifact — never audit its numbers.
+
+**The single biggest ask:** verify every number in the prose matches the source of truth
+`paper/report/GROUNDED_FACTS.md` (and the underlying `results_seq_cceb325/`), and that the framing
+is honest — especially the shift from the *old* spine (which this rerun partly overturned).
 
 ---
 
@@ -20,8 +26,8 @@ in the real report.** A separate, **watermarked SIMULATED** build exists only to
 
 ### The real report (review THIS)
 - Source: `/Users/leodinh/Documents/personal/thesis/.claude/worktrees/report-draft/paper/latex/`
-- Compiled PDF (37 pp): `…/paper/latex/build/main.pdf`
-- Build command (Tectonic; note the bundled script version is **0.2.3**, the README still says 0.2.2):
+- Compiled PDF (**58 pp**): `…/paper/latex/build/main.pdf`
+- Build (Tectonic; bundled script is **0.2.3**):
   ```bash
   python3 /Users/leodinh/.codex/plugins/cache/openai-bundled/latex/0.2.3/scripts/compile_latex.py \
     /Users/leodinh/Documents/personal/thesis/.claude/worktrees/report-draft/paper/latex/main.tex \
@@ -29,116 +35,141 @@ in the real report.** A separate, **watermarked SIMULATED** build exists only to
     --output-directory /Users/leodinh/Documents/personal/thesis/.claude/worktrees/report-draft/paper/latex/build
   ```
 
-### The presentation benchmark (compare AGAINST this — do NOT review its content)
+### The presentation benchmark (compare AGAINST; do NOT review its content)
 - `/Users/leodinh/Documents/personal/thesis/example_contents/` — a finished sibling thesis
-  (Qwen3-VL spatial VLM), **same modular section layout**, default LaTeX/Computer Modern.
-  Use it as the bar for "what a finished, figure/table-dense thesis looks like." Note: its
-  typography is **default LaTeX, identical to ours** — the gap is content-completeness + figure/
-  table craft, not fonts. Compiled abstract: `example_contents/Abstract/Abstract.pdf`.
+  (Qwen3-VL spatial VLM), **same modular layout**, default LaTeX/Computer Modern. The bar for "what
+  a finished, figure/table-dense thesis looks like." Typography is identical to ours — judge
+  content-completeness + figure/table craft, not fonts.
 
 ### The SIMULATED preview (context only — NEVER treat its numbers as real)
-- `/Users/leodinh/Documents/personal/thesis/.claude/worktrees/report-draft/paper/latex_sim/build/main.pdf`
-  (51 pp). Every page is watermarked **"SIMULATED"** + a red footer. It fills the pending
-  placeholders with **illustrative OLD-matrix numbers** (`runs_k27_merged`) to preview the
-  finished layout. **It is fabricated and watermarked; do not audit its values as results.**
-  It also diverges from the real report (uses `natbib \citet/\citep`; a cosmetic `siunitx`
-  trailing-zero issue, e.g. "95.000\%") — both are sim-only.
+- `…/paper/latex_sim/build/main.pdf` — every page watermarked **"SIMULATED"**, fabricated
+  OLD-matrix numbers. Layout artifact only.
 
 ---
 
-## 2. ⚠️ THE INTEGRITY HINGE (read before flagging "missing numbers")
+## 2. ⚠️ THE INTEGRITY HINGE (read before flagging anything)
 
-The placeholder scaffolding in the real report is **deliberate and correct**, not an oversight:
-- `[RESULT: pending runs_144_seq_cceb325]` markers, yellow `todobox`es, blue `[PENDING]`
-  figure stubs, and `—` table cells mark work that **awaits the 144-run rerun**.
-- `GROUNDED_FACTS.md` currently holds **OLD-matrix** numbers from an **instrument-crippled** run
-  (broken `read_file`/`edit_file`); the rerun exists *because* that matrix is untrustworthy. So
-  the old numbers must **not** be pasted as final results. The honest expectation (the "spine")
-  is a *powered null* + a small bounded memory benefit, but it **must be re-derived on the new 144**.
-- **Honest line everywhere** (verify the report holds it): the original §5 A/B gate **STOPped** →
-  root-cause (path-normalization bug) → hotfix `cceb325` → **amended** (pre-registered, Codex-
-  reviewed) gate → **GO** → 144 executed on fixed code. **Never** "the original gate passed."
+This rerun was run **to replace an instrument-crippled matrix** (broken `read_file`/`edit_file`).
+The honest narrative the report must hold everywhere:
+- **Original §5 A/B instrument gate STOPped** → root-caused (edit-tool path-normalization bug) →
+  **hotfix `cceb325`** → **amended** pre-registered, Codex-reviewed gate → **GO** → 144 executed on
+  the frozen-`cceb325` agent. **Never** "the original gate passed."
+- **Agent frozen at `cceb325`** (`git diff cceb325..HEAD -- src/agents/` empty) → science identical
+  across all 144. Orchestration changes during execution were **disk-management only** (per-task
+  `docker rmi`; sequence-phased scheduling) and are disclosed in §6.3.
+- **Model = `deepseek-v4-flash`** (D8, single model all roles). The deviation chain in §6.3
+  discloses an intermediate **MiniMax M3 (D6) that was discarded with no usable data** — this is a
+  *required provenance disclosure*, not a claim that results ran on M3. Confirm the report never
+  implies M3 (or any non-deepseek model) produced the 144.
+- **CL-F1 is a resolved-rate proxy** (no `anchor_probe.json`); the A5 anchor probe is a **separate
+  construct-validity sub-study**. Confirm this caveat is held consistently.
+- **TOST was pre-registered but NOT computed** — non-inferiority is read from **bounded BCa CIs**,
+  and the **Wilcoxon signed-rank is the primary test** (Invariant #11). Confirm TOST is never
+  described as performed.
 
-A prior leak-check confirms **no old-matrix result number appears in the real prose** (grep for
-`2986|0.330|0.311|31.5|2.40|1472|4675` over the PDF text returns empty). Please re-confirm.
-
----
-
-## 3. What is finished vs pending (so you review the right things)
-
-**Finished (review fully):**
-- Ch1 Introduction (1.1–1.4); Ch2 Background (2.1–2.4); Ch3 Related Work (3.1–3.3).
-- Ch4 Methodology (4.1–4.6 + six policy subsections), incl. **§4.7 Instrument Validation** (new).
-- **§5.0/5.1 Instrument-Validation Result** — a *durable* result with REAL verified numbers
-  (source `results/ab_gate/amended_cceb325_result.json`): instrument-attributable failures 79→0,
-  model-quality 0.152 ≤ 0.183, token inflation 0.986×/0.992×, verdict GO.
-- §6.3 Deviations (D1–D8, A1–A7, hotfix + sequence-phased execution) + §6.4 Threats to Validity.
-- Abstract (numbers as placeholders), title page, LoF/LoT.
-
-**Pending the 144 (placeholders only — do NOT expect numbers):**
-- §5.2–5.7 (H1 Wilcoxon, two-axis Pareto, H2/H3/H4, E7 interdependence, manipulation checks).
-- §6.1 Key Findings, §6.2 Implications, Ch7 Conclusion/Future Work, Appendices A/B.
-- Result figures `fig:pareto-compute/footprint`, `fig:interdependence` (figure stubs).
+**Leak-check (please re-confirm):** old-matrix fabricated numbers must be ABSENT. Over the PDF
+text, `grep -coE "2986|0.330|0.311|31.5|1472|4675|2.40|0.211"` returns **0**. New numbers (44.3,
+1,247, per-cell values like 0.677, GLMM variances 3.223) are present.
 
 ---
 
-## 4. Specific review asks
-1. **Integrity:** Does any passage state a pending result as fact, paste an old-matrix number, or
-   imply the original gate passed? Is the resolve-rate-proxy caveat for CL-F1 consistently held?
-   Is the A5 framing correct (instrument **not** measurement-blind; 1.000 is **regime-driven**;
-   backward-retention only; **no** p-value)? Is TOST described as *pre-registered but not computed*
-   (Wilcoxon is the primary test, Invariant #11), never as performed?
-2. **Methodology rigor:** Is the single-factor / retrieval-held-constant logic airtight? Are the
-   six policies, the cap=10 (A1) binding argument, and the metric/statistical plan (Holm, $r_{rb}$,
-   BCa, GLMM, PR-AUC+VIF) coherent and correctly motivated? **Note:** statistics are *frozen*
-   (Holm not Bonferroni; rank-biserial $r_{rb}$ not Cohen's d) — flag mismatches, but the report is
-   intentionally aligned to the frozen design, not to any looser registration text.
-3. **Narrative/structure:** Does the argument flow (gap → controlled measurement → instrument
-   trustworthiness → pending results → honest threats)? Is the "powered null + bounded benefit +
-   three-filter attrition + footprint-free forgetting" spine legible without the numbers?
-4. **Deviations defense:** Are D1–D8 + A1–A7 + the hotfix/seq-phased amendments defensible as
-   *principled* (dated-before-data, held-constant, disclosed) rather than goalpost-moving?
-5. **Presentation vs `example_contents`:** Are the finished chapters at parity? The two design
-   figures are now **TikZ** (fig:architecture, fig:task-lifecycle); tables use booktabs; equations
-   are numbered (4.1–4.3). What presentation gaps remain *that don't require the 144 data*?
-6. **Citations:** All `\cite` keys resolve to `references.bib` (19 used, all present); several
-   scaffold `[VERIFY+ADD]` works were dropped as uncited (noted in file comments). Flag any
-   claim that needs a citation it doesn't have.
+## 3. The headline & the framing SHIFT (review this carefully)
+
+The rerun **confirmed** the powered null but **overturned several old-spine claims**. The report has
+been rewritten to the new findings — please verify it does NOT smuggle in the old framing:
+
+| Claim | NEW (in report, correct) | OLD spine (must NOT appear) |
+|---|---|---|
+| Policy effect | **Powered null survives**: all 5 Wilcoxon contrasts n.s. (Holm 1.000), every BCa CI crosses 0 | same direction, but on crippled data |
+| Memory benefit | full 0.445 vs no_mem 0.429 = **+1.6pp**, n.s. (read as a *bound*, underpowered) | — |
+| Footprint win | **~½ (≈2×)**: pruners 598–704 vs full 1,247 tok | ~~4×~~ (old matrix) — must be ~½ now |
+| TAD | **underperforms even no_memory** (0.427 < 0.429); mechanism: retrieval-freq term freezes store at ~first 10 items | — |
+| GLMM | policy-null; **difficulty −2.18, position −1.49 significant** → effectiveness declines along sequence regardless of policy | — |
+| Interdependence | memory_lift **does NOT track** dependency fraction (sklearn low-dep/high-lift; xarray high-dep/~0-lift); **two-filter** attrition | ~~three-filter~~ (retrieval 67% / utilization) — NOT re-derived this run |
+| Feature analysis | **VIF passed** (1.42/1.40/1.02); **PR-AUC deferred** (Tier-1 all-neutral → needs Tier-2 gold) | ~~PR-AUC reported~~ |
+
+H3 (CLS): reported as **n.s. vs full + gate-3 mechanism** (DBSCAN rarely clusters heterogeneous
+same-repo memories at ≥0.70); the report deliberately makes **no hard matrix-wide
+consolidation-event count** (the event-type semantics are ambiguous). Confirm 5.4/4.2.6 hold this.
 
 ---
 
-## 5. Evidence trail / source-of-truth (reference, don't duplicate)
-- **Narrative spine + grounded numbers (UNTRACKED — main checkout only, not in this worktree):**
-  `/Users/leodinh/Documents/personal/thesis/paper/report/THESIS_SPINE.md`,
-  `/Users/leodinh/Documents/personal/thesis/paper/report/GROUNDED_FACTS.md`
-- **Pre-registration & deviations:** `AMENDMENTS.md` (D1–D8, A1–A7), `CLAUDE.md` (deviation table,
-  16 frozen invariants). Pre-registration of record: `THESIS_FINAL_v5.md`.
-- **Instrument-validation evidence:** `results/ab_gate/amended_cceb325_result.json`,
-  `docs/ab-gate-findings-2026-06-24.md`, `docs/amended-gate-2026-06-24.md`.
-- **A5 anchor-probe construct-validity:** `docs/a5-anchor-probe-decision.md`.
-- **Threats prose source:** `docs/threats-to-validity.md` (NOTE: its construct-validity paragraph
-  is *superseded* by the A5 resolution — the report carries A5 through; the doc does not).
-- **Run state / why 144 is pending:** `docs/MORNING-REPORT-2026-06-25.md`,
-  `/tmp/HANDOFF-144-seq-phased-2026-06-25.md`.
-- **This session's presentation work:** `paper/latex/PRESENTATION-UPGRADE.md` (playbook),
-  `paper/latex/OURS-AUDIT.md` (placeholder inventory), `paper/latex/REPORT-HANDOFF.md` (original).
+## 4. What is finished (everything — review fully)
+
+- Ch1 (1.1–1.4); Ch2 (2.1–2.4); Ch3 (3.1–3.3).
+- Ch4 (4.1–4.6 + six policy subsections); **§4.7 Instrument Validation**; `fig:interdependence`
+  (structural-dependency bar, real fractions) in §4.5.
+- **§5.0/5.1** instrument-validation result (REAL: failures 79→0, model-quality 0.152 ≤ 0.183,
+  inflation ≤1×, GO) + descriptives (4,914 rows, 2,175 resolved, 44.3%).
+- **§5.2** H1 table + bounded benefit + two-axis Pareto (`fig:pareto-compute`, `fig:pareto-footprint`).
+- **§5.3–5.7** H2/H3/H4, H5 + interdependence (`tab:memory-lift`, `fig:memory-lift`, GLMM),
+  manipulation checks.
+- **§6.1/6.2** Key Findings + Implications; **Ch7** Conclusion + Future Work.
+- **Abstract** (real headline numbers).
+- **Appendix A** Provenance (real disclosure list); **Appendix B** Extended Results
+  (`tab:per-sequence` CL-F1 8×6, footprint 8×6, `tab:glmm-spec` full GLMM) — all from
+  `results_seq_cceb325/aggregated/sequence_aggregates.json` + `glmm/glmm_results.json`.
 
 ---
 
-## 6. Known open items (don't re-flag as bugs)
-- **144 rerun is blocked at 15/144** (Docker image disk-capacity wall), awaiting an infra decision
-  (bigger disk / sequence-phased + docker login / harness image-cleanup). This is *why* Ch5 is
-  pending; it is not a writing gap.
-- **Degree = Bachelor** (USTH, student Dinh Thanh Hieu 22BA13132, internal sup. Dr. Nguyen Hoang
-  Ha, external sup. Mr. Ho Trong Duc). NB: `CLAUDE.md` still calls the project a "master's thesis"
-  — the *scope* is master-level, the *degree* is Bachelor.
-- **MCP / practical forgetting module (Lethe)** is intentionally **deferred** — not a current
-  contribution; to be considered only after the 144 completes.
-- **Do NOT** re-run `scripts/migrate_typst_report_to_latex.py` — it regenerates the `.tex` from the
-  Typst scaffold and would clobber the written prose.
+## 5. Specific review asks
+1. **Numerical consistency:** Does every stated number match `paper/report/GROUNDED_FACTS.md` and the
+   appendix per-cell tables? Do the per-policy means in §5.1/§5.2 equal the column means in
+   `tab:per-sequence`? Are the H1 W/p/r_rb/CI internally consistent across §5.2, §5.4, §5.6, §6.1
+   (the same litany is restated — flag any drift, and note it's somewhat repetitive).
+2. **Integrity:** Any passage stating a non-result as fact, an old-matrix number, "original gate
+   passed", a performed TOST, or results on a non-deepseek model? Is the CL-F1-proxy / A5-separate
+   framing consistent? Is the §6.3 MiniMax M3 hop correctly framed as *discarded, no data*?
+3. **Methodology rigor:** Is the single-factor / retrieval-held-constant logic airtight? Are cap=10
+   (A1) binding, the metric/stat plan (Holm not Bonferroni; rank-biserial r_rb not Cohen's d; BCa;
+   GLMM binomial/logit; VIF) coherent? Statistics are **frozen to the design** — flag mismatches but
+   the report is intentionally aligned to the frozen plan, not to any looser registration text.
+4. **GLMM honesty:** The fit is approximate (statsmodels variational, not R/lme4). Confirm the
+   report reports *signs + the null* and discloses the approximation + sensitivity check, and does
+   NOT recompute the full-vs-no-memory contrast off the coefficients (that's the Wilcoxon's job —
+   test-switching guard, Invariant #11).
+5. **Narrative/structure:** Does it flow (gap → controlled measurement → instrument trustworthiness
+   → results → honest threats)? Is the counter-intuitive lead ("more memory does not help; forgetting
+   is footprint-free; decline is positional not policy") landed cleanly?
+6. **Presentation vs `example_contents`:** Are chapters at parity? Design figures are TikZ
+   (`fig:architecture`, `fig:task-lifecycle`); result charts are **pgfplots** (Pareto ×2,
+   memory-lift, interdependence). Figures were visually rendered & checked for label collisions
+   (5.1 relabelled to two extremes + caption-listed cluster). Any remaining presentation gaps?
+7. **Citations:** 20 `\cite` keys, all resolve to `references.bib` (build shows 0 undefined). Flag
+   any claim needing a citation it lacks.
 
 ---
 
-> **One line:** Review the *real* report (`paper/latex/`, 37 pp) for rigor + honest framing, and its
-> finished chapters' presentation against `example_contents/`; the `latex_sim` 51-pp build is a
-> watermarked layout preview with fabricated numbers — context only, never audited as results.
+## 6. Evidence trail / source-of-truth (reference, don't duplicate)
+- **Source of truth for every number:** `paper/report/GROUNDED_FACTS.md` (trustworthy-144).
+- **Authoritative rerun report:** `docs/RERUN-COMPLETE-2026-06-27.md` (H1–H5, GLMM, journey,
+  provenance, caveats).
+- **Raw data / analysis:** `runs_144_seq_cceb325/` (144 cells), `results_seq_cceb325/`
+  (`tables/`, `glmm/`, `aggregated/sequence_aggregates.json`, `plots/`). Re-derive:
+  `python -m scripts.run_analysis --stage all --runs-dir runs_144_seq_cceb325 --out results_seq_cceb325`.
+- **Pre-registration & deviations:** `AMENDMENTS.md` (D1–D8, A1–A7), `CLAUDE.md` (deviation table, 16
+  invariants), `THESIS_FINAL_v5.md` (pre-reg of record).
+- **Instrument-validation:** `results/ab_gate/amended_cceb325_result.json`,
+  `docs/amended-gate-2026-06-24.md`.
+- **A5 anchor probe:** `docs/a5-anchor-probe-decision.md`.
+
+---
+
+## 7. Known open items (don't re-flag as bugs)
+- **Degree = Bachelor** (USTH; student Dinh Thanh Hieu 22BA13132; internal sup. Dr. Nguyen Hoang Ha;
+  external sup. Mr. Ho Trong Duc). Scope is master-level, degree is Bachelor. (`CLAUDE.md` still says
+  "master's thesis" — scope, not degree.)
+- **PR-AUC helpful/harmful classifier deferred** (Tier-1 weak labels all-neutral → Tier-2 manual gold
+  needed). VIF ran clean. Not a headline blocker — reported as such.
+- **A5 anchor probe** is reported as a separate construct-validity sub-study; the full matrix-scale
+  probe was declined (option-c). CL-F1 stays the resolve-rate proxy primary.
+- **MCP / Lethe** practical module intentionally deferred — not a contribution here.
+- **Do NOT** re-run `scripts/migrate_typst_report_to_latex.py` — it regenerates `.tex` from the Typst
+  scaffold and would clobber the written prose.
+
+---
+
+> **One line:** The report is now COMPLETE on trustworthy 144 data (58 pp, 0 placeholders). Review
+> `paper/latex/` for numerical consistency vs `paper/report/GROUNDED_FACTS.md`, honest framing of the
+> powered-null-that-survives (and the old-spine claims it overturned), and presentation parity with
+> `example_contents/`. The `latex_sim` build is a watermarked layout artifact — never audited.
