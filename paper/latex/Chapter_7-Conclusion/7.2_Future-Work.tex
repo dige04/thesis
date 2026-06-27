@@ -12,20 +12,19 @@
 
 \section{Future Work}
 
-\begin{todobox}
-Expand the beats below into prose. Each item must NAME the §6.4 limitation it addresses, then propose the concrete next study. Keep the single-model and same-repo scope honest; frame these as follow-ups, not weaknesses of the present design.
-\end{todobox}
+Every limitation catalogued in the threats-to-validity discussion (\S\ref{sec:threats}) maps onto a concrete follow-up study. We frame these as the natural continuations of a deliberately narrow controlled comparison rather than as defects of the present design: each one relaxes a single frozen scope decision and asks whether the powered null reported here---no memory policy beats full accumulation, and performance declines with sequence position regardless of policy---persists under a broader regime.
 
-% - CROSS-MODEL PROBE (addresses single-model external validity, §6.4): the D-0.4
-%   descriptive 12-run probe — top conditions × a subset of sequences × one seed — to
-%   report transfer DIRECTION only (non-inferential), not a generalization claim.
-% - ANCHOR-PROBE SENSITIVITY TEST (addresses stability = 1.000, §6.4 construct threat):
-%   the A5 discrimination test — target anchors at INTERDEPENDENT tasks (gold-patch files
-%   overlapping a later task) on a high-overlap sequence, run Full vs aggressive-prune ≥3×,
-%   check whether stability ever discriminates before committing the full-probe budget.
-% - DECONTAMINATED BENCHMARKS (addresses contamination, §6.4 internal threat): re-run on
-%   SWE-rebench (2505.20411) [VERIFY+ADD] / SWE-MERA (2507.11059) [VERIFY+ADD] — post-cutoff,
-%   continuously-refreshed task streams — to recover interpretable ABSOLUTE solve rates.
-% - CROSS-REPO RETRIEVAL (addresses same-repo scope, §6.4 external threat): relax the
-%   same-repo-only invariant to test whether forgetting policies transfer when memory is
-%   drawn across repositories, where interdependence structure differs.
+\paragraph{Cross-model replication.}
+The clearest external-validity threat is that the entire matrix runs on a \emph{single} frozen agent model, \texttt{deepseek-v4-flash}. Holding the model constant is exactly what licenses the between-policy comparisons (the model is a fixed factor across all six conditions and three seeds), but it leaves open whether the policy-null and the position decline are properties of memory management in general or artefacts of one model's behaviour. A natural next study replicates the top contrasts---full memory, the aggressive pruners, and no memory---on a small set of structurally different agents (for example a reasoning-tuned model and a larger long-context model), reporting the \emph{direction} of transfer rather than re-running the full inferential design. If the position decline survives a model with a substantially larger context window, it becomes much harder to attribute to one model's context handling.
+
+\paragraph{Cross-repository retrieval.}
+The main experiment restricts retrieval to same-repository memories (Invariant~\#16), so the agent never draws on experience from one codebase while solving a task in another. This bounds the external validity of the forgetting policies to the within-project setting. Relaxing the same-repo constraint would let memory accumulate and be retrieved across repositories, changing both the volume of competing items and the structure of interdependence between tasks. Whether content-aware forgetting earns its keep there---where the signal-to-noise ratio of retrieved items is lower and naive accumulation is more likely to dilute the context---is precisely the regime in which a pruning policy could plausibly separate from full memory, and it is the most promising place to look for the effect this study did not find.
+
+\paragraph{The full anchor probe.}
+Our primary outcome, CL-F1, is operationalised as a per-task resolve-rate proxy, not as a forgetting curve over a fixed anchor set. The stability instrument therefore cannot, on its own, distinguish a policy that genuinely preserves earlier solutions from one that simply re-derives them. The A5 anchor-probe sub-study (\S\ref{sec:threats}) was a deliberately small discrimination test confirming that the construct \emph{can} be exercised, run on a hand-selected, selection-maximised set of cells and therefore reported without a $p$-value. The follow-up is the full probe: a pre-registered anchor set drawn from interdependent tasks across the high-overlap sequences, evaluated for each policy at several seeds, so that retention is measured directly and tested inferentially rather than read off a resolve-rate proxy. This would convert the present construct-validity caveat into a measured quantity.
+
+\paragraph{Tier-2 gold labels for the feature analysis.}
+The helpful/harmful classification of retrieved memories (Invariant~\#13) passed its collinearity screen---semantic similarity, retrieval rank, and memory age all show acceptable variance-inflation factors---but the PR-AUC model itself remains deferred. The Tier-1 weak-labelling heuristic produced an all-neutral target with no positive class, so the classifier cannot yet be fit. Completing this analysis requires Tier-2 manual gold labels: human adjudication, on a sampled subset of the task--memory pairs, of whether an injected memory actually contributed to or harmed the solution. With a real positive class the pre-registered PR-AUC analysis becomes estimable, and the question of \emph{which} memory features predict usefulness---rather than merely which are non-collinear---can finally be answered.
+
+\paragraph{The position decline as the larger lever.}
+The most consequential finding for future work is not about any storage policy at all. In the task-level GLMM, the storage policy coefficients are indistinguishable from zero, while sequence position carries a large, significant negative effect: the agent gets worse as a sequence progresses, and accumulating memory does not rescue it. This points away from \emph{what to remember} and toward \emph{how the working context degrades}---the context-dilution and lost-in-the-middle dynamics that storage-side pruning cannot touch \citep{liu2024}. The higher-leverage research programme is therefore on the retrieval and context-construction side: how items are ranked, how many are injected, and how the prompt is assembled as a sequence lengthens. The contribution of this thesis is partly to redirect attention there: on this benchmark and this model, the forgetting policy is a footprint lever, while the position decline is where the performance is won or lost.

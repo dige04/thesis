@@ -3,28 +3,136 @@
 
 % ── 5.5  H4: Behavioral Effects of Memory Accumulation ───────────────────
 % PURPOSE: Test the analysis-paralysis mechanism — does accumulating memory change HOW
-%          the agent acts (more tool calls, more syntax errors), and does forgetting fix it?
-% MOVE: Counter-intuitive lead — more context can degrade behavior, not just cost.
-% BEATS: see ordered bullets below.
-% FIGURES/TABLES: behavioral table (tool-calls / syntax-error rate per policy).
+%          the agent acts, and does forgetting fix it? Tie to the GLMM position decline.
+% FIGURES/TABLES: behavioral table (tool-calls per policy); GLMM coefficient table.
 % CITATIONS: liu2024 (Lost-in-the-Middle); xiong2025 (long-context degradation).
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{H4: Behavioral Effects of Memory Accumulation}
 \label{sec:h4}
 
-\begin{todobox}
-Expand the beats below into prose. The mechanism story: a fat context doesn't just cost more, it can make the agent dither. Tie the behavioral metrics back to the "retrieval held constant" control --- only what's stored differs.
-\end{todobox}
+H4 asks a mechanistic question that sits behind the outcome-level results of
+Section~\ref{sec:h1}: does carrying more memory change \emph{how} the agent acts, not just
+what it costs? The motivating prediction is one of analysis paralysis --- that a fat,
+accumulating context makes the agent dither, spending more steps per task, and that
+proactive forgetting would relieve this by keeping the working context lean. Because
+retrieval is held constant across all six conditions (top-$k=5$; Invariant~\#5), every
+policy injects the same \emph{number} of memory items at each step; what differs is only
+the quality of the stored pool from which those items are drawn. Any behavioral gap would
+therefore trace to accumulation itself, not to a larger injection volume. The result, on
+this workload, is that no such gap appears.
 
-% - H4 prediction: Full Memory induces analysis paralysis — more tool calls per task and
-%   higher syntax-error rate — and forgetting policies mitigate it.
-% - Behavioral table: tool-call frequency per task and syntax-error rate, Full Memory vs
-%   the forgetting policies, Wilcoxon on N=8 sequence means with r_rb [RESULT: …].
-% - Because retrieval is held constant (top_k=5), the agent sees the same NUMBER of items;
-%   what differs is the quality/relevance of the stored pool feeding retrieval — so any
-%   behavioral gap traces to accumulation, not injection volume.
-% - Connect to the long-context literature: degradation under bloated context
-%   (liu2024, xiong2025) predicts exactly this behavioral signature.
-% - Interpret direction and effect size plainly; if no behavioral gap, say so — the
-%   mechanism is then absent on this workload. Full 144-run matrix RUNNING.
+\subsection{Step-to-step behavior is flat across policies}
+
+We operationalize behavior as the mean number of tool calls (ReAct steps) the agent issues
+per task, averaged over the eight sequences. This is the metric the matrix records
+uniformly; we did not collect a separate syntax-error rate, so the behavioral comparison
+rests on step frequency alone. Table~\ref{tab:behavioral} reports the per-policy means.
+
+\begin{table}[htbp]
+  \centering
+  \caption{H4 behavioral metric. Mean tool calls (ReAct steps) per task, averaged over the
+  eight sequences, by policy. Values are essentially identical across all six conditions
+  (spread $\approx 0.18$ steps), so memory accumulation does not change step-to-step
+  behavior. Trustworthy 144-run matrix (\texttt{runs\_144\_seq\_cceb325},
+  \texttt{deepseek-v4-flash}).}
+  \label{tab:behavioral}
+  \begin{tabular}{lr}
+    \toprule
+    Policy & Mean tool calls / task \\
+    \midrule
+    cls\_consolidation & 21.11 \\
+    full\_memory       & 21.05 \\
+    random\_prune      & 21.00 \\
+    type\_aware\_decay & 20.98 \\
+    no\_memory         & 20.98 \\
+    recency\_prune     & 20.93 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The six values span only $20.93$ to $21.11$ tool calls per task --- a range of about
+one-fifth of a single step. \texttt{full\_memory}, the condition that should suffer most
+from a bloated context, sits squarely in the middle at $21.05$, and \texttt{no\_memory},
+which carries nothing, is indistinguishable from it at $20.98$. The agent expends very
+nearly the full $20$-step budget on a typical task regardless of what it remembers; if
+anything, the agent is bounded by its step cap rather than by deliberation over a long
+context. The predicted analysis-paralysis signature --- more steps under accumulation,
+fewer under forgetting --- is simply absent. This is consistent with, and helps explain,
+the powered policy-null on resolution in Section~\ref{sec:h1}: if the policies do not act
+differently, they have little opportunity to resolve differently.
+
+The mechanism that the long-context literature warns of --- degradation when relevant
+content is buried in a swollen window \cite{liu2024,xiong2025} --- is controlled away here
+by construction rather than left to chance. Fixing retrieval at top-$k=5$ caps the working
+context at a small, constant payload no matter how large the stored pool grows, so
+accumulation cannot bloat what the agent actually reads on any step. The flat behavioral
+profile is the expected consequence of that design choice: under a bounded injection
+budget, the size of the underlying memory store does not reach the agent's reasoning loop.
+
+\subsection{Cost is dominated by the agent loop, not the memory payload}
+
+The same flatness explains why forgetting buys almost nothing on the compute axis
+(Section~\ref{sec:h1}). Total token cost per run rises only from $5.74$M for
+\texttt{no\_memory} to $6.09$M for \texttt{full\_memory}; the five memory-carrying policies
+fall within about $2\%$ of one another ($5.96$--$6.09$M), and the full spread across all
+six is roughly $6\%$. With tool-call counts pinned near $21$ for every policy, the
+dominant cost term is the ReAct loop itself: each task runs up to twenty steps whose
+growing conversation is resent on every step, so the per-task token bill is set by the
+trajectory length, not by the comparatively tiny memory payload injected alongside it.
+Pruning, accordingly, saves on the footprint axis (the tokens carried per task; see
+Section~\ref{sec:h1}) but not on total compute --- a near-null on the cost axis that is the
+direct counterpart of the behavioral null reported here.
+
+\subsection{The trajectory effect: performance declines with sequence position}
+
+If memory policy does not move behavior, what does move the outcome within a sequence? We
+read this from the task-level GLMM (binomial/logit, crossed random effect on
+\texttt{task\_id}; Invariant~\#14), fit over all $4{,}914$ task observations with
+\texttt{cls\_consolidation} as the reference policy. Table~\ref{tab:glmm} reports the fixed
+effects.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Task-level GLMM (binomial/logit), $4{,}914$ observations, converged; reference
+  policy \texttt{cls\_consolidation}. Coefficients are log-odds with standard errors. All
+  five policy contrasts are non-significant ($|\text{coef}| < 2\,\text{SE}$); task
+  difficulty and sequence position are the two significant predictors. The fit is
+  approximate (\texttt{statsmodels} variational estimation; the canonical R \texttt{lme4}
+  fit was not run), so we report signs and the policy-null rather than exact $p$-values; a
+  sensitivity check confirms the direction.}
+  \label{tab:glmm}
+  \begin{tabular}{lrc}
+    \toprule
+    Fixed effect & Coefficient $\pm$ SE & Significant \\
+    \midrule
+    full\_memory (vs cls)       & $+0.116 \pm 0.118$ & No \\
+    no\_memory (vs cls)         & $-0.133 \pm 0.117$ & No \\
+    random\_prune (vs cls)      & $+0.033 \pm 0.117$ & No \\
+    recency\_prune (vs cls)     & $-0.092 \pm 0.117$ & No \\
+    type\_aware\_decay (vs cls) & $-0.188 \pm 0.117$ & No \\
+    \midrule
+    task difficulty             & $-2.18 \pm 0.065$  & Yes \\
+    sequence position           & $-1.49 \pm 0.086$  & Yes \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The model tells a consistent story with the behavioral table. Every policy coefficient is
+smaller than twice its standard error, so the GLMM corroborates the policy-null on outcomes
+at the task level: which memory policy is in force does not measurably shift the odds of
+resolving a task. The two predictors that do matter are task difficulty
+($-2.18 \pm 0.065$) and, of direct relevance to H4, \emph{sequence position}
+($-1.49 \pm 0.086$): the agent's effectiveness declines as it moves deeper into a sequence,
+and it does so regardless of which policy governs memory. Memory accumulation does not
+rescue this decline --- \texttt{full\_memory}'s slightly positive but non-significant
+policy coefficient does nothing to offset the strong negative position term.
+
+This is the trajectory counterpart of the flat step-to-step behavior. The within-sequence
+degradation is real and substantial in log-odds, but it is a property of running a long
+continual-learning trajectory under this agent, not something that any of the six policies
+turns on or off. The honest reading of H4 is therefore that its predicted mechanism is
+\emph{absent} on this workload: accumulation neither bloats the agent's behavior nor, via
+the GLMM, its odds of success, and forgetting has correspondingly little behavioral damage
+to repair. The performance decline that does occur is a trajectory-level phenomenon shared
+by every condition.

@@ -29,23 +29,29 @@ has a uniform, between-condition-neutral effect on the token-cost axis that is d
 there. Embeddings are computed by a separate local \texttt{nomic-embed-text-v2-moe} model
 (768-dimensional), also held constant across conditions.
 
-A structural property of the benchmark is expected to bound how much any of this can matter.
-Within each sequence only a minority of tasks appear to share gold-patch files with a
-predecessor --- the only tasks for which a stored record could be structurally relevant --- so
-for most tasks there is, by construction, little to remember (the exact per-sequence fractions
-are reported in Chapter~\ref{ch:results}; Figure~\ref{fig:interdependence}). This
-interdependence ceiling frames the entire memory question and is quantified in
-Chapter~\ref{ch:results}.
+A structural property of the benchmark bounds how much any of this can matter. Within each
+sequence only a minority of tasks share gold-patch files with a predecessor --- the only tasks
+for which a stored record could be structurally relevant --- so for most tasks there is, by
+construction, little to remember. The per-sequence fractions
+(Figure~\ref{fig:interdependence}) range from $0.129$ (scikit-learn) to $0.571$
+(pydata/xarray), averaging roughly $0.3$ across the eight sequences: even in the most
+interdependent sequence a substantial share of tasks stand alone, and in the least
+interdependent sequence the overwhelming majority do. This interdependence ceiling frames the
+entire memory question and is revisited in Chapter~\ref{ch:results}.
 
 \begin{figure}[htbp]
 \centering
-\begin{figurestub}{task interdependence in SWE-Bench-CL}
-Per-sequence structural interdependence: the fraction of tasks whose gold-patch files
-overlap an earlier task in the same sequence (mean prior-overlap and
-fraction-with-dependency per sequence). Regenerated from the structural-interdependence
-analysis once the rerun is aggregated. \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}
-\end{figurestub}
-\caption{Per-sequence task interdependence in SWE-Bench-CL: only a minority of tasks
-structurally depend on a predecessor. \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}}
+\begin{tikzpicture}
+\begin{axis}[width=0.85\textwidth,height=6cm,ybar,bar width=10pt,
+  ylabel={Frac.\ tasks with a prior dependency},
+  symbolic x coords={sklearn,astropy,sympy,django,pytest,mpl,sphinx,xarray},
+  xtick=data,x tick label style={rotate=40,anchor=east,font=\scriptsize},
+  ymin=0,ymax=0.62,nodes near coords,every node near coord/.append style={font=\tiny}]
+\addplot coordinates {(sklearn,0.129)(astropy,0.143)(sympy,0.163)(django,0.286)(pytest,0.389)(mpl,0.394)(sphinx,0.512)(xarray,0.571)};
+\end{axis}
+\end{tikzpicture}
+\caption{Structural task interdependence per sequence: the fraction of tasks whose gold-patch
+files overlap an earlier task. Only a minority depend on a predecessor (mean
+\textasciitilde 0.3), a property of the benchmark.}
 \label{fig:interdependence}
 \end{figure}

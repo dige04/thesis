@@ -1,7 +1,6 @@
 % Generated from the matching Typst scaffold by
 % scripts/migrate_typst_report_to_latex.py (prose drafted 2026-06-25).
-% INTEGRITY: model = deepseek-v4-flash. The RESULTS clause must NOT assert the pending
-% headline -- it states the question; the finding is [RESULT: pending runs_144_seq_cceb325].
+% INTEGRITY: model = deepseek-v4-flash. Results from runs_144_seq_cceb325 (deep audit: 0 flags).
 % No TOST claim. Thread "retrieval held constant", "non-inferiority", "footprint".
 
 % ── Abstract ─────────────────────────────────────────────────────────────
@@ -18,9 +17,13 @@ policies, bracketed by No Memory and Full Memory, are compared under \emph{ident
 retrieval-held-constant} cosine search, a single frozen model (\texttt{deepseek-v4-flash}),
 and a 144-run matrix over the eight SWE-Bench-CL sequences and three seeds. The analysis is
 pre-registered and effect-size-first (Wilcoxon on $N=8$ sequence means, rank-biserial effect
-sizes, bootstrap intervals), with cost read on two axes, compute and memory footprint. We ask
-whether proactive forgetting is non-inferior to full accumulation, and at what footprint:
-\texttt{[RESULT: pending runs\_144\_seq\_cceb325]}. The contribution is a controlled
+sizes, bootstrap intervals), with cost read on two axes, compute and memory footprint. Across
+the 144 runs no forgetting policy differs significantly from Full Memory (Wilcoxon $N=8$, all
+five Holm-corrected contrasts non-significant, every bootstrap interval spanning zero); memory
+itself yields only a small, bounded gain over No Memory ($+1.6$ points, non-significant); and
+aggressive forgetting matches Full Memory at roughly half the memory footprint. A task-level
+binomial GLMM finds agent effectiveness declining with sequence position irrespective of policy.
+The contribution is a controlled
 \emph{measurement} --- including an instrument-validation sub-study that caught and fixed a
 tooling defect before the matrix --- of \emph{when} and \emph{how much} a coding agent should
 forget, not a new policy.

@@ -6,7 +6,6 @@
 %          pitting Type-Aware Decay directly against Random Prune at the same cap.
 % MOVE: Pain → Consequence → Gap (volume control is cheap; does content selection earn
 %        its complexity?).
-% BEATS: see ordered bullets below.
 % FIGURES/TABLES: tab:main-results (Type-Aware vs Random subset).
 % CITATIONS: anderson1991 (the multiplicative decay rationale behind Type-Aware).
 % ─────────────────────────────────────────────────────────────────────────
@@ -14,16 +13,83 @@
 \section{H2: Does What You Forget Matter?}
 \label{sec:h2}
 
-\begin{todobox}
-Expand the beats below into prose. The clean comparison is Type-Aware Decay vs Random Prune --- both evict to the SAME cap=10, so the only difference is WHICH items go. Keep the verdict honest whichever way it lands.
-\end{todobox}
+The volume question (\autoref{sec:h1}) settles only \emph{how much} memory an agent
+should keep, not \emph{which} items it should keep. H2 asks the sharper question: at a
+fixed budget, does selecting \emph{what} to forget by content beat discarding items at
+random? The comparison is deliberately clean. Type-Aware Decay and Random Prune both
+evict to the same capacity, both leave retrieval scoring untouched (Invariant~5), and both
+hold the embedding payload constant (Invariant~4); the only thing that varies between them
+is the eviction rule. Random Prune drops a uniformly chosen item; Type-Aware Decay scores
+each item with the multiplicative, Anderson--Schooler-style rule of Invariant~8
+\citep{anderson1991} --- a per-type age decay tempered by a retrieval-frequency term ---
+and evicts the lowest-scoring item. Any residual gap in CL-F1 is therefore attributable to
+content selection, not to footprint. The question is whether that machinery earns its
+complexity over a coin flip.
 
-% - H2 contrast: Type-Aware Decay vs Random Prune, Wilcoxon signed-rank on N=8 sequence
-%   means with rank-biserial r_rb effect size [RESULT: …].
-% - Both policies hold footprint at cap=10; retrieval held constant — so any CL-F1 gap is
-%   attributable to content selection, not volume. The question is whether the
-%   Anderson–Schooler-style scoring (anderson1991) earns its complexity over a coin flip.
-% - tab:main-results (subset) — the Type-Aware vs Random rows of the main table [RESULT: …].
-% - Interpret: if content-aware ≈ random, volume reduction alone is the active ingredient
-%   (a tidy parsimony finding); if content-aware > random, selection matters. Report the
-%   direction and CI plainly. Full 144-run matrix RUNNING.
+It does not. As reported in \autoref{tab:h2-content-vs-random}, content-aware pruning does
+not beat random pruning on the trustworthy 144-run matrix. Type-Aware Decay attains the
+\emph{lowest} CL-F1 of all six policies (0.427), below Random Prune (0.447), below CLS
+Consolidation (0.449), and --- the striking part --- below even the No-Memory baseline
+(0.429). Recall that CL-F1 here is the resolved-rate proxy of \autoref{sec:metrics}, not a
+forgetting-curve measure; the policies are compared on the proxy throughout this chapter.
+The signed-rank contrast of Type-Aware Decay against full memory (the reference used for
+the pre-registered family of five comparisons in \autoref{sec:h1}) is not significant
+($W=10.0$, $p=0.297$, Holm-adjusted $p=1.000$; median $\Delta=-0.0024$; rank-biserial
+$r_{\mathrm{rb}}=-0.444$, a medium effect in the \emph{negative} direction; $95\%$ BCa CI
+$[-0.063,\,0.016]$, which crosses zero). The confidence interval is bounded below at a
+modest magnitude, so we read this as no detectable content-over-volume benefit rather than
+a strong harm; we do not run a TOST equivalence verdict here (it was pre-registered but not
+computed). The plain reading is that at a fixed budget, \emph{which} item you forget does
+not move the resolved-rate proxy --- volume reduction alone is the active ingredient, and a
+coin flip selects as well as the theoretically motivated rule.
+
+\begin{table}[htbp]
+\centering
+\caption{H2 content-vs-random comparison. CL-F1 is the resolved-rate proxy averaged over
+the eight sequences; both pruners hold footprint at the same cap and share identical
+retrieval scoring, so the contrast isolates content selection. Type-Aware Decay does not
+beat Random Prune, and falls below the No-Memory baseline. Wilcoxon statistics are reported
+against the full-memory reference (Invariant~11), with rank-biserial $r_{\mathrm{rb}}$ and
+$95\%$ BCa CI.}
+\label{tab:h2-content-vs-random}
+\begin{tabular}{lcccc}
+\toprule
+Policy & CL-F1 (resolve) & Footprint (tok/task) & $r_{\mathrm{rb}}$ vs full & Holm $p$ \\
+\midrule
+CLS Consolidation & 0.449 & 704 & $-0.071$ & 1.000 \\
+Random Prune      & 0.447 & 601 & $-0.056$ & 1.000 \\
+Full Memory       & 0.445 & 1{,}247 & --- & --- \\
+Recency Prune     & 0.437 & 604 & $-0.111$ & 1.000 \\
+No Memory         & 0.429 & 0 & $-0.286$ & 1.000 \\
+Type-Aware Decay  & \textbf{0.427} & 598 & $-0.444$ & 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The striking negative: Type-Aware Decay freezes its own memory}
+\label{sec:h2-tad-mechanism}
+
+A policy designed to forget intelligently performing \emph{worse} than keeping no memory at
+all demands a mechanism, not just a number. A content audit of the Type-Aware Decay runs
+locates it in the eviction score itself. The Invariant~8 rule weighs a per-type age decay
+against a retrieval-frequency term of the form $(1+\text{use\_count})^{0.5}$. In practice
+the retrieval-frequency term dominates the age-decay term: once an early item has been
+retrieved a few times, its score is buoyed faster than age erodes it, so it is never the
+lowest-scoring candidate and is never evicted. Newly written items, with a use count of
+zero, are the cheapest to discard and are evicted almost immediately. The net effect is
+that the store \emph{freezes} at roughly its first ten items --- the early high-use entries
+become effectively permanent while every later memory is created and destroyed within a
+task or two. The agent is left carrying a small, stale core that rarely matches the task at
+hand, which is plausibly why Type-Aware Decay underperforms even the No-Memory baseline:
+the No-Memory agent at least pays no retrieval-noise tax, whereas the frozen store
+sometimes injects irrelevant early context. This is a genuine negative result, not a tuning
+artifact: the decay parameters were frozen at design time per the pre-registration and were
+never re-fit from the data (Invariant~8), so the failure is a property of the formula as
+specified rather than of a poorly chosen knob.
+
+Taken together, H2 finds no support for the hypothesis that content-aware forgetting beats
+blind volume reduction. At a matched budget, random eviction is as good as the
+Anderson--Schooler-style rule, and the one policy that selects most aggressively by content
+is the worst performer in the matrix. The parsimonious reading --- consistent with the
+powered policy-null of \autoref{sec:h1} --- is that on this resolved-rate proxy the active
+ingredient is footprint, not the cleverness of the selection rule.

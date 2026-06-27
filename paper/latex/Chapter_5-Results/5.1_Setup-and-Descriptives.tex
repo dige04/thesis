@@ -1,9 +1,9 @@
 % ── 5.1  Experimental Setup and Descriptive Statistics ───────────────────
 % PURPOSE: Orient the reader before any hypothesis test -- recap the run matrix and
 %          report per-policy descriptives so later inferential moves have a baseline.
-% INTEGRITY: the setup/design narrative is writable now; all numeric descriptives are
-% PLACEHOLDERS pending the trustworthy 144 rerun (runs_144_seq_cceb325). The old
-% runs_k27_merged values are NOT pasted here -- the rerun exists because that matrix
+% INTEGRITY: all numeric descriptives are from the trustworthy 144 rerun
+% (runs_144_seq_cceb325, deepseek-v4-flash, sha cceb325; deep audit = 0 flags). The old
+% runs_k27_merged values are NOT used here -- the rerun exists because that matrix
 % was instrument-crippled (see Section~\ref{sec:instrument}).
 % ─────────────────────────────────────────────────────────────────────────
 
@@ -24,39 +24,43 @@ matrix is reported in Section~\ref{sec:instrument}.
 
 All inferential statistics in the sections that follow take the \emph{sequence} as the
 unit of analysis ($N=8$ sequence-level means per policy), never the individual task ---
-a deliberate guard against pseudo-replication. The overall scale of the matrix
-(task-row count, resolved count, and overall resolution rate) is reported once the
-trustworthy rerun completes: \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}.
+a deliberate guard against pseudo-replication. At the level of individual task executions
+the matrix comprises \textbf{4{,}914 task rows}, of which \textbf{2{,}175 were resolved},
+for an overall resolution rate of \textbf{44.3\%}; a full deep audit of the trustworthy
+rerun (\texttt{runs\_144\_seq\_cceb325}) returned zero integrity flags.
 
 \paragraph{Descriptive picture.}
-Table~\ref{tab:descriptives} will report per-policy means over the eight sequences on the
+Table~\ref{tab:descriptives} reports per-policy means over the eight sequences on the
 three outcome axes the thesis cares about: resolution rate (the CL-F1 proxy; see the
-caveat below), memory footprint carried per task, and total token cost per run. The
-qualitative shape we expect to read off the descriptives --- whether the policies bunch
-tightly on resolution while differing several-fold on footprint, and whether the
-tool-call budget is flat across conditions (a first hint, developed in
-Section~\ref{sec:h4}, that the policy does not change step-to-step behaviour) --- is a
-question for the inferential sections; the numbers themselves are placeholders pending the
-rerun.
+caveat below), memory footprint carried per task, and total token cost per run. Two
+features of the descriptives are visible before any test is run. First, the policies bunch
+tightly on resolution --- every condition lands between 0.427 and 0.449, a span of barely
+two percentage points --- while differing more than two-fold on footprint, from
+\texttt{no\_memory}'s zero through the pruners' \textasciitilde 600 tokens/task up to
+\texttt{full\_memory}'s 1{,}247. Second, the tool-call budget is essentially flat across
+conditions (20.9--21.1 calls/task), a first hint --- developed in Section~\ref{sec:h4} ---
+that the memory policy does not change the agent's step-to-step behaviour. The inferential
+sections test whether the small resolution spread is signal or noise; the descriptives
+already foreshadow the answer.
 
 \begin{table}[htbp]
   \centering
   \caption{Per-policy descriptive statistics, mean over the eight SWE-Bench-CL
   sequences ($N=8$). Resolution rate is the reported CL-F1 proxy. Footprint is memory
-  tokens carried per task; total cost is tokens per run.
-  \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}}
+  tokens carried per task; total cost is tokens per run. Rows are ordered by resolution
+  rate. Source: \texttt{runs\_144\_seq\_cceb325} (\texttt{deepseek-v4-flash}).}
   \label{tab:descriptives}
-  \begin{tabular}{lrrrrr}
+  \begin{tabular}{lrrrr}
     \toprule
-    Policy & Resolve rate & Footprint & Total tok & Tool calls & Wall (s) \\
-           &              & (tok/task) & (M/unit)  & /task      & /task    \\
+    Policy & Resolve rate & Footprint & Total tok & Tool calls \\
+           & (CL-F1 proxy) & (tok/task) & (M/unit)  & /task      \\
     \midrule
-    recency\_prune     & ---  & ---  & ---  & ---  & ---  \\
-    full\_memory       & ---  & ---  & ---  & ---  & ---  \\
-    type\_aware\_decay & ---  & ---  & ---  & ---  & ---  \\
-    cls\_consolidation & ---  & ---  & ---  & ---  & ---  \\
-    random\_prune      & ---  & ---  & ---  & ---  & ---  \\
-    no\_memory         & ---  & ---  & ---  & ---  & ---  \\
+    cls\_consolidation & 0.449 & 704   & 6.08 & 21.11 \\
+    random\_prune      & 0.447 & 601   & 6.06 & 21.00 \\
+    full\_memory       & 0.445 & 1{,}247 & 6.09 & 21.05 \\
+    recency\_prune     & 0.437 & 604   & 6.05 & 20.93 \\
+    no\_memory         & 0.429 & 0     & 5.74 & 20.98 \\
+    type\_aware\_decay & 0.427 & 598   & 5.96 & 20.98 \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -64,10 +68,11 @@ rerun.
 \paragraph{Headroom for a memory effect.}
 A precondition for any between-policy contrast to be interpretable is that the experiment
 sits clear of both floor and ceiling: if the agent solved almost everything or almost
-nothing regardless of memory, no contrast would have outcomes left to move. Whether the
-observed resolution rate leaves that headroom --- and therefore whether a near-null result
-is a finding about memory rather than an artefact of a saturated benchmark --- is
-confirmed from the rerun descriptives \texttt{[RESULT: pending runs\_144\_seq\_cceb325]}.
+nothing regardless of memory, no contrast would have outcomes left to move. The overall
+resolution rate of \textbf{44.3\%} sits squarely in the mid-range --- far from both the
+floor and the ceiling --- so there is ample room for a memory effect to register in either
+direction. A near-null result on this matrix is therefore a finding about memory, not an
+artefact of a saturated or floored benchmark.
 
 \paragraph{What ``CL-F1'' means here.}
 Throughout this chapter the reported CL-F1 equals the per-condition resolution rate

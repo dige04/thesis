@@ -14,6 +14,8 @@
 \usepackage{subcaption}
 \usepackage{tikz}
 \usetikzlibrary{positioning,arrows.meta,fit,backgrounds}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
 \definecolor{cAgent}{HTML}{2E7D6B}
 \definecolor{cFixed}{HTML}{6B5BA8}
 \definecolor{cPolicy}{HTML}{C2185B}
@@ -33,6 +35,13 @@
 \fancyhead[R]{\thepage}
 \fancypagestyle{plain}{%
   \fancyhf{}\fancyfoot[C]{\thepage}\renewcommand{\headrulewidth}{0pt}}
+
+% The bibliography uses the \texttt{plain} style (no natbib). Provide
+% \citep/\citet aliases so author-year-style call sites compile.
+\providecommand{\citep}[1]{\cite{#1}}
+\providecommand{\citet}[1]{\cite{#1}}
+
+\setlength{\headheight}{13.6pt}
 
 \newcommand{\pending}{\textit{\textcolor{gray}{pending}}}
 

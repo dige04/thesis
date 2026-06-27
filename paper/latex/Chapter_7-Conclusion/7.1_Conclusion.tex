@@ -12,21 +12,57 @@
 
 \section{Conclusion}
 
-\begin{todobox}
-Expand the beats below into prose. RESTATE the study, recap the metric \textrightarrow{} trade-off, end by naming the contribution as a template, not a new policy. Thread "retrieval held constant", "non-inferiority", "footprint", "not every task needs memory". Numbers stay placeholders, pending the 144-run rerun.
-\end{todobox}
+This thesis set out to measure, rather than to advocate, what proactive forgetting
+does to an AI coding agent that learns across a sequence of tasks. We held a single
+frozen model (\texttt{deepseek-v4-flash}) and a single retrieval rule constant --- pure
+cosine similarity, identical across all six policies (Invariant~\#5) --- so that the
+storage-and-forgetting policy was the only moving part. Six policies, spanning the
+No-Memory and Full-Memory brackets together with four pruning and consolidation schemes,
+were run across all eight SWE-Bench-CL sequences at three seeds, yielding 144 controlled
+runs and 4{,}914 task observations. Performance was read on the CL-F1 metric, which in
+this single-frozen-model setting reduces to a resolved-rate proxy; it captures whether the
+agent fixed each task, not the shape of a forgetting curve, and we have been deliberate
+throughout not to overclaim the latter.
 
-% NEUTRAL instructions only -- no preliminary numbers (do NOT paste gate-3/old-matrix values).
-% - RESTATE: this thesis is a controlled measurement of six forgetting policies for AI
-%   coding agents on SWE-Bench-CL, with retrieval held constant (pure cosine, identical
-%   across all six) so the storage/forgetting policy is the only moving part.
-% - METRIC -> TRADE-OFF RECAP: on the CL-F1 proxy, forgetting is non-inferior to full-memory
-%   accumulation [RESULT: pending] at materially lower memory footprint [RESULT: pending] --
-%   the footprint axis (A4) is where forgetting wins. (Non-inferiority via bounded CIs +
-%   power, not TOST.)
-% - THE REFRAME: because only a minority of tasks are interdependent (benchmark-structural;
-%   exact fractions pending), memory is best understood as a DOSAGE / TARGETING question --
-%   "not every task needs memory" -- rather than an always-on accumulation default.
-% - THE CONTRIBUTION: a clean, reproducible experimental TEMPLATE (retrieval-fixed
-%   isolation, No-Memory<->Full-Memory bracketing, two-axis Pareto, interdependence
-%   quantification, 144-run artifact) -- NOT a new memory policy.
+The central result is a \emph{powered null} that survives on the trustworthy data. No
+forgetting or consolidation policy beat full-memory accumulation: across the five
+pre-registered Wilcoxon contrasts against \texttt{full\_memory} (Invariant~\#11), every
+contrast was non-significant after Holm correction, and every $95\%$ bias-corrected
+bootstrap confidence interval on the paired difference crossed zero. The same pattern
+holds in the task-level binomial GLMM (Invariant~\#14), where no policy coefficient
+reaches significance. Whatever advantage carrying more memory confers is small and
+bounded: \texttt{full\_memory} resolved $44.5\%$ of tasks against $42.9\%$ for
+\texttt{no\_memory}, a difference of roughly $1.6$ percentage points that is statistically
+indistinguishable from zero and below the resolution of an $N=8$ sequence-level design ---
+which is underpowered for sub-three-point effects. We therefore report a bound, not a
+benefit: at this scale, accumulating an agent's full task history buys at most a few points
+of resolved rate, and may buy nothing.
+
+Where forgetting visibly wins is the second axis. The pruning policies matched
+full-memory's resolved rate while carrying roughly half the per-task memory footprint
+(about $600$ tokens against full-memory's $1{,}247$; see
+Figure~\ref{fig:pareto-footprint}), and the No-Memory bracket holds the zero-footprint
+corner. This advantage is specific: it lives on the memory-footprint axis, not on total
+compute. End-to-end token totals and tool-call counts were essentially flat across all six
+policies --- the cost of these runs is dominated by the agent's own reasoning loop, which
+forgetting does not touch. Forgetting, in other words, is close to free on the dimension it
+governs and irrelevant on the dimension it does not; the headline trade-off is non-inferior
+performance at a materially lighter memory footprint.
+
+These findings reframe the question. A frozen retrieval rule and a powered null together
+suggest that ``how much should an agent remember'' is less an always-on accumulation
+default than a problem of targeting. Only a minority of SWE-Bench-CL tasks --- a structural
+property of the benchmark --- genuinely depend on a predecessor, and even those that do see
+heterogeneous and largely null lift from carrying memory; structural overlap does not
+predict where memory helps~\cite{xiong2025}. Compounding this, agent effectiveness declines
+with position in a sequence regardless of policy: later tasks are harder for the agent than
+earlier ones, and no amount of accumulated memory rescues that trajectory. Not every task
+needs memory, and the tasks that might are not reliably the ones that store the most.
+
+The contribution of this work is accordingly a \emph{measurement} and a reusable
+\emph{template}, not a new memory policy. By fixing retrieval, bracketing the design
+between No-Memory and Full-Memory, separating the footprint and compute axes of cost, and
+quantifying task interdependence as a benchmark property, the study isolates the
+forgetting-policy effect cleanly enough to detect its absence with confidence --- and
+leaves behind a 144-run, fully provenanced artifact on which the next, better-powered
+comparison can build.

@@ -5,25 +5,115 @@
 % PURPOSE: Prove the storage manipulation actually reaches the prompt before any outcome
 %          is interpreted — the experiment must be visible at the point of injection.
 % MOVE: Pain → Consequence → Gap (a manipulation you can't see is a confound you can't rule out).
-% BEATS: see ordered bullets below.
 % FIGURES/TABLES: none.
 % CITATIONS: none new.
 % ─────────────────────────────────────────────────────────────────────────
 
 \section{Manipulation Checks}
+\label{sec:manipulation-checks}
 
-\begin{todobox}
-Expand the beats below into prose. Position this as the gate the reader must pass through before trusting 5.2-5.6: the policies really do change what lands in the prompt, and we logged enough to prove it run-by-run.
-\end{todobox}
+The hypothesis tests in Sections~\ref{sec:h1}--\ref{sec:h5} are only interpretable
+if three things actually held during execution: the pruning policies genuinely
+discarded memory, every condition retrieved through the same scoring path, and the
+underlying model and embedder never moved. A manipulation that cannot be seen at the
+point of injection is a confound that cannot be ruled out. This section is therefore
+the gate the reader must pass through before reading the preceding results causally:
+it confirms that the six policies materially differ in what reaches the prompt, that
+they differ \emph{only} in the dimension the design intends, and that the recorded
+matrix is internally complete. Throughout, the model is held constant at
+\texttt{deepseek-v4-flash} (Deviation~D1), so any between-policy difference cannot be
+attributed to a moving generator.
 
-% - Retrieved-memory overlap: Jaccard of retrieved item-sets, pruning policies vs Full
-%   Memory, is < 0.9 — so pruning demonstrably changes WHICH memories reach the prompt,
-%   not merely the store [RESULT: …].
-% - No Memory vs any memory policy: retrieved-set Jaccard = 0 by construction (No Memory
-%   injects nothing) — confirms the boundary condition is clean [RESULT: …].
-% - Classifier failure rate logged and reported; failures handled identically across all
-%   six conditions so they cannot differentially bias a policy (D4) [RESULT: …].
-% - Per-run provenance recorded: model, embedder, seed, cap, policy config — so every
-%   run's manipulation is auditable after the fact.
-% - Bottom line: the manipulation is real and visible at the prompt, which is the
-%   precondition for reading 5.2-5.6 causally. Full 144-run matrix RUNNING.
+\subsection{The pruning manipulation binds}
+
+The first check is that eviction was not vacuous. The per-policy cap is fixed at
+$10$ memory items, whereas every SWE-Bench-CL sequence contains far more tasks than
+that: the full matrix comprises $4{,}914$ task rows across $8$ sequences, $3$ seeds
+and $6$ policies, so each sequence runs many times longer than the cap. The store
+therefore overflows the cap well before any sequence completes, and the pruning
+policies are forced to make eviction decisions on every subsequent task rather than
+sitting idle. The cap binds by construction.
+
+The clearest \emph{quantitative} evidence that the manipulation reaches the prompt is
+the realised memory footprint --- the number of memory tokens actually injected per
+task, measured at the point of injection rather than inferred from the store. The
+policies separate sharply on this axis:
+
+\begin{itemize}
+  \item \texttt{full\_memory} injects \textbf{1{,}247} tokens per task --- it carries
+        the whole accumulated store;
+  \item the four bounded policies inject roughly half as much ---
+        \texttt{cls\_consolidation} \textbf{704}, \texttt{recency\_prune}
+        \textbf{604}, \texttt{random\_prune} \textbf{601} and
+        \texttt{type\_aware\_decay} \textbf{598} tokens per task --- consistent with a
+        store held to the cap rather than allowed to grow;
+  \item \texttt{no\_memory} injects \textbf{0} tokens, the clean zero-footprint
+        boundary condition.
+\end{itemize}
+
+A roughly $2\times$ spread between \texttt{full\_memory} and the pruners, and an exact
+zero for \texttt{no\_memory}, demonstrate that the policies change \emph{what lands in
+the prompt}, not merely what sits in the store. This footprint separation is reported
+here purely as a manipulation check --- evidence that the intervention took effect; its
+performance consequences (the footprint axis of H1b) are interpreted in
+Section~\ref{sec:h1}, not here.
+
+\subsection{Retrieval is identical across policies}
+
+The second check is that the policies differ \emph{only} in eviction. Retrieval
+scoring is pure cosine similarity routed through a single shared code path
+(\texttt{shared\_retrieve}, Invariant~\#5): no policy adds bonuses, penalties, or
+re-ranking. The same embedder (\texttt{nomic-embed-text-v2-moe}, $768$-d,
+Deviation~D2) and the same injection ordering --- relevance-sorted with the best item
+placed last to mitigate lost-in-the-middle effects (Invariant~\#6) --- are used in
+every condition. Consequently the only thing that varies between the six conditions is
+\emph{which items survive in the store to be scored}, which is exactly the
+manipulation under test. \texttt{no\_memory} is the degenerate case of this same path
+with an empty store: it retrieves nothing by construction, giving a clean lower
+boundary that no other condition can leak into. The memory-type classifier (D4) is
+run identically across all six conditions and its failures are handled the same way in
+each, so it cannot differentially bias any single policy.
+
+\subsection{The full matrix audits clean}
+
+The final check is that the recorded matrix is internally consistent before any
+statistic is computed on it. A deep audit of the trustworthy run
+(\texttt{runs\_144\_seq\_cceb325}, agent frozen at commit \texttt{cceb325}) returned
+\textbf{zero flags} across all $4{,}914$ task rows, of which $2{,}175$ ($44.3\%$) were
+resolved. The audit confirmed in particular that:
+
+\begin{itemize}
+  \item \textbf{Exact task-id sets.} Every policy and seed was evaluated on the
+        identical set of tasks --- no condition received an easier or smaller subset,
+        which is itself a manipulation check against selection differences across
+        arms.
+  \item \textbf{Frozen agent.} The coding agent was pinned at commit
+        \texttt{cceb325} for the entire run; \texttt{git diff cceb325..HEAD --
+        src/agents} is empty, so the agent code is provably constant across all $144$
+        units.
+  \item \textbf{Tool-mode consistency.} The per-row tool-mode mismatch that affected
+        an earlier matrix was gated and blocked before this run, so no row mixes
+        tool-calling conventions.
+\end{itemize}
+
+For full transparency, two execution facts are disclosed even though neither affects
+the science. First, the orchestration code changed during the run, but only for
+disk management --- a per-task \texttt{docker rmi} cleanup gated behind the
+\texttt{CLEANUP\_TASK\_IMAGES} environment flag (covered by
+\texttt{tests/test\_cleanup\_task\_image.py}); the agent, memory, and evaluation paths
+were untouched. Second, one cell (\texttt{random\_prune\_matplotlib\_seed2}) had its
+\texttt{RUN\_COMPLETED} marker written by hand \emph{after}
+\texttt{validate\_run\_complete} had already passed on its data: the marker file was
+lost to a process kill, the underlying outputs are complete, and the hand-written
+marker only re-records a completion that the validator had independently confirmed.
+
+\subsection{Provenance}
+
+Each unit's manipulation is auditable after the fact: the model
+(\texttt{deepseek-v4-flash}), embedder, seed, cap, and policy configuration are
+recorded per run, with model provenance fixed through the run directory plus the
+frozen \texttt{base.yaml} and \texttt{MODEL\_PROVENANCE.json}. Taken together, these
+checks establish the precondition for reading Sections~\ref{sec:h1}--\ref{sec:h5}
+causally: the manipulation is real and visible at the prompt, the conditions differ
+only in eviction, and the matrix on which every statistic is computed is complete and
+flag-free.
